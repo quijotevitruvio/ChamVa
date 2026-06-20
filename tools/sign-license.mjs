@@ -21,8 +21,11 @@ function loadPrivateB64() {
   }
 }
 
-const name = process.argv[2] || 'Cliente';
-const months = Number(process.argv[3] || 12);
+const rawArgs = process.argv.slice(2);
+const raw = rawArgs.includes('--raw'); // imprime SOLO la clave (para scripts)
+const positional = rawArgs.filter((a) => !a.startsWith('--'));
+const name = positional[0] || 'Cliente';
+const months = Number(positional[1] || 12);
 
 const privB64 = loadPrivateB64();
 const privateKey = crypto.createPrivateKey({
@@ -51,8 +54,12 @@ const sigB64 = sig
   .replace(/=+$/, '');
 
 const licenseKey = `${payloadB64}.${sigB64}`;
-console.log('\nLicencia para:', name);
-console.log('Caduca:', new Date(exp * 1000).toISOString().slice(0, 10));
-console.log('\nCLAVE (entrégasela al cliente):\n');
-console.log(licenseKey);
-console.log('');
+if (raw) {
+  process.stdout.write(licenseKey);
+} else {
+  console.log('\nLicencia para:', name);
+  console.log('Caduca:', new Date(exp * 1000).toISOString().slice(0, 10));
+  console.log('\nCLAVE (entrégasela al cliente):\n');
+  console.log(licenseKey);
+  console.log('');
+}
