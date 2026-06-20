@@ -302,7 +302,10 @@ body {
 }
 
 .rail-ico {
-  font-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
 }
 
 .rail-lbl {
@@ -951,7 +954,10 @@ ul.layers .name {
 }
 
 .home-ico {
-  font-size: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
 }
 
 .home-title {

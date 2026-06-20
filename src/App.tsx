@@ -14,6 +14,7 @@ import { ANIMATIONS } from './editor/core/animations';
 import { PRESET_TEMPLATES } from './editor/core/presetTemplates';
 import { TemplateThumb } from './ui/TemplateThumb';
 import { PageThumb } from './ui/PageThumb';
+import { Icon } from './ui/Icon';
 import { idbGet, idbSet } from './io/idb';
 import { AUTHOR } from './branding';
 import {
@@ -950,21 +951,23 @@ export default function App() {
         }}
       >
         <nav className="rail">
-          {[
-            { id: 'subir', icon: '📤', label: 'Subir' },
-            { id: 'texto', icon: '🅣', label: 'Texto' },
-            { id: 'elementos', icon: '◆', label: 'Elementos' },
-            { id: 'fondo', icon: '🎨', label: 'Fondo' },
-            { id: 'plantillas', icon: '🗂', label: 'Plantillas' },
-            { id: 'capas', icon: '▦', label: 'Capas' },
-            { id: 'marca', icon: '★', label: 'Marca' },
-          ].map((t) => (
+          {([
+            { id: 'subir', icon: 'upload', label: 'Subir' },
+            { id: 'texto', icon: 'text', label: 'Texto' },
+            { id: 'elementos', icon: 'shapes', label: 'Elementos' },
+            { id: 'fondo', icon: 'palette', label: 'Fondo' },
+            { id: 'plantillas', icon: 'templates', label: 'Plantillas' },
+            { id: 'capas', icon: 'layers', label: 'Capas' },
+            { id: 'marca', icon: 'star', label: 'Marca' },
+          ] as const).map((t) => (
             <button
               key={t.id}
               className={activeTab === t.id ? 'active' : ''}
               onClick={() => setActiveTab(activeTab === t.id ? null : t.id)}
             >
-              <span className="rail-ico">{t.icon}</span>
+              <span className="rail-ico">
+                <Icon name={t.icon} size={22} />
+              </span>
               <span className="rail-lbl">{t.label}</span>
             </button>
           ))}
@@ -2281,7 +2284,9 @@ export default function App() {
                 setShowHome(false);
               }}
             >
-              <span className="home-ico">🖼</span>
+              <span className="home-ico">
+                <Icon name="image" size={48} />
+              </span>
               <span className="home-title">Editar imágenes</span>
               <span className="home-desc">
                 Diseños, fotos, texto, formas, quitar fondo…
@@ -2294,7 +2299,9 @@ export default function App() {
                 setShowVideo(true);
               }}
             >
-              <span className="home-ico">🎬</span>
+              <span className="home-ico">
+                <Icon name="video" size={48} />
+              </span>
               <span className="home-title">Editar video</span>
               <span className="home-desc">
                 Recortar, audio, efectos de voz, exportar MP4…
