@@ -80,5 +80,27 @@ Funciona el flujo completo de imagen y video, y compilan tanto el **instalador d
 Pendiente: estilo de texto **por palabra** (editor inline), **crossfade real** y **RNNoise** auténtico,
 **fotos de stock** (requiere clave de Unsplash/Pexels), **gráficas/tablas**, y probar la APK en un dispositivo real.
 
-## Licencia
+## Autor y apoyo
+
+Hecho por **Andrés Valencia Tobón**. ChamVa es gratis y sin restricciones — si te resulta útil, considera apoyarlo:
+
+- 💳 **Donar (PayPal):** https://paypal.me/bibliotecologo
+- 🐙 **GitHub:** https://github.com/quijotevitruvio
+- 💼 **LinkedIn:** https://www.linkedin.com/in/andr%C3%A9s-valencia-tob%C3%B3n/
+
+### Licencia de apoyo (1 año)
+Quien quiera apoyar puede obtener una **clave de licencia válida 1 año**. La app la verifica **offline** (firma
+criptográfica ECDSA P-256), sin servidores ni conexión. Para conseguirla, dona y solicita tu clave desde el botón
+«Solicitar clave de licencia» dentro de la app.
+
+**Cómo emite el autor las claves** (necesita la clave privada, guardada en `tools/private-key.txt`, fuera de git):
+
+```bash
+pnpm license "Nombre del cliente" 12   # 12 = meses de validez
+```
+
+Copia la clave que imprime y entrégasela al cliente; él la pega en «Activar» dentro de la app. La app solo lleva la
+**clave pública** (`src/branding.ts`), así que cualquiera puede verificar pero solo tú puedes emitir.
+
+## Licencia (código)
 Proyecto personal de uso libre. Sin garantías.

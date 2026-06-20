@@ -965,6 +965,131 @@ ul.layers .name {
   text-align: center;
 }
 
+/* ---- Apoyo / donaciones / licencia ---- */
+.support-box {
+  margin-top: 30px;
+  max-width: 440px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.support-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.support-desc,
+.support-thanks {
+  font-size: 13px;
+  opacity: 0.7;
+  margin: 0 0 12px;
+}
+
+.support-thanks {
+  color: #ffd54a;
+  opacity: 1;
+}
+
+.support-links {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.support-links a {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.support-links a:hover {
+  border-color: var(--accent);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.license-activate {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.license-activate input {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.license-msg {
+  color: #ff6b6b;
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+/* Aviso de apoyo tras exportar */
+.donate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donate-card {
+  position: relative;
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 26px 24px;
+  text-align: center;
+}
+
+.donate-card h3 {
+  margin: 0 0 8px;
+}
+
+.donate-card p {
+  font-size: 13px;
+  opacity: 0.75;
+  margin: 0 0 16px;
+}
+
+.donate-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
 /* ---- Modo presentación ---- */
 .present-overlay {
   position: fixed;

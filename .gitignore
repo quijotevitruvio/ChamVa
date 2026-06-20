@@ -42,3 +42,6 @@ src-tauri/gen/apple
 *.aab
 *.msi
 *.exe
+
+# Clave privada de licencias (¡NUNCA subir!)
+tools/private-key.txt

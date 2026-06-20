@@ -15,6 +15,13 @@ import { PRESET_TEMPLATES } from './editor/core/presetTemplates';
 import { TemplateThumb } from './ui/TemplateThumb';
 import { PageThumb } from './ui/PageThumb';
 import { idbGet, idbSet } from './io/idb';
+import { AUTHOR } from './branding';
+import {
+  activateLicense,
+  getStoredLicense,
+  clearLicense,
+  type LicenseInfo,
+} from './license';
 import { loadImageFile } from './io/import';
 import { addFontFromFile } from './editor/core/fonts';
 import {
@@ -214,6 +221,35 @@ export default function App() {
   const [showPresent, setShowPresent] = useState(false);
   const [showHome, setShowHome] = useState(true);
   const [upBusy, setUpBusy] = useState(false);
+  // Licencia + apoyo/donaciones
+  const [license, setLicense] = useState<LicenseInfo | null>(null);
+  const [licenseInput, setLicenseInput] = useState('');
+  const [licenseMsg, setLicenseMsg] = useState('');
+  const [showDonate, setShowDonate] = useState(false);
+  useEffect(() => {
+    getStoredLicense().then(setLicense);
+  }, []);
+  const onActivateLicense = async () => {
+    const info = await activateLicense(licenseInput);
+    if (info) {
+      setLicense(info);
+      setLicenseMsg('');
+      setLicenseInput('');
+    } else {
+      setLicenseMsg('Clave inválida o caducada.');
+    }
+  };
+  const requestLicense = () => {
+    window.open(AUTHOR.paypal, '_blank');
+    window.open(
+      `mailto:${'quijotevitruvio@gmail.com'}?subject=${encodeURIComponent(
+        'Clave de licencia ChamVa (1 año)',
+      )}&body=${encodeURIComponent(
+        'Hola, acabo de donar por PayPal. Mi nombre/comprobante es: ',
+      )}`,
+      '_blank',
+    );
+  };
   const [upMsg, setUpMsg] = useState('');
   const [offlineMsg, setOfflineMsg] = useState('');
 
@@ -443,6 +479,7 @@ export default function App() {
       alert('Error al descargar: ' + (e as Error).message);
     } finally {
       setBusy(false);
+      if (!license) setShowDonate(true);
     }
   };
 
@@ -2262,6 +2299,93 @@ export default function App() {
               <span className="home-desc">
                 Recortar, audio, efectos de voz, exportar MP4…
               </span>
+            </button>
+          </div>
+
+          <div className="support-box">
+            {license ? (
+              <p className="support-thanks">
+                💛 ¡Gracias por tu apoyo, {license.name}! Licencia activa hasta{' '}
+                {new Date(license.exp * 1000).toLocaleDateString()}.
+              </p>
+            ) : (
+              <>
+                <p className="support-title">Apoya ChamVa</p>
+                <p className="support-desc">
+                  Es gratis y sin restricciones. Si te sirve, considera donar.
+                </p>
+              </>
+            )}
+            <div className="support-links">
+              <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
+                💳 Donar (PayPal)
+              </a>
+              <a href={AUTHOR.github} target="_blank" rel="noreferrer">
+                🐙 GitHub
+              </a>
+              <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
+                💼 LinkedIn
+              </a>
+            </div>
+            {!license && (
+              <div className="support-license">
+                <button className="link-btn" onClick={requestLicense}>
+                  🔑 Solicitar clave de licencia (1 año)
+                </button>
+                <div className="license-activate">
+                  <input
+                    type="text"
+                    placeholder="Pega tu clave de licencia…"
+                    value={licenseInput}
+                    onChange={(e) => setLicenseInput(e.target.value)}
+                  />
+                  <button onClick={onActivateLicense}>Activar</button>
+                </div>
+                {licenseMsg && <p className="license-msg">{licenseMsg}</p>}
+              </div>
+            )}
+            {license && (
+              <button
+                className="link-btn"
+                onClick={() => {
+                  clearLicense();
+                  setLicense(null);
+                }}
+              >
+                Quitar licencia
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showDonate && !license && (
+        <div className="donate-overlay" onClick={() => setShowDonate(false)}>
+          <div className="donate-card" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="donate-close"
+              onClick={() => setShowDonate(false)}
+            >
+              ✕
+            </button>
+            <h3>¡Tu archivo se descargó! 💛</h3>
+            <p>
+              ChamVa es gratis y sin marcas de agua. Si te ayuda, apóyame con una
+              donación o consigue una licencia de apoyo (1 año).
+            </p>
+            <div className="support-links">
+              <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
+                💳 Donar (PayPal)
+              </a>
+              <a href={AUTHOR.github} target="_blank" rel="noreferrer">
+                🐙 GitHub
+              </a>
+              <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
+                💼 LinkedIn
+              </a>
+            </div>
+            <button className="link-btn" onClick={requestLicense}>
+              🔑 Solicitar clave de licencia (1 año)
             </button>
           </div>
         </div>
