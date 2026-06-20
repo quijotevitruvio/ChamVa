@@ -18,6 +18,7 @@ import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
 import { idbGet, idbSet } from './io/idb';
 import { AUTHOR, APP_VERSION } from './branding';
+import { DONORS, DONOR_TYPE_LABEL, type DonorType } from './donors';
 import {
   activateLicense,
   getStoredLicense,
@@ -243,17 +244,47 @@ export default function App() {
       setLicenseMsg('Clave inválida o caducada.');
     }
   };
-  const requestLicense = () => {
+  // Formulario de solicitud de licencia.
+  const [showRequest, setShowRequest] = useState(false);
+  const [reqName, setReqName] = useState('');
+  const [reqType, setReqType] = useState<DonorType>('natural');
+  const [reqEmail, setReqEmail] = useState('');
+  const [reqMsg, setReqMsg] = useState('');
+
+  const requestLicense = () => setShowRequest(true);
+
+  const submitRequest = () => {
+    if (!reqName.trim()) {
+      toast('Escribe tu nombre o el de tu institución/empresa.', 'info');
+      return;
+    }
+    const body = [
+      `Nombre: ${reqName}`,
+      `Tipo: ${DONOR_TYPE_LABEL[reqType]}`,
+      `Correo: ${reqEmail}`,
+      `Mensaje: ${reqMsg}`,
+      '',
+      'Adjunto el comprobante de mi donación por PayPal (paypal.me/bibliotecologo).',
+    ].join('\n');
     window.open(AUTHOR.paypal, '_blank');
-    window.open(
-      `mailto:${AUTHOR.email}?subject=${encodeURIComponent(
-        'Clave de licencia ChamVa (1 año)',
-      )}&body=${encodeURIComponent(
-        'Hola, acabo de donar por PayPal. Mi nombre/comprobante es: ',
-      )}`,
-      '_blank',
-    );
+    window.location.href = `mailto:${AUTHOR.email}?subject=${encodeURIComponent(
+      'Solicitud de licencia ChamVa (1 año)',
+    )}&body=${encodeURIComponent(body)}`;
+    setShowRequest(false);
+    toast('Abrimos PayPal y tu correo para enviar la solicitud.', 'success');
   };
+
+  // Muro de donantes: lista incluida + tu propio nombre si tienes licencia.
+  const donorWall = (() => {
+    const list = DONORS.map((d) => ({ ...d, isYou: false }));
+    if (license && !list.some((d) => d.name === license.name)) {
+      list.unshift({ name: license.name, type: 'natural', isYou: true });
+    } else if (license) {
+      const i = list.findIndex((d) => d.name === license.name);
+      if (i >= 0) list[i].isYou = true;
+    }
+    return list;
+  })();
   const [upMsg, setUpMsg] = useState('');
   const [offlineMsg, setOfflineMsg] = useState('');
 
@@ -2459,9 +2490,97 @@ export default function App() {
               </div>
             )}
 
+            <div className="settings-section">
+              <span className="settings-label">
+                🏅 Muro de donantes ({donorWall.length})
+              </span>
+              {donorWall.length === 0 ? (
+                <p className="support-desc">
+                  Aún no hay donantes. ¡Sé el primero en apoyar! 💛
+                </p>
+              ) : (
+                <ul className="donor-wall">
+                  {donorWall.map((d, i) => (
+                    <li key={i} className={d.isYou ? 'you' : ''}>
+                      <span className="donor-name">
+                        {d.name} {d.isYou && <em>(tú)</em>}
+                      </span>
+                      <span className="donor-type">
+                        {DONOR_TYPE_LABEL[d.type]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <p className="author-credit">
               © {new Date().getFullYear()} {AUTHOR.name}
             </p>
+          </div>
+        </div>
+      )}
+
+      {showRequest && (
+        <div className="donate-overlay" onClick={() => setShowRequest(false)}>
+          <div className="settings-card" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="donate-close"
+              onClick={() => setShowRequest(false)}
+            >
+              ✕
+            </button>
+            <h3>Solicitar clave de licencia (1 año)</h3>
+            <p className="support-desc">
+              Dona por PayPal y envíanos tus datos. Te responderemos con tu clave
+              a {AUTHOR.email}.
+            </p>
+
+            <label className="req-field">
+              Nombre completo / Institución / Empresa
+              <input
+                type="text"
+                value={reqName}
+                onChange={(e) => setReqName(e.target.value)}
+                placeholder="Tu nombre o el de tu organización"
+              />
+            </label>
+
+            <label className="req-field">
+              Tipo
+              <select
+                value={reqType}
+                onChange={(e) => setReqType(e.target.value as DonorType)}
+              >
+                <option value="natural">Persona natural</option>
+                <option value="institucion">Institución</option>
+                <option value="empresa">Empresa</option>
+              </select>
+            </label>
+
+            <label className="req-field">
+              Tu correo
+              <input
+                type="email"
+                value={reqEmail}
+                onChange={(e) => setReqEmail(e.target.value)}
+                placeholder="para enviarte la clave"
+              />
+            </label>
+
+            <label className="req-field">
+              Mensaje (opcional)
+              <textarea
+                value={reqMsg}
+                onChange={(e) => setReqMsg(e.target.value)}
+                rows={2}
+                placeholder="¿Quieres aparecer en el muro de donantes? ¿Algún comentario?"
+              />
+            </label>
+
+            <button className="primary req-send" onClick={submitRequest}>
+              💳 Donar y enviar solicitud
+            </button>
           </div>
         </div>
       )}
