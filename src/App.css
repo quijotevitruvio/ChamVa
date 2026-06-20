@@ -1132,6 +1132,84 @@ ul.layers .name {
   opacity: 0.6;
 }
 
+/* Botón Ajustes en la barra superior */
+.settings-btn {
+  margin-left: auto;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.settings-btn:hover {
+  border-color: var(--accent);
+}
+
+/* Pie de la pantalla de inicio */
+.home-foot {
+  margin-top: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.home-version {
+  font-size: 12px;
+  opacity: 0.45;
+}
+
+.supporter-badge.sm {
+  font-size: 11px;
+  padding: 3px 10px;
+  margin: 0;
+}
+
+/* Panel de ajustes */
+.settings-card {
+  position: relative;
+  width: 420px;
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: left;
+}
+
+.settings-card h3 {
+  margin: 0 0 16px;
+}
+
+.settings-section {
+  border-top: 1px solid var(--border);
+  padding: 14px 0;
+}
+
+.settings-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  opacity: 0.5;
+  margin-bottom: 8px;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 3px 0;
+}
+
+.settings-val {
+  opacity: 0.7;
+}
+
 /* ---- Modo presentación ---- */
 .present-overlay {
   position: fixed;

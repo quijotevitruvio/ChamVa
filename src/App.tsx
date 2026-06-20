@@ -16,7 +16,7 @@ import { TemplateThumb } from './ui/TemplateThumb';
 import { PageThumb } from './ui/PageThumb';
 import { Icon } from './ui/Icon';
 import { idbGet, idbSet } from './io/idb';
-import { AUTHOR } from './branding';
+import { AUTHOR, APP_VERSION } from './branding';
 import {
   activateLicense,
   getStoredLicense,
@@ -227,6 +227,7 @@ export default function App() {
   const [licenseInput, setLicenseInput] = useState('');
   const [licenseMsg, setLicenseMsg] = useState('');
   const [showDonate, setShowDonate] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   useEffect(() => {
     getStoredLicense().then(setLicense);
   }, []);
@@ -934,6 +935,14 @@ export default function App() {
             </div>
           )}
         </div>
+
+        <button
+          className="settings-btn"
+          onClick={() => setShowSettings(true)}
+          title="Ajustes, licencia y versión"
+        >
+          ⚙ Ajustes
+        </button>
       </header>
 
       <div
@@ -2309,63 +2318,16 @@ export default function App() {
             </button>
           </div>
 
-          {license ? (
-            /* Donante: sello bonito + crédito de autor, sin pedir dinero. */
-            <div className="support-box supporter">
-              <div className="supporter-badge">★ Donante</div>
-              <p className="supporter-name">¡Gracias, {license.name}! 💛</p>
-              <p className="support-desc">
-                Tu apoyo mantiene vivo ChamVa. Licencia válida hasta{' '}
-                {new Date(license.exp * 1000).toLocaleDateString()}.
-              </p>
-              <p className="author-credit">
-                Hecho con cariño por {AUTHOR.name} · © {new Date().getFullYear()}
-              </p>
-              <button
-                className="link-btn dim"
-                onClick={() => {
-                  clearLicense();
-                  setLicense(null);
-                }}
-              >
-                Quitar licencia
-              </button>
-            </div>
-          ) : (
-            <div className="support-box">
-              <p className="support-title">Apoya ChamVa</p>
-              <p className="support-desc">
-                Es gratis y sin restricciones. Si te sirve, considera donar y
-                obtén una licencia de apoyo (sin avisos).
-              </p>
-              <div className="support-links">
-                <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
-                  💳 Donar (PayPal)
-                </a>
-                <a href={AUTHOR.github} target="_blank" rel="noreferrer">
-                  🐙 GitHub
-                </a>
-                <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
-                  💼 LinkedIn
-                </a>
-              </div>
-              <div className="support-license">
-                <button className="link-btn" onClick={requestLicense}>
-                  🔑 Solicitar clave de licencia (1 año)
-                </button>
-                <div className="license-activate">
-                  <input
-                    type="text"
-                    placeholder="Pega tu clave de licencia…"
-                    value={licenseInput}
-                    onChange={(e) => setLicenseInput(e.target.value)}
-                  />
-                  <button onClick={onActivateLicense}>Activar</button>
-                </div>
-                {licenseMsg && <p className="license-msg">{licenseMsg}</p>}
-              </div>
-            </div>
-          )}
+          <div className="home-foot">
+            {license && <span className="supporter-badge sm">★ Donante</span>}
+            <button
+              className="link-btn"
+              onClick={() => setShowSettings(true)}
+            >
+              ⚙ Ajustes y licencia
+            </button>
+            <span className="home-version">v{APP_VERSION}</span>
+          </div>
         </div>
       )}
 
@@ -2397,6 +2359,99 @@ export default function App() {
             <button className="link-btn" onClick={requestLicense}>
               🔑 Solicitar clave de licencia (1 año)
             </button>
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="donate-overlay" onClick={() => setShowSettings(false)}>
+          <div
+            className="settings-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="donate-close"
+              onClick={() => setShowSettings(false)}
+            >
+              ✕
+            </button>
+            <h3>Ajustes y licencia</h3>
+
+            <div className="settings-section">
+              <span className="settings-label">Aplicación</span>
+              <div className="settings-row">
+                <span>ChamVa</span>
+                <span className="settings-val">versión {APP_VERSION}</span>
+              </div>
+              <div className="settings-row">
+                <span>Autor</span>
+                <span className="settings-val">{AUTHOR.name}</span>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <span className="settings-label">Licencia</span>
+              {license ? (
+                <>
+                  <div className="supporter-badge">★ Donante</div>
+                  <p className="supporter-name">¡Gracias, {license.name}! 💛</p>
+                  <p className="support-desc">
+                    Licencia válida hasta{' '}
+                    {new Date(license.exp * 1000).toLocaleDateString()}.
+                  </p>
+                  <button
+                    className="link-btn dim"
+                    onClick={() => {
+                      clearLicense();
+                      setLicense(null);
+                    }}
+                  >
+                    Quitar licencia
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="support-desc">
+                    Gratis y sin restricciones. Con una licencia de apoyo
+                    desaparecen los avisos de donación durante 1 año.
+                  </p>
+                  <div className="license-activate">
+                    <input
+                      type="text"
+                      placeholder="Pega tu clave de licencia…"
+                      value={licenseInput}
+                      onChange={(e) => setLicenseInput(e.target.value)}
+                    />
+                    <button onClick={onActivateLicense}>Activar</button>
+                  </div>
+                  {licenseMsg && <p className="license-msg">{licenseMsg}</p>}
+                  <button className="link-btn" onClick={requestLicense}>
+                    🔑 Solicitar clave de licencia (1 año)
+                  </button>
+                </>
+              )}
+            </div>
+
+            {!license && (
+              <div className="settings-section">
+                <span className="settings-label">Apoya el proyecto</span>
+                <div className="support-links">
+                  <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
+                    💳 Donar (PayPal)
+                  </a>
+                  <a href={AUTHOR.github} target="_blank" rel="noreferrer">
+                    🐙 GitHub
+                  </a>
+                  <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
+                    💼 LinkedIn
+                  </a>
+                </div>
+              </div>
+            )}
+
+            <p className="author-credit">
+              © {new Date().getFullYear()} {AUTHOR.name}
+            </p>
           </div>
         </div>
       )}
