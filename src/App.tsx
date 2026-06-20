@@ -242,7 +242,7 @@ export default function App() {
   const requestLicense = () => {
     window.open(AUTHOR.paypal, '_blank');
     window.open(
-      `mailto:${'quijotevitruvio@gmail.com'}?subject=${encodeURIComponent(
+      `mailto:${AUTHOR.email}?subject=${encodeURIComponent(
         'Clave de licencia ChamVa (1 año)',
       )}&body=${encodeURIComponent(
         'Hola, acabo de donar por PayPal. Mi nombre/comprobante es: ',
@@ -2302,32 +2302,46 @@ export default function App() {
             </button>
           </div>
 
-          <div className="support-box">
-            {license ? (
-              <p className="support-thanks">
-                💛 ¡Gracias por tu apoyo, {license.name}! Licencia activa hasta{' '}
+          {license ? (
+            /* Donante: sello bonito + crédito de autor, sin pedir dinero. */
+            <div className="support-box supporter">
+              <div className="supporter-badge">★ Donante</div>
+              <p className="supporter-name">¡Gracias, {license.name}! 💛</p>
+              <p className="support-desc">
+                Tu apoyo mantiene vivo ChamVa. Licencia válida hasta{' '}
                 {new Date(license.exp * 1000).toLocaleDateString()}.
               </p>
-            ) : (
-              <>
-                <p className="support-title">Apoya ChamVa</p>
-                <p className="support-desc">
-                  Es gratis y sin restricciones. Si te sirve, considera donar.
-                </p>
-              </>
-            )}
-            <div className="support-links">
-              <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
-                💳 Donar (PayPal)
-              </a>
-              <a href={AUTHOR.github} target="_blank" rel="noreferrer">
-                🐙 GitHub
-              </a>
-              <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
-                💼 LinkedIn
-              </a>
+              <p className="author-credit">
+                Hecho con cariño por {AUTHOR.name} · © {new Date().getFullYear()}
+              </p>
+              <button
+                className="link-btn dim"
+                onClick={() => {
+                  clearLicense();
+                  setLicense(null);
+                }}
+              >
+                Quitar licencia
+              </button>
             </div>
-            {!license && (
+          ) : (
+            <div className="support-box">
+              <p className="support-title">Apoya ChamVa</p>
+              <p className="support-desc">
+                Es gratis y sin restricciones. Si te sirve, considera donar y
+                obtén una licencia de apoyo (sin avisos).
+              </p>
+              <div className="support-links">
+                <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
+                  💳 Donar (PayPal)
+                </a>
+                <a href={AUTHOR.github} target="_blank" rel="noreferrer">
+                  🐙 GitHub
+                </a>
+                <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
+                  💼 LinkedIn
+                </a>
+              </div>
               <div className="support-license">
                 <button className="link-btn" onClick={requestLicense}>
                   🔑 Solicitar clave de licencia (1 año)
@@ -2343,19 +2357,8 @@ export default function App() {
                 </div>
                 {licenseMsg && <p className="license-msg">{licenseMsg}</p>}
               </div>
-            )}
-            {license && (
-              <button
-                className="link-btn"
-                onClick={() => {
-                  clearLicense();
-                  setLicense(null);
-                }}
-              >
-                Quitar licencia
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 

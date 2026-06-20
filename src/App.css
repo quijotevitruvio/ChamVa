@@ -994,6 +994,42 @@ ul.layers .name {
   opacity: 1;
 }
 
+/* Sello de donante */
+.support-box.supporter {
+  border-color: #e7b53c;
+  background: linear-gradient(160deg, rgba(231, 181, 60, 0.14), var(--panel));
+}
+
+.supporter-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #f6d365, #e7b53c);
+  color: #3a2a00;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 10px rgba(231, 181, 60, 0.35);
+}
+
+.supporter-name {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.author-credit {
+  font-size: 12px;
+  opacity: 0.6;
+  margin: 10px 0 8px;
+}
+
+.link-btn.dim {
+  opacity: 0.5;
+  font-size: 12px;
+}
+
 .support-links {
   display: flex;
   gap: 10px;
