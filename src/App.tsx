@@ -15,6 +15,7 @@ import { PRESET_TEMPLATES } from './editor/core/presetTemplates';
 import { TemplateThumb } from './ui/TemplateThumb';
 import { PageThumb } from './ui/PageThumb';
 import { Icon } from './ui/Icon';
+import { toast, Toaster } from './ui/toast';
 import { idbGet, idbSet } from './io/idb';
 import { AUTHOR, APP_VERSION } from './branding';
 import {
@@ -97,7 +98,7 @@ export default function App() {
       addCustomFont(family);
       if (layerId) updateLayer(layerId, { fontFamily: family });
     } catch (e) {
-      alert('No se pudo cargar la fuente: ' + (e as Error).message);
+      toast('No se pudo cargar la fuente: ' + (e as Error).message, 'error');
     }
   };
 
@@ -214,7 +215,7 @@ export default function App() {
       const src = await QRCode.toDataURL(qrText, { width: 512, margin: 1 });
       addImageLayer({ src, naturalWidth: 512, naturalHeight: 512, name: 'QR' });
     } catch (e) {
-      alert('No se pudo generar el QR: ' + (e as Error).message);
+      toast('No se pudo generar el QR: ' + (e as Error).message, 'error');
     }
   };
   const [showMask, setShowMask] = useState(false);
@@ -237,6 +238,7 @@ export default function App() {
       setLicense(info);
       setLicenseMsg('');
       setLicenseInput('');
+      toast(`¡Licencia activada! Gracias, ${info.name} 💛`, 'success');
     } else {
       setLicenseMsg('Clave inválida o caducada.');
     }
@@ -297,7 +299,7 @@ export default function App() {
       addProcessedLayer(target.id, out, `${target.name} sin fondo`);
     } catch (e) {
       console.error(e);
-      alert('No se pudo quitar el fondo: ' + (e as Error).message);
+      toast('No se pudo quitar el fondo: ' + (e as Error).message, 'error');
     } finally {
       setBgBusy(false);
       setBgMsg('');
@@ -316,7 +318,7 @@ export default function App() {
         : null;
   const onQuickRemoveBg = () => {
     if (!quickBgTarget) {
-      alert('Selecciona primero una imagen (haz clic sobre ella).');
+      toast('Selecciona primero una imagen (haz clic sobre ella).', 'info');
       return;
     }
     doRemoveBg(quickBgTarget);
@@ -347,7 +349,7 @@ export default function App() {
       });
     } catch (e) {
       console.error(e);
-      alert('No se pudo optimizar: ' + (e as Error).message);
+      toast('No se pudo optimizar: ' + (e as Error).message, 'error');
     } finally {
       setUpBusy(false);
       setUpMsg('');
@@ -478,7 +480,7 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
-      alert('Error al descargar: ' + (e as Error).message);
+      toast('Error al descargar: ' + (e as Error).message, 'error');
     } finally {
       setBusy(false);
       if (!license) setShowDonate(true);
@@ -492,8 +494,9 @@ export default function App() {
         new ClipboardItem({ 'image/png': blob }),
       ]);
       setShowDownload(false);
+      toast('Copiado al portapapeles', 'success');
     } catch (e) {
-      alert('No se pudo copiar al portapapeles: ' + (e as Error).message);
+      toast('No se pudo copiar al portapapeles: ' + (e as Error).message, 'error');
     }
   };
 
@@ -514,8 +517,9 @@ export default function App() {
         thumb,
         doc: JSON.parse(JSON.stringify(doc)),
       });
+      toast('Plantilla guardada', 'success');
     } catch (e) {
-      alert('No se pudo guardar la plantilla: ' + (e as Error).message);
+      toast('No se pudo guardar la plantilla: ' + (e as Error).message, 'error');
     }
   };
 
@@ -543,7 +547,7 @@ export default function App() {
       setCustomW(String(first.width));
       setCustomH(String(first.height));
     } catch (e) {
-      alert('No se pudo abrir el proyecto: ' + (e as Error).message);
+      toast('No se pudo abrir el proyecto: ' + (e as Error).message, 'error');
     }
   };
 
@@ -845,7 +849,13 @@ export default function App() {
             onClick={() => setShowDownload((v) => !v)}
             disabled={busy}
           >
-            {busy ? '… Descargando' : '⬇ Descargar'}
+            {busy ? (
+              '… Descargando'
+            ) : (
+              <>
+                <Icon name="download" size={16} /> Descargar
+              </>
+            )}
           </button>
           {showDownload && (
             <div className="download-menu">
@@ -2455,6 +2465,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <Toaster />
     </div>
   );
 }

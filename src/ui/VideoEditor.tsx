@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { webmToMp4 } from '../io/ffmpegConvert';
+import { toast } from './toast';
 
 type ClipType = 'video' | 'audio';
 
@@ -558,7 +559,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       rec.start();
       setRecording(true);
     } catch (e) {
-      alert('No se pudo acceder al micrófono: ' + (e as Error).message);
+      toast('No se pudo acceder al micrófono: ' + (e as Error).message, 'error');
     }
   };
 
@@ -802,7 +803,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       download(await recordWebM(), 'chamva-video.webm');
     } catch (e) {
       console.error(e);
-      alert('No se pudo exportar el video: ' + (e as Error).message);
+      toast('No se pudo exportar el video: ' + (e as Error).message, 'error');
     } finally {
       setExporting(false);
       setExportProgress(0);
@@ -818,7 +819,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       download(mp4, 'chamva-video.mp4');
     } catch (e) {
       console.error(e);
-      alert('No se pudo convertir a MP4: ' + (e as Error).message);
+      toast('No se pudo convertir a MP4: ' + (e as Error).message, 'error');
     } finally {
       setExporting(false);
       setExportProgress(0);

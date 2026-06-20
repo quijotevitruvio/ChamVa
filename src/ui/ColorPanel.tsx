@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
+import { toast } from './toast';
 import { TRANSPARENT_BG, type Gradient } from '../editor/core/types';
 import {
   PRESET_SOLIDS,
@@ -90,7 +91,7 @@ export function ColorPanel({
 
   const useEyedropper = async () => {
     if (!window.EyeDropper) {
-      alert('El cuentagotas no está disponible en este entorno.');
+      toast('El cuentagotas no está disponible en este entorno.', 'error');
       return;
     }
     try {

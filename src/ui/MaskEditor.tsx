@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ImageLayer } from '../editor/core/types';
 import { inpaintCanvas } from '../ai/inpaint';
+import { toast } from './toast';
 
 type Mode = 'erase' | 'restore' | 'magic';
 
@@ -147,7 +148,7 @@ export function MaskEditor({
       onApply(work.toDataURL('image/png'));
     } catch (e) {
       console.error(e);
-      alert('Error en el borrador mágico: ' + (e as Error).message);
+      toast('Error en el borrador mágico: ' + (e as Error).message, 'error');
       setBusy(false);
     }
   };

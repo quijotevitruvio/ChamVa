@@ -60,6 +60,10 @@ pnpm tauri android build --debug --target aarch64 --apk   # APK de Android
 Los instaladores quedan en `src-tauri/target/release/bundle/` y la APK en
 `src-tauri/gen/android/app/build/outputs/apk/`.
 
+> **Aviso de Windows SmartScreen:** el instalador no está firmado con un certificado de pago, así que Windows puede
+> mostrar "Windows protegió tu PC / editor desconocido". Es normal: pulsa **Más información → Ejecutar de todas
+> formas**. La firma de código requiere un certificado comercial.
+
 ## Estructura
 
 ```
