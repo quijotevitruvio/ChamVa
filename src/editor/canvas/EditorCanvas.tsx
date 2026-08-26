@@ -18,6 +18,10 @@ import { ImageLayerNode } from './ImageLayerNode';
 import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
 
+// Pantalla táctil: manijas del Transformer más grandes para dedos.
+const IS_COARSE =
+  typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
 export function EditorCanvas() {
   const doc = useEditor((s) => s.doc);
   const selectedId = useEditor((s) => s.selectedId);
@@ -50,6 +54,34 @@ export function EditorCanvas() {
   const [dists, setDists] = useState<
     { points: number[]; label: string; tx: number; ty: number }[]
   >([]);
+
+  // Paneo del lienzo: con la barra espaciadora o el botón central del ratón.
+  const [spaceDown, setSpaceDown] = useState(false);
+  const panDrag = useRef<{ x: number; y: number; sl: number; st: number } | null>(
+    null,
+  );
+  // Pinch para zoom en pantallas táctiles.
+  const pinchDist = useRef<number | null>(null);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setSpaceDown(true);
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') setSpaceDown(false);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
 
   // Arrastre de varias capas a la vez (selección múltiple).
   const groupDrag = useRef<{
@@ -299,20 +331,26 @@ export function EditorCanvas() {
   };
 
   // Ajustar el lienzo al área disponible × el zoom del usuario.
+  // ResizeObserver: también recalcula al abrir/cerrar los paneles laterales.
   useEffect(() => {
     const fit = () => {
       const el = containerRef.current;
-      if (!el) return;
+      if (!el || el.clientWidth === 0) return; // aún sin layout
       const pad = 48;
       const sx = (el.clientWidth - pad) / doc.width;
       const sy = (el.clientHeight - pad) / doc.height;
-      const final = Math.min(1, sx, sy) * zoom;
+      const final = Math.max(0.02, Math.min(1, sx, sy)) * zoom;
       setScale(final);
       setViewScale(final);
     };
     fit();
+    const ro = new ResizeObserver(fit);
+    if (containerRef.current) ro.observe(containerRef.current);
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', fit);
+    };
   }, [doc.width, doc.height, zoom, setViewScale]);
 
   // Conectar el Transformer al nodo seleccionado (oculto durante el recorte).
@@ -340,10 +378,72 @@ export function EditorCanvas() {
 
   return (
     <div
-      className="canvas-area"
+      className={`canvas-area ${spaceDown ? 'panning' : ''}`}
       ref={containerRef}
       onWheel={(e) => {
-        if (e.deltaY !== 0) setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9));
+        if (e.deltaY === 0) return;
+        // Zoom hacia el cursor: tras el cambio de escala, reajustar el scroll
+        // para que el punto bajo el puntero se quede (aprox.) en su sitio.
+        const el = containerRef.current;
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newZoom = Math.max(0.1, Math.min(5, zoom * factor));
+        const r = newZoom / zoom;
+        setZoom(newZoom);
+        if (el && r !== 1) {
+          const rect = el.getBoundingClientRect();
+          const px = e.clientX - rect.left;
+          const py = e.clientY - rect.top;
+          const cx = el.scrollLeft + px;
+          const cy = el.scrollTop + py;
+          requestAnimationFrame(() => {
+            el.scrollLeft = cx * r - px;
+            el.scrollTop = cy * r - py;
+          });
+        }
+      }}
+      onPointerDownCapture={(e) => {
+        // Paneo: espacio + arrastrar, o botón central del ratón.
+        if (!spaceDown && e.button !== 1) return;
+        const el = containerRef.current;
+        if (!el) return;
+        e.preventDefault();
+        e.stopPropagation();
+        panDrag.current = {
+          x: e.clientX,
+          y: e.clientY,
+          sl: el.scrollLeft,
+          st: el.scrollTop,
+        };
+        el.setPointerCapture(e.pointerId);
+      }}
+      onPointerMoveCapture={(e) => {
+        const p = panDrag.current;
+        const el = containerRef.current;
+        if (!p || !el) return;
+        e.preventDefault();
+        e.stopPropagation();
+        el.scrollLeft = p.sl - (e.clientX - p.x);
+        el.scrollTop = p.st - (e.clientY - p.y);
+      }}
+      onPointerUpCapture={(e) => {
+        if (panDrag.current) {
+          panDrag.current = null;
+          containerRef.current?.releasePointerCapture(e.pointerId);
+        }
+      }}
+      onTouchMove={(e) => {
+        // Pinch con dos dedos = zoom.
+        if (e.touches.length !== 2) return;
+        e.preventDefault();
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        if (pinchDist.current !== null && pinchDist.current > 0) {
+          setZoom(zoom * (d / pinchDist.current));
+        }
+        pinchDist.current = d;
+      }}
+      onTouchEnd={() => {
+        pinchDist.current = null;
       }}
     >
       <Stage
@@ -368,7 +468,7 @@ export function EditorCanvas() {
           setGuides({ vx: [], hy: [] });
           setDists([]);
         }}
-        style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.35)' }}
+        style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.35)', margin: 'auto' }}
       >
         <Layer listening={false}>
           {/* Tablero de transparencia siempre de base (se ve a través del alfa) */}
@@ -435,6 +535,8 @@ export function EditorCanvas() {
             ref={transformerRef}
             rotateEnabled
             keepRatio={false}
+            anchorSize={IS_COARSE ? 18 : 10}
+            rotateAnchorOffset={IS_COARSE ? 40 : 24}
             boundBoxFunc={(oldBox, newBox) =>
               newBox.width < 8 || newBox.height < 8 ? oldBox : newBox
             }

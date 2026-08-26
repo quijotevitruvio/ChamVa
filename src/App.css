@@ -511,10 +511,17 @@ body {
 .canvas-area {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+  /* margin:auto en el Stage centra Y permite hacer scroll cuando hay zoom
+     (con justify/align center el inicio del contenido quedaría inaccesible) */
+  overflow: auto;
   background: radial-gradient(circle at 50% 40%, #26262c, #1a1a1e);
+}
+
+.canvas-area.panning {
+  cursor: grab;
+}
+.canvas-area.panning:active {
+  cursor: grabbing;
 }
 
 /* ---- Panel derecho ---- */
@@ -2153,4 +2160,145 @@ ul.layers .name {
     linear-gradient(45deg, #bbb 25%, #fff 25%, #fff 75%, #bbb 75%);
   background-size: 12px 12px;
   background-position: 0 0, 6px 6px;
+}
+
+/* ===== Mejoras: menú contextual, galería de diseños, copias, timeline zoom ===== */
+
+/* Menú contextual (clic derecho) */
+.ctx-menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 180px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+.ctx-menu button {
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ctx-menu button:hover {
+  background: var(--panel-2);
+}
+.ctx-menu button.danger {
+  color: #ff7b7b;
+}
+
+/* Galería de diseños recientes (pantalla de inicio) */
+.home-designs {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 720px;
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+.home-design {
+  position: relative;
+  width: 120px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  transition: transform 0.12s;
+}
+.home-design:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent, #6c8cff);
+}
+.home-design img {
+  width: 100%;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+}
+.home-design-name {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.home-design .upload-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+/* Copias de seguridad (Ajustes) */
+.backup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.backup-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Línea de tiempo: zoom + scroll horizontal */
+.vt-scroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.vt-scroll .vt-scrubber {
+  min-width: 100%;
+}
+.vt-zoom {
+  display: flex;
+  gap: 2px;
+}
+.vt-zoom button {
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+/* Botón mini inline (cancelar IA, capas) */
+button.mini {
+  padding: 1px 7px;
+  font-size: 11px;
+  border-radius: 5px;
+}
+
+/* Pantallas táctiles: objetivos más grandes para dedos */
+@media (pointer: coarse) {
+  .rail button {
+    min-height: 56px;
+  }
+  .float-toolbar button,
+  .page-bar button.page-add,
+  .zoom-controls button {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .props input[type='range'] {
+    height: 28px;
+  }
+  .layers li {
+    padding: 10px 8px;
+  }
 }

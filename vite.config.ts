@@ -8,6 +8,11 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // El worker de IA (src/ai/ai.worker.ts) usa import() dinámico → formato ES.
+  worker: {
+    format: "es" as const,
+  },
+
   // Separar librerías pesadas en chunks aparte (carga más eficiente).
   build: {
     chunkSizeWarningLimit: 1200,

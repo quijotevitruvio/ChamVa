@@ -41,14 +41,26 @@ import { gifToMp4 } from './io/ffmpegConvert';
 import { exportIco } from './io/exportIco';
 import { searchIcons, iconPreviewUrl, fetchIconAsImage } from './io/iconify';
 import QRCode from 'qrcode';
-import { saveProject, readProjectFile } from './io/project';
+import { saveProject, readProjectFile, parseProject } from './io/project';
 import {
   removeImageBackground,
+  upscaleImage,
   prefetchBgModel,
+  prefetchUpscaleModel,
+  cancelAI,
   type BgQuality,
-} from './ai/background-removal';
-import { upscaleImage, prefetchUpscaleModel } from './ai/upscale';
+} from './ai/worker-client';
 import { loadOpenCV } from './ai/inpaint';
+import { t, useLang, setLang } from './i18n';
+import {
+  loadDesigns,
+  upsertDesign,
+  removeDesign,
+  loadBackups,
+  pushBackup,
+  type SavedDesign,
+  type Backup,
+} from './io/designs';
 import { ColorPanel } from './ui/ColorPanel';
 import { FiltersPanel } from './ui/FiltersPanel';
 import { MaskEditor } from './ui/MaskEditor';
@@ -162,6 +174,8 @@ export default function App() {
   const pages = useEditor((s) => s.pages);
   const pageIndex = useEditor((s) => s.pageIndex);
   const addPage = useEditor((s) => s.addPage);
+  const duplicatePage = useEditor((s) => s.duplicatePage);
+  const newDesign = useEditor((s) => s.newDesign);
   const addResizedPage = useEditor((s) => s.addResizedPage);
   const switchPage = useEditor((s) => s.switchPage);
   const deletePage = useEditor((s) => s.deletePage);
@@ -174,12 +188,25 @@ export default function App() {
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
 
-  const [format, setFormat] = useState<
-    ExportFormat | 'svg' | 'gif' | 'pdf' | 'anim' | 'anim-mp4' | 'ico'
-  >('png');
-  const [scale, setScale] = useState(1);
-  const [quality, setQuality] = useState(0.92);
-  const [scope, setScope] = useState<'page' | 'all'>('page');
+  // Opciones de exportación: se recuerdan entre sesiones.
+  type Fmt = ExportFormat | 'svg' | 'gif' | 'pdf' | 'anim' | 'anim-mp4' | 'ico';
+  const EXPORT_LS = 'chamva.exportOpts';
+  const savedExport = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(EXPORT_LS) ?? '{}') as {
+        format?: Fmt;
+        scale?: number;
+        quality?: number;
+        scope?: 'page' | 'all';
+      };
+    } catch {
+      return {};
+    }
+  })();
+  const [format, setFormat] = useState<Fmt>(savedExport.format ?? 'png');
+  const [scale, setScale] = useState(savedExport.scale ?? 1);
+  const [quality, setQuality] = useState(savedExport.quality ?? 0.92);
+  const [scope, setScope] = useState<'page' | 'all'>(savedExport.scope ?? 'page');
   const [showDownload, setShowDownload] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
@@ -224,6 +251,40 @@ export default function App() {
   const [showPresent, setShowPresent] = useState(false);
   const [showHome, setShowHome] = useState(true);
   const [upBusy, setUpBusy] = useState(false);
+  const lang = useLang(); // re-renderiza al cambiar el idioma
+
+  // Galería de diseños recientes (pantalla de inicio) y copias de seguridad.
+  const [designs, setDesigns] = useState<SavedDesign[]>([]);
+  const [backups, setBackups] = useState<Backup[]>([]);
+  useEffect(() => {
+    if (showHome) loadDesigns().then(setDesigns);
+  }, [showHome]);
+
+  const openDesign = (d: SavedDesign) => {
+    loadPages(d.pages, d.pageIndex);
+    const first = d.pages[d.pageIndex] ?? d.pages[0];
+    setCustomW(String(first.width));
+    setCustomH(String(first.height));
+    setShowHome(false);
+  };
+
+  const startNewDesign = () => {
+    newDesign();
+    setShowHome(false);
+  };
+
+  // Menú contextual (clic derecho) sobre el lienzo.
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [ctxMenu]);
   // Licencia + apoyo/donaciones
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   const [licenseInput, setLicenseInput] = useState('');
@@ -233,6 +294,9 @@ export default function App() {
   useEffect(() => {
     getStoredLicense().then(setLicense);
   }, []);
+  useEffect(() => {
+    if (showSettings) loadBackups().then(setBackups);
+  }, [showSettings]);
   const onActivateLicense = async () => {
     const info = await activateLicense(licenseInput);
     if (info) {
@@ -289,11 +353,12 @@ export default function App() {
   const [offlineMsg, setOfflineMsg] = useState('');
 
   const onPrepareOffline = async () => {
+    const pct = (r: number) => (r > 0 ? ` ${Math.round(r * 100)}%` : '…');
     setOfflineMsg('Descargando quitafondos…');
     try {
-      await prefetchBgModel();
+      await prefetchBgModel((r) => setOfflineMsg(`Quitafondos${pct(r)}`));
       setOfflineMsg('Descargando optimizador…');
-      await prefetchUpscaleModel();
+      await prefetchUpscaleModel((r) => setOfflineMsg(`Optimizador${pct(r)}`));
       setOfflineMsg('Descargando borrador mágico…');
       await loadOpenCV();
       setOfflineMsg('✓ Listo para usar sin internet');
@@ -329,8 +394,12 @@ export default function App() {
       });
       addProcessedLayer(target.id, out, `${target.name} sin fondo`);
     } catch (e) {
-      console.error(e);
-      toast('No se pudo quitar el fondo: ' + (e as Error).message, 'error');
+      if ((e as Error).message === 'cancelado') {
+        toast('Operación cancelada', 'info');
+      } else {
+        console.error(e);
+        toast('No se pudo quitar el fondo: ' + (e as Error).message, 'error');
+      }
     } finally {
       setBgBusy(false);
       setBgMsg('');
@@ -379,8 +448,12 @@ export default function App() {
         scaleY: (selected.scaleY * selected.naturalHeight) / res.height,
       });
     } catch (e) {
-      console.error(e);
-      toast('No se pudo optimizar: ' + (e as Error).message, 'error');
+      if ((e as Error).message === 'cancelado') {
+        toast('Operación cancelada', 'info');
+      } else {
+        console.error(e);
+        toast('No se pudo optimizar: ' + (e as Error).message, 'error');
+      }
     } finally {
       setUpBusy(false);
       setUpMsg('');
@@ -452,6 +525,14 @@ export default function App() {
   const onDownload = async () => {
     setBusy(true);
     setShowDownload(false);
+    try {
+      localStorage.setItem(
+        EXPORT_LS,
+        JSON.stringify({ format, scale, quality, scope }),
+      );
+    } catch {
+      /* noop */
+    }
     try {
       const st = useEditor.getState();
       const allPages = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
@@ -554,6 +635,47 @@ export default function App() {
     }
   };
 
+  // Exportar/importar "Mis plantillas" como archivo (para compartirlas).
+  const templatesFileRef = useRef<HTMLInputElement>(null);
+  const onExportTemplates = () => {
+    if (!templates.length) {
+      toast('No tienes plantillas guardadas todavía.', 'info');
+      return;
+    }
+    const blob = new Blob(
+      [JSON.stringify({ kind: 'chamva-templates', version: 1, templates })],
+      { type: 'application/json' },
+    );
+    downloadBlob(blob, 'mis-plantillas.chamva-templates.json');
+  };
+  const onImportTemplates = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const list = data?.kind === 'chamva-templates' ? data.templates : null;
+      if (!Array.isArray(list)) throw new Error('archivo no reconocido');
+      let added = 0;
+      for (const tpl of list) {
+        if (tpl?.doc && tpl?.thumb) {
+          addTemplate({
+            id:
+              typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                ? crypto.randomUUID()
+                : `tpl-${Date.now()}-${added}`,
+            name: tpl.name ?? 'Plantilla importada',
+            thumb: tpl.thumb,
+            doc: tpl.doc,
+          });
+          added++;
+        }
+      }
+      toast(`${added} plantilla(s) importada(s)`, 'success');
+    } catch (e) {
+      toast('No se pudieron importar: ' + (e as Error).message, 'error');
+    }
+  };
+
   const onExportLayer = async () => {
     if (!selected) return;
     const single = { ...doc, background: TRANSPARENT_BG, layers: [selected] };
@@ -568,7 +690,7 @@ export default function App() {
     saveProject(allPages, st.pageIndex);
   };
 
-  const onOpenProject = async (files: FileList | null) => {
+  const onOpenProject = async (files: FileList | File[] | null) => {
     const file = files?.[0];
     if (!file) return;
     try {
@@ -606,14 +728,21 @@ export default function App() {
           e.preventDefault();
           pasteLayer(clipLayer.current);
         }
+      } else if (e.key === 'Escape') {
+        const st = useEditor.getState();
+        if (st.cropMode) st.cancelCrop();
+        else if (st.selectedId) st.selectLayer(null);
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault();
-        useEditor.getState().removeSelected();
+        const st = useEditor.getState();
+        // Las capas bloqueadas no se borran con la tecla (protege el fondo).
+        const l = st.doc.layers.find((x) => x.id === selectedId);
+        if (!l?.locked) st.removeSelected();
       } else if (e.key.startsWith('Arrow') && selectedId) {
         e.preventDefault();
         const st = useEditor.getState();
         const l = st.doc.layers.find((x) => x.id === selectedId);
-        if (l) {
+        if (l && !l.locked) {
           const step = e.shiftKey ? 10 : 1;
           const dx =
             e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
@@ -652,13 +781,55 @@ export default function App() {
 
   useEffect(() => {
     if (!autosaveReady) return;
-    const id = setTimeout(() => {
+    const id = setTimeout(async () => {
       const st = useEditor.getState();
       const snapshot = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
       idbSet('autosave', { pages: snapshot, index: st.pageIndex });
+      // Copia de seguridad periódica (últimas 5, una cada 2 min como mucho).
+      pushBackup(snapshot, st.pageIndex);
+      // Galería de diseños recientes: miniatura pequeña de la primera página.
+      if (snapshot[0]?.layers.length || snapshot.length > 1) {
+        try {
+          const first = snapshot[0];
+          const s = Math.min(1, 160 / Math.max(first.width, first.height));
+          const thumb = (await renderDocToCanvas(first, s, '#ffffff')).toDataURL(
+            'image/jpeg',
+            0.6,
+          );
+          upsertDesign({
+            id: first.id,
+            name: first.name || 'Diseño sin título',
+            updatedAt: Date.now(),
+            pageIndex: st.pageIndex,
+            pages: snapshot,
+            thumb,
+          });
+        } catch {
+          /* miniatura opcional */
+        }
+      }
     }, 1200);
     return () => clearTimeout(id);
   }, [doc, pages, pageIndex, autosaveReady]);
+
+  // App abierta con doble clic sobre un .chamva (solo Tauri): cargar el proyecto.
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const opened = await invoke<[string, string] | null>('opened_file');
+        if (!opened) return;
+        const project = parseProject(opened[1]);
+        loadPages(project.pages, project.pageIndex);
+        setShowHome(false);
+        toast(`Proyecto "${opened[0]}" abierto`, 'success');
+      } catch {
+        /* sin archivo inicial */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Doble clic en un texto del lienzo → enfocar el editor de texto del panel.
   useEffect(() => {
@@ -692,7 +863,7 @@ export default function App() {
             onClick={() => setShowFileMenu((v) => !v)}
             title="Archivo"
           >
-            ☰ Archivo
+            ☰ {t('Archivo')}
           </button>
           {showFileMenu && (
             <div className="dropdown">
@@ -702,7 +873,7 @@ export default function App() {
                   setShowFileMenu(false);
                 }}
               >
-                📂 Abrir proyecto
+                📂 {t('Abrir proyecto')}
               </button>
               <button
                 onClick={() => {
@@ -710,7 +881,7 @@ export default function App() {
                   setShowFileMenu(false);
                 }}
               >
-                💾 Guardar proyecto
+                💾 {t('Guardar proyecto')}
               </button>
             </div>
           )}
@@ -814,10 +985,10 @@ export default function App() {
 
         <div className="group">
           <button disabled={past.length === 0} onClick={undo} title="Ctrl+Z">
-            ↩ Deshacer
+            ↩ {t('Deshacer')}
           </button>
           <button disabled={future.length === 0} onClick={redo} title="Ctrl+Y">
-            ↪ Rehacer
+            ↪ {t('Rehacer')}
           </button>
         </div>
 
@@ -827,7 +998,7 @@ export default function App() {
           disabled={bgBusy}
           title="Quitar el fondo de la imagen y dejarlo transparente"
         >
-          {bgBusy ? `✂ ${bgMsg || '…'}` : '✂ Quitar fondo'}
+          {bgBusy ? `✂ ${bgMsg || '…'}` : `✂ ${t('Quitar fondo')}`}
         </button>
 
         <button
@@ -835,19 +1006,19 @@ export default function App() {
           disabled={!!offlineMsg && !offlineMsg.startsWith('✓') && !offlineMsg.startsWith('✕')}
           title="Descarga los modelos de IA para usarlos sin internet"
         >
-          {offlineMsg || '⬇ Preparar offline'}
+          {offlineMsg || `⬇ ${t('Preparar offline')}`}
         </button>
 
         <button onClick={playAnimations} title="Previsualizar animaciones">
-          ▶ Animar
+          ▶ {t('Animar')}
         </button>
 
         <button onClick={() => setShowPresent(true)} title="Modo presentación">
-          ▶ Presentar
+          ▶ {t('Presentar')}
         </button>
 
         <button onClick={() => setShowVideo(true)} title="Editor de video y audio">
-          🎬 Video
+          🎬 {t('Video')}
         </button>
 
         <input
@@ -864,7 +1035,7 @@ export default function App() {
         <input
           ref={projectRef}
           type="file"
-          accept=".json,application/json"
+          accept=".chamva,.json,application/json"
           hidden
           onChange={(e) => {
             onOpenProject(e.target.files);
@@ -881,17 +1052,17 @@ export default function App() {
             disabled={busy}
           >
             {busy ? (
-              '… Descargando'
+              `… ${t('Descargando')}`
             ) : (
               <>
-                <Icon name="download" size={16} /> Descargar
+                <Icon name="download" size={16} /> {t('Descargar')}
               </>
             )}
           </button>
           {showDownload && (
             <div className="download-menu">
               <label className="dl-row">
-                Formato
+                {t('Formato')}
                 <select
                   value={format}
                   onChange={(e) => setFormat(e.target.value as ExportFormat)}
@@ -915,7 +1086,7 @@ export default function App() {
                 format === 'avif') && (
                 <>
                   <label className="dl-row">
-                    Tamaño
+                    {t('Tamaño')}
                     <select
                       value={scale}
                       onChange={(e) => setScale(Number(e.target.value))}
@@ -927,7 +1098,7 @@ export default function App() {
                   </label>
                   {format !== 'png' && (
                     <label className="dl-row">
-                      Calidad
+                      {t('Calidad')}
                       <input
                         type="range"
                         min={0.1}
@@ -946,13 +1117,13 @@ export default function App() {
                 format !== 'anim-mp4' &&
                 format !== 'ico' && (
                 <label className="dl-row">
-                  Páginas
+                  {t('Páginas')}
                   <select
                     value={scope}
                     onChange={(e) => setScope(e.target.value as 'page' | 'all')}
                   >
-                    <option value="page">Esta página</option>
-                    <option value="all">Todas ({pages.length})</option>
+                    <option value="page">{t('Esta página')}</option>
+                    <option value="all">{t('Todas')} ({pages.length})</option>
                   </select>
                 </label>
               )}
@@ -968,10 +1139,10 @@ export default function App() {
               )}
 
               <button className="primary dl-go" onClick={onDownload}>
-                ⬇ Descargar {format.toUpperCase()}
+                ⬇ {t('Descargar')} {format.toUpperCase()}
               </button>
               <button className="dl-go" onClick={onCopyToClipboard}>
-                📋 Copiar al portapapeles
+                📋 {t('Copiar al portapapeles')}
               </button>
             </div>
           )}
@@ -982,7 +1153,7 @@ export default function App() {
           onClick={() => setShowSettings(true)}
           title="Ajustes, licencia y versión"
         >
-          ⚙ Ajustes
+          ⚙ {t('Ajustes')}
         </button>
       </header>
 
@@ -997,7 +1168,23 @@ export default function App() {
             if (up) addImageLayer(up);
             return;
           }
-          if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files, true);
+          if (e.dataTransfer.files.length) {
+            const files = Array.from(e.dataTransfer.files);
+            // Proyectos .chamva / .json soltados sobre la ventana → abrir.
+            const project = files.find((f) => /\.(chamva|json)$/i.test(f.name));
+            if (project) {
+              onOpenProject([project]);
+              setShowHome(false);
+              return;
+            }
+            importFiles(files, true);
+          }
+        }}
+        onContextMenu={(e) => {
+          // Menú contextual propio cuando hay una capa seleccionada.
+          if (!selected || showHome || showVideo) return;
+          e.preventDefault();
+          setCtxMenu({ x: e.clientX, y: e.clientY });
         }}
       >
         <nav className="rail">
@@ -1009,16 +1196,16 @@ export default function App() {
             { id: 'plantillas', icon: 'templates', label: 'Plantillas' },
             { id: 'capas', icon: 'layers', label: 'Capas' },
             { id: 'marca', icon: 'star', label: 'Marca' },
-          ] as const).map((t) => (
+          ] as const).map((tab) => (
             <button
-              key={t.id}
-              className={activeTab === t.id ? 'active' : ''}
-              onClick={() => setActiveTab(activeTab === t.id ? null : t.id)}
+              key={tab.id}
+              className={activeTab === tab.id ? 'active' : ''}
+              onClick={() => setActiveTab(activeTab === tab.id ? null : tab.id)}
             >
               <span className="rail-ico">
-                <Icon name={t.icon} size={22} />
+                <Icon name={tab.icon} size={22} />
               </span>
-              <span className="rail-lbl">{t.label}</span>
+              <span className="rail-lbl">{t(tab.label)}</span>
             </button>
           ))}
         </nav>
@@ -1028,19 +1215,19 @@ export default function App() {
             {activeTab === 'subir' && (
               <>
                 <div className="rail-head">
-                  <h3>Subir</h3>
+                  <h3>{t('Subir')}</h3>
                   <button className="cp-x" onClick={() => setActiveTab(null)}>
                     ✕
                   </button>
                 </div>
                 <button className="rail-big" onClick={() => fileRef.current?.click()}>
-                  📁 Subir imagen
+                  📁 {t('Subir imagen')}
                 </button>
                 <button
                   className="rail-big"
                   onClick={() => fontFileRef.current?.click()}
                 >
-                  🔤 Subir fuente
+                  🔤 {t('Subir fuente')}
                 </button>
                 <p className="rail-hint">
                   Tus imágenes quedan aquí. Haz clic o arrástralas al lienzo.
@@ -1077,13 +1264,13 @@ export default function App() {
             {activeTab === 'texto' && (
               <>
                 <div className="rail-head">
-                  <h3>Texto</h3>
+                  <h3>{t('Texto')}</h3>
                   <button className="cp-x" onClick={() => setActiveTab(null)}>
                     ✕
                   </button>
                 </div>
                 <button className="rail-big" onClick={() => addTextLayer()}>
-                  ＋ Caja de texto
+                  ＋ {t('Caja de texto')}
                 </button>
                 {TEXT_PRESETS.map((p) => (
                   <button
@@ -1107,7 +1294,7 @@ export default function App() {
             {activeTab === 'elementos' && (
               <>
                 <div className="rail-head">
-                  <h3>Elementos</h3>
+                  <h3>{t('Elementos')}</h3>
                   <button className="cp-x" onClick={() => setActiveTab(null)}>
                     ✕
                   </button>
@@ -1124,7 +1311,7 @@ export default function App() {
                   ))}
                 </div>
 
-                <h4 className="rail-sub">Buscar iconos</h4>
+                <h4 className="rail-sub">{t('Buscar iconos')}</h4>
                 <div className="font-row">
                   <input
                     type="text"
@@ -1161,7 +1348,7 @@ export default function App() {
                   ))}
                 </div>
 
-                <h4 className="rail-sub">Código QR</h4>
+                <h4 className="rail-sub">{t('Código QR')}</h4>
                 <div className="font-row">
                   <input
                     type="text"
@@ -1194,16 +1381,34 @@ export default function App() {
             {activeTab === 'plantillas' && (
               <>
                 <div className="rail-head">
-                  <h3>Plantillas</h3>
+                  <h3>{t('Plantillas')}</h3>
                   <button className="cp-x" onClick={() => setActiveTab(null)}>
                     ✕
                   </button>
                 </div>
                 <button className="rail-big" onClick={onSaveTemplate}>
-                  💾 Guardar diseño actual
+                  💾 {t('Guardar diseño actual')}
                 </button>
+                <div className="row">
+                  <button onClick={onExportTemplates} title="Guarda tus plantillas en un archivo para compartir">
+                    ⬇ {t('Exportar plantillas')}
+                  </button>
+                  <button onClick={() => templatesFileRef.current?.click()}>
+                    ⬆ {t('Importar plantillas')}
+                  </button>
+                </div>
+                <input
+                  ref={templatesFileRef}
+                  type="file"
+                  accept=".json,application/json"
+                  hidden
+                  onChange={(e) => {
+                    onImportTemplates(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
 
-                <h4 className="rail-sub">Prediseñadas</h4>
+                <h4 className="rail-sub">{t('Prediseñadas')}</h4>
                 <div className="uploads-grid">
                   {PRESET_TEMPLATES.map((t) => (
                     <TemplateThumb
@@ -1219,7 +1424,7 @@ export default function App() {
                   ))}
                 </div>
 
-                <h4 className="rail-sub">Mis plantillas</h4>
+                <h4 className="rail-sub">{t('Mis plantillas')}</h4>
                 {templates.length === 0 && (
                   <p className="rail-hint">
                     Guarda un diseño y reutilízalo cuando quieras.
@@ -1253,13 +1458,13 @@ export default function App() {
             {activeTab === 'capas' && (
               <>
                 <div className="rail-head">
-                  <h3>Capas</h3>
+                  <h3>{t('Capas')}</h3>
                   <button className="cp-x" onClick={() => setActiveTab(null)}>
                     ✕
                   </button>
                 </div>
                 {doc.layers.length === 0 && (
-                  <p className="rail-hint">Aún no hay capas.</p>
+                  <p className="rail-hint">{t('Aún no hay capas.')}</p>
                 )}
                 <ul className="layers">
                   {[...doc.layers].reverse().map((l) => (
@@ -1314,7 +1519,7 @@ export default function App() {
             {activeTab === 'marca' && (
               <>
                 <div className="rail-head">
-                  <h3>Kit de Marca</h3>
+                  <h3>{t('Kit de Marca')}</h3>
                   <button className="cp-x" onClick={() => setActiveTab(null)}>
                     ✕
                   </button>
@@ -1325,7 +1530,7 @@ export default function App() {
                 </p>
                 {brandColors.length > 0 && (
                   <>
-                    <h4 className="rail-sub">Mis colores</h4>
+                    <h4 className="rail-sub">{t('Mis colores')}</h4>
                     <div className="rail-swatches">
                       {brandColors.map((c) => (
                         <button
@@ -1342,7 +1547,7 @@ export default function App() {
                 )}
                 {recentColors.length > 0 && (
                   <>
-                    <h4 className="rail-sub">Recientes</h4>
+                    <h4 className="rail-sub">{t('Recientes')}</h4>
                     <div className="rail-swatches">
                       {recentColors.map((c) => (
                         <button
@@ -1405,7 +1610,7 @@ export default function App() {
           )}
           {selected && (
             <section className="props">
-              <h3>Propiedades</h3>
+              <h3>{t('Propiedades')}</h3>
 
               {selectedIds.length > 1 && (
                 <>
@@ -1454,7 +1659,14 @@ export default function App() {
                       <option value="rapido">Rápido</option>
                     </select>
                   </div>
-                  {bgBusy && <p className="bgmsg">{bgMsg}</p>}
+                  {bgBusy && (
+                    <p className="bgmsg">
+                      {bgMsg}{' '}
+                      <button className="mini" onClick={cancelAI}>
+                        ✕ {t('Cancelar')}
+                      </button>
+                    </p>
+                  )}
 
                   <div className="row">
                     <button
@@ -1495,7 +1707,14 @@ export default function App() {
                   >
                     {upBusy ? '🔍 …' : '🔍 Optimizar (HD ×2)'}
                   </button>
-                  {upBusy && <p className="bgmsg">{upMsg}</p>}
+                  {upBusy && (
+                    <p className="bgmsg">
+                      {upMsg}{' '}
+                      <button className="mini" onClick={cancelAI}>
+                        ✕ {t('Cancelar')}
+                      </button>
+                    </p>
+                  )}
 
                   <div className="align-grid">
                     <button onClick={() => alignLayer(selected.id, 'left')} title="Izquierda">⬅</button>
@@ -2192,6 +2411,79 @@ export default function App() {
         </aside>
       </div>
 
+      {/* Menú contextual (clic derecho) */}
+      {ctxMenu && selected && (
+        <div
+          className="ctx-menu"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {selected.type === 'text' && (
+            <button
+              onClick={() => {
+                requestTextEdit(selected.id);
+                setCtxMenu(null);
+              }}
+            >
+              ✎ {t('Editar texto')}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              duplicateLayer(selected.id);
+              setCtxMenu(null);
+            }}
+          >
+            ⧉ {t('Duplicar')}
+          </button>
+          <button
+            onClick={() => {
+              const topFirst = doc.layers.map((l) => l.id).reverse();
+              const rest = topFirst.filter((x) => x !== selected.id);
+              reorderLayers([selected.id, ...rest].reverse());
+              setCtxMenu(null);
+            }}
+          >
+            ⬆ {t('Traer al frente')}
+          </button>
+          <button
+            onClick={() => {
+              const bottomFirst = doc.layers.map((l) => l.id);
+              const rest = bottomFirst.filter((x) => x !== selected.id);
+              reorderLayers([selected.id, ...rest]);
+              setCtxMenu(null);
+            }}
+          >
+            ⬇ {t('Enviar atrás')}
+          </button>
+          <button
+            onClick={() => {
+              updateLayer(selected.id, { locked: !selected.locked });
+              setCtxMenu(null);
+            }}
+          >
+            {selected.locked ? `🔓 ${t('Desbloquear')}` : `🔒 ${t('Bloquear')}`}
+          </button>
+          <button
+            onClick={() => {
+              updateLayer(selected.id, { visible: !selected.visible });
+              setCtxMenu(null);
+            }}
+          >
+            {selected.visible ? `🚫 ${t('Ocultar')}` : `👁 ${t('Mostrar')}`}
+          </button>
+          <button
+            className="danger"
+            onClick={() => {
+              removeLayer(selected.id);
+              setCtxMenu(null);
+            }}
+          >
+            🗑 {t('Borrar')}
+          </button>
+        </div>
+      )}
+
       {/* Barra flotante contextual sobre la selección */}
       {selRect && selected && !cropMode && !showMask && (
         <div
@@ -2279,7 +2571,14 @@ export default function App() {
           </button>
         ))}
         <button className="page-add" onClick={addPage}>
-          + Agregar página
+          + {t('Agregar página')}
+        </button>
+        <button
+          className="page-add"
+          onClick={duplicatePage}
+          title="Duplica la página actual con todas sus capas"
+        >
+          ⧉ {t('Duplicar página')}
         </button>
 
         <span className="spacer" />
@@ -2325,8 +2624,17 @@ export default function App() {
       {showHome && (
         <div className="home-overlay">
           <div className="home-brand">ChamVa</div>
-          <p className="home-sub">¿Qué quieres editar hoy?</p>
+          <p className="home-sub">{t('¿Qué quieres editar hoy?')}</p>
           <div className="home-cards">
+            <button className="home-card" onClick={startNewDesign}>
+              <span className="home-ico">
+                <Icon name="image" size={48} />
+              </span>
+              <span className="home-title">{t('Nuevo diseño')}</span>
+              <span className="home-desc">
+                {t('Diseños, fotos, texto, formas, quitar fondo…')}
+              </span>
+            </button>
             <button
               className="home-card"
               onClick={() => {
@@ -2335,11 +2643,11 @@ export default function App() {
               }}
             >
               <span className="home-ico">
-                <Icon name="image" size={48} />
+                <Icon name="layers" size={48} />
               </span>
-              <span className="home-title">Editar imágenes</span>
+              <span className="home-title">{t('Editar imágenes')}</span>
               <span className="home-desc">
-                Diseños, fotos, texto, formas, quitar fondo…
+                {t('Diseños, fotos, texto, formas, quitar fondo…')}
               </span>
             </button>
             <button
@@ -2352,12 +2660,43 @@ export default function App() {
               <span className="home-ico">
                 <Icon name="video" size={48} />
               </span>
-              <span className="home-title">Editar video</span>
+              <span className="home-title">{t('Editar video')}</span>
               <span className="home-desc">
-                Recortar, audio, efectos de voz, exportar MP4…
+                {t('Recortar, audio, efectos de voz, exportar MP4…')}
               </span>
             </button>
           </div>
+
+          {designs.length > 0 && (
+            <>
+              <p className="home-sub" style={{ marginTop: 28 }}>
+                {t('Diseños recientes')}
+              </p>
+              <div className="home-designs">
+                {designs.map((d) => (
+                  <div
+                    key={d.id}
+                    className="home-design"
+                    onClick={() => openDesign(d)}
+                    title={`${d.name} — ${new Date(d.updatedAt).toLocaleString()}`}
+                  >
+                    <img src={d.thumb} alt={d.name} />
+                    <span className="home-design-name">{d.name}</span>
+                    <button
+                      className="upload-del"
+                      title="Quitar de recientes"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeDesign(d.id).then(setDesigns);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="home-foot">
             {license && <span className="supporter-badge sm">★ Donante</span>}
@@ -2365,7 +2704,7 @@ export default function App() {
               className="link-btn"
               onClick={() => setShowSettings(true)}
             >
-              ⚙ Ajustes y licencia
+              ⚙ {t('Ajustes y licencia')}
             </button>
             <span className="home-version">v{APP_VERSION}</span>
           </div>
@@ -2419,16 +2758,78 @@ export default function App() {
             <h3>Ajustes y licencia</h3>
 
             <div className="settings-section">
-              <span className="settings-label">Aplicación</span>
+              <span className="settings-label">{t('Aplicación')}</span>
               <div className="settings-row">
                 <span>ChamVa</span>
-                <span className="settings-val">versión {APP_VERSION}</span>
+                <span className="settings-val">
+                  {t('versión')} {APP_VERSION}
+                </span>
               </div>
               <div className="settings-row">
-                <span>Autor</span>
+                <span>{t('Autor')}</span>
                 <span className="settings-val">{AUTHOR.name}</span>
               </div>
+              <div className="settings-row">
+                <span>{t('Idioma')}</span>
+                <select
+                  value={lang}
+                  onChange={(e) => setLang(e.target.value as 'es' | 'en')}
+                >
+                  <option value="es">Español</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
             </div>
+
+            <div className="settings-section">
+              <span className="settings-label">
+                {t('Modelos de IA sin internet')}
+              </span>
+              <p className="support-desc">
+                Descarga los modelos una vez y quitar fondo / optimizar
+                funcionarán sin conexión para siempre.
+              </p>
+              <button
+                className="link-btn"
+                onClick={onPrepareOffline}
+                disabled={
+                  !!offlineMsg &&
+                  !offlineMsg.startsWith('✓') &&
+                  !offlineMsg.startsWith('✕')
+                }
+              >
+                ⬇ {offlineMsg || t('Descargar todos los modelos')}
+              </button>
+            </div>
+
+            {backups.length > 0 && (
+              <div className="settings-section">
+                <span className="settings-label">
+                  {t('Copias de seguridad')}
+                </span>
+                <ul className="backup-list">
+                  {backups.map((b) => (
+                    <li key={b.ts}>
+                      <span>
+                        {new Date(b.ts).toLocaleTimeString()} ·{' '}
+                        {b.pages.length} pág.
+                      </span>
+                      <button
+                        className="link-btn"
+                        onClick={() => {
+                          loadPages(b.pages, b.pageIndex);
+                          setShowSettings(false);
+                          setShowHome(false);
+                          toast('Copia restaurada', 'success');
+                        }}
+                      >
+                        ↩ {t('Restaurar')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="settings-section">
               <span className="settings-label">Licencia</span>

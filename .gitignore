@@ -45,3 +45,10 @@ src-tauri/gen/apple
 
 # Clave privada de licencias (¡NUNCA subir!)
 tools/private-key.txt
+
+# Firma de Android (keystore y credenciales — NUNCA subir)
+tools/android-release.keystore
+src-tauri/gen/android/keystore.properties
+
+# Config local de Claude Code
+.claude/settings.local.json

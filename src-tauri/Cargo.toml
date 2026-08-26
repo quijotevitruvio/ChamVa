@@ -1,6 +1,6 @@
 [package]
 name = "chamva"
-version = "0.1.0"
+version = "0.2.0"
 description = "ChamVa - editor de imágenes/diseño libre"
 authors = ["ChamVa"]
 edition = "2021"

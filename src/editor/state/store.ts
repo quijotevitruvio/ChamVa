@@ -116,6 +116,8 @@ interface EditorState {
 
   // páginas
   addPage: () => void;
+  duplicatePage: () => void;
+  newDesign: () => void;
   addResizedPage: (width: number, height: number) => void;
   switchPage: (i: number) => void;
   deletePage: (i: number) => void;
@@ -331,6 +333,41 @@ export const useEditor = create<EditorState>((set) => ({
         cropRect: null,
       };
     }),
+
+  duplicatePage: () =>
+    set((s) => {
+      const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
+      const copy = JSON.parse(JSON.stringify(s.doc)) as Doc;
+      copy.id = uid();
+      copy.name = `${s.doc.name} (copia)`;
+      copy.layers = copy.layers.map((l) => ({ ...l, id: uid() }));
+      const pages = [...synced];
+      pages.splice(s.pageIndex + 1, 0, copy);
+      return {
+        pages,
+        doc: copy,
+        pageIndex: s.pageIndex + 1,
+        selectedId: null,
+        selectedIds: [],
+        past: [],
+        future: [],
+      };
+    }),
+
+  newDesign: () => {
+    const blank = emptyDoc();
+    set({
+      doc: blank,
+      pages: [blank],
+      pageIndex: 0,
+      selectedId: null,
+      selectedIds: [],
+      past: [],
+      future: [],
+      cropMode: false,
+      cropRect: null,
+    });
+  },
 
   addResizedPage: (width, height) =>
     set((s) => {

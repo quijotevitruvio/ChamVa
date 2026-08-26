@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { webmToMp4 } from '../io/ffmpegConvert';
 import { toast } from './toast';
+import { t } from '../i18n';
 
 type ClipType = 'video' | 'audio';
 
@@ -387,16 +388,23 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   } | null>(null);
 
   const onTrimMove = (clientX: number) => {
-    const t = trimDrag.current;
-    if (!t) return;
-    const frac = (clientX - t.rect.left) / t.rect.width;
-    const srcTime = t.inP0 + frac * (t.outP0 - t.inP0);
-    if (t.edge === 'in') {
-      const inP = Math.max(0, Math.min(srcTime, t.outP0 - 0.1));
-      patch(t.clipId, { inP });
+    const td = trimDrag.current;
+    if (!td) return;
+    const frac = (clientX - td.rect.left) / td.rect.width;
+    let srcTime = td.inP0 + frac * (td.outP0 - td.inP0);
+    // Imán: el borde recortado se pega al cabezal si queda cerca (~0.15 s).
+    const seg = segments.find((sg) => sg.clip.id === td.clipId);
+    if (seg && playhead >= seg.start - 0.5 && playhead <= seg.end + 0.5) {
+      const sp = seg.clip.speed ?? 1;
+      const srcAtPlayhead = seg.clip.inP + (playhead - seg.start) * sp;
+      if (Math.abs(srcTime - srcAtPlayhead) < 0.15) srcTime = srcAtPlayhead;
+    }
+    if (td.edge === 'in') {
+      const inP = Math.max(0, Math.min(srcTime, td.outP0 - 0.1));
+      patch(td.clipId, { inP });
     } else {
-      const outP = Math.max(t.inP0 + 0.1, Math.min(srcTime, t.duration));
-      patch(t.clipId, { outP });
+      const outP = Math.max(td.inP0 + 0.1, Math.min(srcTime, td.duration));
+      patch(td.clipId, { outP });
     }
   };
 
@@ -433,6 +441,37 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     const frac = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
     seek(frac * totalTime);
   };
+
+  // Zoom de la línea de tiempo (1 = ajustar al ancho).
+  const [tlZoom, setTlZoom] = useState(1);
+
+  // Atajos: espacio = play/pausa · ←/→ = fotograma a fotograma · S = dividir ·
+  // Supr = borrar clip. (Se re-registra en cada render para leer estado fresco.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      const v = videoRef.current;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!v) return;
+        if (v.paused) v.play().catch(() => {});
+        else v.pause();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? 1 : 1 / 30;
+        seek(playhead + (e.key === 'ArrowRight' ? step : -step));
+      } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        splitSelected();
+      } else if (e.key === 'Delete' && selectedId) {
+        e.preventDefault();
+        removeClip(selectedId);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   useEffect(() => {
     return () => {
@@ -829,19 +868,19 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   return (
     <div className="video-overlay">
       <div className="video-toolbar">
-        <button onClick={onClose}>← Volver al diseño</button>
-        <span className="mask-title">🎬 Editor de video</span>
-        <button onClick={() => videoFileRef.current?.click()}>🎬 Subir video</button>
-        <button onClick={() => audioFileRef.current?.click()}>🎵 Subir audio</button>
+        <button onClick={onClose}>← {t('Volver al diseño')}</button>
+        <span className="mask-title">🎬 {t('Editor de video')}</span>
+        <button onClick={() => videoFileRef.current?.click()}>🎬 {t('Subir video')}</button>
+        <button onClick={() => audioFileRef.current?.click()}>🎵 {t('Subir audio')}</button>
         <button
           className={recording ? 'primary' : ''}
           onClick={recording ? stopRec : startRec}
         >
-          {recording ? '⏹ Detener' : '🎤 Grabar'}
+          {recording ? `⏹ ${t('Detener')}` : `🎤 ${t('Grabar')}`}
         </button>
-        <button onClick={addTextOverlay}>➕ Texto</button>
+        <button onClick={addTextOverlay}>➕ {t('Texto')}</button>
         <button onClick={() => overlayFileRef.current?.click()}>
-          ➕ Imagen
+          ➕ {t('Imagen')}
         </button>
         <input
           ref={overlayFileRef}
@@ -858,7 +897,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           onClick={playSequence}
           disabled={videoClips.length === 0}
         >
-          ▶ Reproducir todo
+          ▶ {t('Reproducir todo')}
         </button>
         <span className="spacer" />
         <select
@@ -885,7 +924,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           disabled={videoClips.length === 0 || exporting}
           title="Exportar la secuencia a WebM"
         >
-          {exporting ? '… Exportando' : '⬇ WebM'}
+          {exporting ? `… ${t('Exportando')}` : '⬇ WebM'}
         </button>
         <button
           className="primary"
@@ -926,7 +965,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             style={{ width: `${Math.round(exportProgress * 100)}%` }}
           />
           <span className="vt-progress-label">
-            Exportando… {Math.round(exportProgress * 100)}%
+            {t('Exportando')}… {Math.round(exportProgress * 100)}%
           </span>
         </div>
       )}
@@ -1140,7 +1179,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               </label>
             </>
           )}
-          <button onClick={splitSelected}>✂ Dividir aquí</button>
+          <button onClick={splitSelected}>✂ {t('Dividir aquí')} (S)</button>
         </div>
       )}
 
@@ -1241,8 +1280,14 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         {segments.length > 0 && (
           <div className="vt-scrub-row">
             <span className="vt-time">{fmt(playhead)}</span>
+            <div className="vt-scroll">
             <div
               className="vt-scrubber"
+              style={
+                tlZoom === 1
+                  ? undefined
+                  : { width: `${Math.round(totalTime * 60 * tlZoom)}px` }
+              }
               ref={scrubRef}
               onPointerDown={(e) => {
                 scrubbing.current = true;
@@ -1323,7 +1368,25 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                 style={{ left: `${(playhead / totalTime) * 100}%` }}
               />
             </div>
+            </div>
             <span className="vt-time">{fmt(totalTime)}</span>
+            <div className="vt-zoom">
+              <button
+                title="Alejar línea de tiempo"
+                onClick={() => setTlZoom((z) => Math.max(1, z / 1.5))}
+              >
+                −
+              </button>
+              <button title="Ajustar" onClick={() => setTlZoom(1)}>
+                ⤢
+              </button>
+              <button
+                title="Acercar línea de tiempo"
+                onClick={() => setTlZoom((z) => Math.min(16, z * 1.5))}
+              >
+                ＋
+              </button>
+            </div>
           </div>
         )}
         <div className="vt-track">
