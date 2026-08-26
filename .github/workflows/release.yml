@@ -1,0 +1,70 @@
+# Compila los instaladores de Windows, Linux y macOS y publica un GitHub Release
+# (borrador) cada vez que se pushea un tag v* — o manualmente desde la pestaña Actions.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest # NSIS .exe + .msi
+            args: ''
+          - platform: ubuntu-22.04 # .deb + .rpm + .AppImage (22.04 = glibc compatible con más distros)
+            args: ''
+          - platform: macos-latest # .dmg universal (Intel + Apple Silicon)
+            args: '--target universal-apple-darwin'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Dependencias de Linux (webkit, appindicator, rsvg)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'ChamVa v__VERSION__'
+          releaseBody: |
+            Descarga el instalador para tu sistema:
+            - **Windows:** `.exe` (NSIS) o `.msi`
+            - **Linux:** `.AppImage` (universal), `.deb` (Debian/Ubuntu) o `.rpm` (Fedora)
+            - **macOS:** `.dmg` (Intel y Apple Silicon)
+
+            > Windows puede mostrar SmartScreen ("editor desconocido"): Más información → Ejecutar de todas formas.
+            > macOS: la app no está firmada; tras copiarla a Aplicaciones ejecuta
+            > `xattr -cr /Applications/ChamVa.app` o ábrela con clic derecho → Abrir.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
