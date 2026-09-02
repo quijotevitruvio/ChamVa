@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { webmToMp4 } from '../io/ffmpegConvert';
+import { downloadBlob } from '../io/export';
 import { toast } from './toast';
 import { t } from '../i18n';
 
@@ -824,16 +825,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     return new Blob(chunks, { type: 'video/webm' });
   };
 
-  const download = (blob: Blob, name: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
+  const download = (blob: Blob, name: string) => downloadBlob(blob, name);
 
   const onExportWebm = async () => {
     if (videoClips.length === 0) return;

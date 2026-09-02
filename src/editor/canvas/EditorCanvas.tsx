@@ -537,6 +537,8 @@ export function EditorCanvas() {
             keepRatio={false}
             anchorSize={IS_COARSE ? 18 : 10}
             rotateAnchorOffset={IS_COARSE ? 40 : 24}
+            rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
+            rotationSnapTolerance={7}
             boundBoxFunc={(oldBox, newBox) =>
               newBox.width < 8 || newBox.height < 8 ? oldBox : newBox
             }

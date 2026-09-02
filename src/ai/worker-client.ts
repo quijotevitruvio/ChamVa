@@ -114,17 +114,72 @@ export async function upscaleImage(
   src: string,
   onProgress?: Progress,
 ): Promise<UpscaleResult> {
+  let result: UpscaleResult;
   try {
     const { blob, width, height } = await call<{
       blob: Blob;
       width: number;
       height: number;
     }>({ op: 'upscale', src }, onProgress);
-    return { dataUrl: await blobToDataURL(blob), width, height };
+    result = { dataUrl: await blobToDataURL(blob), width, height };
   } catch (e) {
     if ((e as Error).message === 'cancelado') throw e;
-    return upscaleOnMain(src, onProgress);
+    result = await upscaleOnMain(src, onProgress);
   }
+  return restoreAlpha(src, result);
+}
+
+function loadImg(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+    img.src = src;
+  });
+}
+
+// Swin2SR solo devuelve RGB: una imagen con fondo quitado perdería su
+// transparencia al optimizar. Reescalamos el canal alfa original al nuevo
+// tamaño (bilineal) y lo volvemos a aplicar.
+async function restoreAlpha(
+  src: string,
+  res: UpscaleResult,
+): Promise<UpscaleResult> {
+  const orig = await loadImg(src);
+  const probe = document.createElement('canvas');
+  probe.width = orig.naturalWidth;
+  probe.height = orig.naturalHeight;
+  const pctx = probe.getContext('2d')!;
+  pctx.drawImage(orig, 0, 0);
+  const px = pctx.getImageData(0, 0, probe.width, probe.height).data;
+  let hasAlpha = false;
+  for (let i = 3; i < px.length; i += 4) {
+    if (px[i] < 255) {
+      hasAlpha = true;
+      break;
+    }
+  }
+  if (!hasAlpha) return res;
+
+  const { width, height } = res;
+  const alphaC = document.createElement('canvas');
+  alphaC.width = width;
+  alphaC.height = height;
+  const actx = alphaC.getContext('2d')!;
+  actx.imageSmoothingQuality = 'high';
+  actx.drawImage(orig, 0, 0, width, height);
+  const alpha = actx.getImageData(0, 0, width, height).data;
+
+  const up = await loadImg(res.dataUrl);
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = height;
+  const octx = out.getContext('2d')!;
+  octx.drawImage(up, 0, 0);
+  const img = octx.getImageData(0, 0, width, height);
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = alpha[i];
+  octx.putImageData(img, 0, 0);
+  return { dataUrl: out.toDataURL('image/png'), width, height };
 }
 
 export async function prefetchBgModel(onProgress?: Progress): Promise<void> {

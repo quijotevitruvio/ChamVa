@@ -147,6 +147,7 @@ export default function App() {
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
   const updateLayerLive = useEditor((s) => s.updateLayerLive);
+  const setLayerRotation = useEditor((s) => s.setLayerRotation);
   const checkpoint = useEditor((s) => s.checkpoint);
   const addProcessedLayer = useEditor((s) => s.addProcessedLayer);
   const setBackground = useEditor((s) => s.setBackground);
@@ -378,8 +379,12 @@ export default function App() {
     setBgBusy(true);
     setBgMsg('Preparando modelo…');
     try {
-      // Dejar el lienzo transparente para que se vea el recorte.
-      setBackground(TRANSPARENT_BG);
+      // Dejar el lienzo transparente para que se vea el recorte — solo si el
+      // usuario no había elegido un fondo propio (blanco por defecto).
+      const bg = useEditor.getState().doc.background;
+      if (bg.type === 'solid' && /^#(fff|ffffff)$/i.test(bg.color)) {
+        setBackground(TRANSPARENT_BG);
+      }
       const out = await removeImageBackground(target.src, {
         quality: bgQuality,
         refine: true,
@@ -595,7 +600,16 @@ export default function App() {
       toast('Error al descargar: ' + (e as Error).message, 'error');
     } finally {
       setBusy(false);
-      if (!license) setShowDonate(true);
+      // La descarga nunca se bloquea. Sin licencia se muestra el aviso de
+      // apoyo como máximo una vez al día (no tras cada descarga).
+      if (!license) {
+        const KEY = 'chamva.donateShownAt';
+        const last = Number(localStorage.getItem(KEY) ?? 0);
+        if (Date.now() - last > 24 * 60 * 60 * 1000) {
+          localStorage.setItem(KEY, String(Date.now()));
+          setShowDonate(true);
+        }
+      }
     }
   };
 
@@ -2135,7 +2149,41 @@ export default function App() {
               )}
 
               <label className="prop">
-                Opacidad
+                {t('Rotación')}:{' '}
+                {Math.round(((selected.rotation % 360) + 360) % 360)}°
+                <input
+                  type="range"
+                  min={0}
+                  max={360}
+                  step={1}
+                  value={((Math.round(selected.rotation) % 360) + 360) % 360}
+                  onPointerDown={checkpoint}
+                  onChange={(e) =>
+                    setLayerRotation(selected.id, Number(e.target.value), true)
+                  }
+                />
+              </label>
+              <div className="row">
+                <button
+                  onClick={() =>
+                    setLayerRotation(selected.id, selected.rotation - 90)
+                  }
+                  title="Girar 90° a la izquierda"
+                >
+                  ⟲ 90°
+                </button>
+                <button
+                  onClick={() =>
+                    setLayerRotation(selected.id, selected.rotation + 90)
+                  }
+                  title="Girar 90° a la derecha"
+                >
+                  ⟳ 90°
+                </button>
+              </div>
+
+              <label className="prop">
+                {t('Opacidad')}
                 <input
                   type="range"
                   min={0}
@@ -2438,6 +2486,14 @@ export default function App() {
           </button>
           <button
             onClick={() => {
+              setLayerRotation(selected.id, selected.rotation + 90);
+              setCtxMenu(null);
+            }}
+          >
+            ⟳ {t('Girar 90°')}
+          </button>
+          <button
+            onClick={() => {
               const topFirst = doc.layers.map((l) => l.id).reverse();
               const rest = topFirst.filter((x) => x !== selected.id);
               reorderLayers([selected.id, ...rest].reverse());
@@ -2517,6 +2573,12 @@ export default function App() {
               ✎
             </button>
           )}
+          <button
+            onClick={() => setLayerRotation(selected.id, selected.rotation + 90)}
+            title="Girar 90° (o arrastra la manija sobre la selección)"
+          >
+            ⟳
+          </button>
           <button onClick={() => duplicateLayer(selected.id)} title="Duplicar">
             ⧉
           </button>

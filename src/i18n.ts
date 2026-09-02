@@ -95,6 +95,8 @@ const EN: Record<string, string> = {
   // Propiedades
   'Propiedades': 'Properties',
   'Opacidad': 'Opacity',
+  'Rotación': 'Rotation',
+  'Girar 90°': 'Rotate 90°',
   'Mezcla': 'Blend',
   'Entrada': 'In',
   'Salida': 'Out',

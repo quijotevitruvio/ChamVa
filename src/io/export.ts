@@ -4,6 +4,8 @@ import { isStrokeOnly, shapePath } from '../editor/core/shapes';
 import { layerAnimAt } from '../editor/core/animations';
 import { drawCurvedText, measureCurved } from '../editor/core/curvedText';
 import { drawStyledText } from '../editor/core/styledText';
+import { isTauri, saveNative } from './nativeSave';
+import { toast } from '../ui/toast';
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif';
 
@@ -175,7 +177,7 @@ export async function exportDoc(
   });
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
+function downloadViaAnchor(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -184,6 +186,21 @@ export function downloadBlob(blob: Blob, filename: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Descarga/guarda un archivo. En la app instalada usa el guardado nativo
+// (Guardar como… / carpeta Descargas); en el navegador, <a download>.
+export async function downloadBlob(blob: Blob, filename: string) {
+  if (isTauri()) {
+    try {
+      const res = await saveNative(blob, filename);
+      if (res.status === 'saved') toast(`Guardado: ${res.path}`, 'success');
+      return;
+    } catch (e) {
+      console.warn('Guardado nativo falló, usando descarga web', e);
+    }
+  }
+  downloadViaAnchor(blob, filename);
 }
 
 export function suggestFilename(doc: Doc, format: ExportFormat): string {

@@ -158,6 +158,9 @@ interface EditorState {
   reorderLayers: (orderBottomFirst: string[]) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   updateLayerLive: (id: string, patch: Partial<Layer>) => void; // sin historial
+  // Rota la capa a `deg` grados girando alrededor de su centro (no de la
+  // esquina). live=true no guarda historial (para el arrastre del slider).
+  setLayerRotation: (id: string, deg: number, live?: boolean) => void;
   checkpoint: () => void; // guarda un punto de deshacer antes de una edición en vivo
   addProcessedLayer: (sourceId: string, newSrc: string, name: string) => void;
   replaceLayerImage: (
@@ -601,6 +604,27 @@ export const useEditor = create<EditorState>((set) => ({
         ),
       }),
     ),
+
+  setLayerRotation: (id, deg, live) =>
+    set((s) => {
+      const layers = s.doc.layers.map((l) => {
+        if (l.id !== id) return l;
+        // Mantener fijo el centro: recolocar x,y según la nueva rotación.
+        const { w, h } = layerBox(l);
+        const spin = (a: number): [number, number] => {
+          const r = (a * Math.PI) / 180;
+          return [
+            (w / 2) * Math.cos(r) - (h / 2) * Math.sin(r),
+            (w / 2) * Math.sin(r) + (h / 2) * Math.cos(r),
+          ];
+        };
+        const [ox, oy] = spin(l.rotation);
+        const [nx, ny] = spin(deg);
+        return { ...l, rotation: deg, x: l.x + ox - nx, y: l.y + oy - ny } as Layer;
+      });
+      const doc = { ...s.doc, layers };
+      return live ? { doc } : commit(s, doc);
+    }),
 
   updateLayerLive: (id, patch) =>
     set((s) => ({

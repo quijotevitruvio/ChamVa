@@ -1,7 +1,7 @@
 {
   "name": "chamva",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,8 @@
     "@huggingface/transformers": "^4.2.0",
     "@imgly/background-removal": "^1.7.0",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-fs": "^2.5.2",
     "@tauri-apps/plugin-opener": "^2",
     "gifenc": "^1.0.3",
     "jspdf": "^4.2.1",
