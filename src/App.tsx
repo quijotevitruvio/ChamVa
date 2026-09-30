@@ -6,7 +6,7 @@ import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
 import { idbGet, idbSet, requestPersistentStorage, setStorageErrorHandler } from './io/idb';
 import { dehydrateDocs, rehydrateDocs, gcAssets } from './io/assets';
-import { getStoredLicense, type LicenseInfo } from './license';
+import { getStoredLicense, type LicenseInfo, type LicenseType } from './license';
 import { loadImageFile } from './io/import';
 import { addFontFromFile } from './editor/core/fonts';
 import { exportDoc, downloadBlob, renderDocToCanvas, type ExportFormat } from './io/export';
@@ -145,8 +145,8 @@ export default function App() {
   const [showPresent, setShowPresent] = useState(false);
   const [showHome, setShowHome] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [showDonate, setShowDonate] = useState(false);
-  const [showRequest, setShowRequest] = useState(false);
+  const [showDonate, setShowDonate] = useState<string | false>(false);
+  const [showRequest, setShowRequest] = useState<LicenseType | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showMore, setShowMore] = useState(false);
   // Móvil: el panel de propiedades es una hoja inferior que se abre a demanda.
@@ -170,6 +170,28 @@ export default function App() {
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   useEffect(() => {
     getStoredLicense().then(setLicense);
+  }, []);
+
+  // Aviso de apoyo estilo WinRAR: la app sigue completa. Sale como máximo una
+  // vez al día (al abrir tras una semana de uso, o después de descargar).
+  const maybeNag = (title: string) => {
+    const KEY = 'chamva.donateShownAt';
+    const last = Number(localStorage.getItem(KEY) ?? 0);
+    if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+    localStorage.setItem(KEY, String(Date.now()));
+    setShowDonate(title);
+  };
+  useEffect(() => {
+    const FIRST = 'chamva.firstUse';
+    const first = Number(localStorage.getItem(FIRST) ?? 0);
+    if (!first) localStorage.setItem(FIRST, String(Date.now()));
+    const days = first ? Math.floor((Date.now() - first) / 86_400_000) : 0;
+    if (days < 7) return;
+    const id = setTimeout(async () => {
+      if (!(await getStoredLicense())) maybeNag(`Llevas ${days} días usando ChamVa 💛`);
+    }, 8000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- IA: quitar fondo / optimizar ----
@@ -693,14 +715,7 @@ export default function App() {
       setBusy(false);
       // La descarga nunca se bloquea. Sin licencia, el aviso de apoyo sale
       // como máximo una vez al día.
-      if (!license) {
-        const KEY = 'chamva.donateShownAt';
-        const last = Number(localStorage.getItem(KEY) ?? 0);
-        if (Date.now() - last > 24 * 60 * 60 * 1000) {
-          localStorage.setItem(KEY, String(Date.now()));
-          setShowDonate(true);
-        }
-      }
+      if (!license) maybeNag('¡Tu archivo se descargó! 💛');
     }
   };
 
@@ -1109,7 +1124,14 @@ export default function App() {
       )}
 
       {showDonate && !license && (
-        <DonateDialog onClose={() => setShowDonate(false)} onRequestLicense={() => setShowRequest(true)} />
+        <DonateDialog
+          title={showDonate}
+          onClose={() => setShowDonate(false)}
+          onRequestLicense={(plan) => {
+            setShowDonate(false);
+            setShowRequest(plan);
+          }}
+        />
       )}
 
       {showSettings && (
@@ -1117,7 +1139,7 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           license={license}
           setLicense={setLicense}
-          onRequestLicense={() => setShowRequest(true)}
+          onRequestLicense={(plan) => setShowRequest(plan ?? 'permanente')}
           updateMsg={updateMsg}
           onCheckUpdate={manualCheckUpdate}
           offlineMsg={offlineMsg}
@@ -1127,7 +1149,7 @@ export default function App() {
         />
       )}
 
-      {showRequest && <RequestLicenseDialog onClose={() => setShowRequest(false)} />}
+      {showRequest && <RequestLicenseDialog initialPlan={showRequest} onClose={() => setShowRequest(null)} />}
 
       {chartDialog && (
         <ChartEditor

@@ -1,26 +1,117 @@
 import { useState } from 'react';
-import { AUTHOR, APP_VERSION } from '../branding';
-import { DONORS, DONOR_TYPE_LABEL, type DonorType } from '../donors';
-import { activateLicense, clearLicense, type LicenseInfo } from '../license';
+import { AUTHOR, APP_VERSION, GOAL, LICENSE_PLANS, SUPPORT } from '../branding';
+import { DONORS, DONOR_TYPE_LABEL } from '../donors';
+import {
+  activateLicense,
+  clearLicense,
+  isPermanent,
+  LICENSE_TYPE_LABEL,
+  type LicenseInfo,
+  type LicenseType,
+} from '../license';
 import { isTauri } from '../io/nativeSave';
 import type { Backup } from '../io/designs';
 import { t, useLang, setLang } from '../i18n';
 import { toast } from './toast';
 import { externalClick, openExternal } from '../io/openExternal';
 
+const copyNequi = async () => {
+  try {
+    await navigator.clipboard.writeText(SUPPORT.nequi);
+    toast(`Número de Nequi copiado: ${SUPPORT.nequi}`, 'success');
+  } catch {
+    toast(`Nequi: ${SUPPORT.nequi}`, 'info');
+  }
+};
+
 const SupportLinks = () => (
   <div className="support-links">
+    <a href={SUPPORT.sponsors} onClick={externalClick}>
+      💜 GitHub Sponsors
+    </a>
+    <button type="button" className="nequi-btn" onClick={copyNequi} title="Copiar número">
+      📱 Nequi {SUPPORT.nequi}
+    </button>
     <a href={AUTHOR.paypal} onClick={externalClick}>
       ☕ {t('Invítame un café')} (PayPal)
     </a>
     <a href={AUTHOR.repo} onClick={externalClick}>
       ⭐ {t('Dale una estrella en GitHub')}
     </a>
-    <a href={AUTHOR.linkedin} onClick={externalClick}>
-      💼 LinkedIn
-    </a>
   </div>
 );
+
+const cop = (n: number) => '$' + n.toLocaleString('es-CO') + ' COP';
+
+const GoalBar = () => (
+  <div className="goal-bar">
+    <span className="goal-label">🎯 Meta: {GOAL.label}</span>
+    {GOAL.raised > 0 ? (
+      <>
+        <div className="goal-track">
+          <div style={{ width: `${Math.min(100, (GOAL.raised / GOAL.target) * 100)}%` }} />
+        </div>
+        <span className="goal-num">
+          Llevamos {cop(GOAL.raised)} de {cop(GOAL.target)}
+        </span>
+      </>
+    ) : (
+      <span className="goal-num">{cop(GOAL.target)}</span>
+    )}
+  </div>
+);
+
+const LicensePlans = ({ onRequest }: { onRequest: (plan: LicenseType) => void }) => (
+  <div className="license-plans">
+    {LICENSE_PLANS.map((p) => (
+      <div key={p.type} className={`license-plan${p.type === 'permanente' ? ' featured' : ''}`}>
+        <span className="plan-label">{p.label}</span>
+        <span className="plan-price">{p.price}</span>
+        {'note' in p && <span className="plan-note">{p.note}</span>}
+        <button className={p.type === 'permanente' ? 'primary' : ''} onClick={() => onRequest(p.type)}>
+          {p.type === 'educativa' ? 'Solicitar' : 'Comprar'}
+        </button>
+      </div>
+    ))}
+  </div>
+);
+
+export const AuthorCard = () => {
+  const [photo, setPhoto] = useState(true);
+  const initials = AUTHOR.name
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('');
+  return (
+    <div className="author-card">
+      {photo ? (
+        // Foto opcional: el autor puede poner la suya en public/autor.jpg.
+        <img src="/autor.jpg" alt={AUTHOR.name} onError={() => setPhoto(false)} />
+      ) : (
+        <span className="author-avatar">{initials}</span>
+      )}
+      <div>
+        <strong>{AUTHOR.name}</strong>
+        <p className="support-desc">
+          Programador en Medellín. Hago ChamVa solo y gratis para que cualquiera pueda diseñar sin
+          pagar ni depender de internet.
+        </p>
+        <div className="author-links">
+          <a href={AUTHOR.github} onClick={externalClick}>
+            GitHub
+          </a>
+          <a href={AUTHOR.linkedin} onClick={externalClick}>
+            LinkedIn
+          </a>
+          <a href={`mailto:${AUTHOR.email}`} onClick={externalClick}>
+            {AUTHOR.email}
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ---------- Ajustes ----------
 
@@ -28,7 +119,7 @@ interface SettingsProps {
   onClose: () => void;
   license: LicenseInfo | null;
   setLicense: (l: LicenseInfo | null) => void;
-  onRequestLicense: () => void;
+  onRequestLicense: (plan?: LicenseType) => void;
   updateMsg: string;
   onCheckUpdate: () => void;
   offlineMsg: string;
@@ -69,7 +160,11 @@ export function SettingsDialog({
   const donorWall = (() => {
     const list = DONORS.map((d) => ({ ...d, isYou: false }));
     if (license && !list.some((d) => d.name === license.name)) {
-      list.unshift({ name: license.name, type: 'natural', isYou: true });
+      list.unshift({
+        name: license.name,
+        type: license.type === 'educativa' ? 'institucion' : 'natural',
+        isYou: true,
+      });
     } else if (license) {
       const i = list.findIndex((d) => d.name === license.name);
       if (i >= 0) list[i].isYou = true;
@@ -92,10 +187,6 @@ export function SettingsDialog({
             <span className="settings-val">
               {t('versión')} {APP_VERSION}
             </span>
-          </div>
-          <div className="settings-row">
-            <span>{t('Autor')}</span>
-            <span className="settings-val">{AUTHOR.name}</span>
           </div>
           {isTauri() && (
             <div className="settings-row">
@@ -154,7 +245,11 @@ export function SettingsDialog({
               <div className="supporter-badge">★ Donante</div>
               <p className="supporter-name">¡Gracias, {license.name}! 💛</p>
               <p className="support-desc">
-                Licencia válida hasta {new Date(license.exp * 1000).toLocaleDateString()}.
+                {LICENSE_TYPE_LABEL[license.type]} ·{' '}
+                {isPermanent(license)
+                  ? 'no caduca'
+                  : `válida hasta ${new Date(license.exp * 1000).toLocaleDateString()}`}
+                .
               </p>
               <button
                 className="link-btn dim"
@@ -169,8 +264,8 @@ export function SettingsDialog({
           ) : (
             <>
               <p className="support-desc">
-                Gratis y sin restricciones. Con una licencia de apoyo desaparecen los avisos de
-                donación durante 1 año.
+                ChamVa funciona completo sin licencia. Con una licencia desaparecen los avisos de
+                apoyo y entras al muro de donantes.
               </p>
               <div className="license-activate">
                 <input
@@ -182,9 +277,7 @@ export function SettingsDialog({
                 <button onClick={onActivate}>Activar</button>
               </div>
               {licenseMsg && <p className="license-msg">{licenseMsg}</p>}
-              <button className="link-btn" onClick={onRequestLicense}>
-                🔑 Solicitar clave de licencia (1 año)
-              </button>
+              <LicensePlans onRequest={onRequestLicense} />
             </>
           )}
         </div>
@@ -214,6 +307,11 @@ export function SettingsDialog({
           )}
         </div>
 
+        <div className="settings-section">
+          <span className="settings-label">{t('Sobre el autor')}</span>
+          <AuthorCard />
+        </div>
+
         <p className="author-credit">
           © {new Date().getFullYear()} {AUTHOR.name}
         </p>
@@ -222,23 +320,33 @@ export function SettingsDialog({
   );
 }
 
-// ---------- Aviso de apoyo tras descargar ----------
+// ---------- Aviso de apoyo (estilo WinRAR: la app sigue completa) ----------
 
-export function DonateDialog({ onClose, onRequestLicense }: { onClose: () => void; onRequestLicense: () => void }) {
+export function DonateDialog({
+  onClose,
+  onRequestLicense,
+  title = '¡Listo! 💛',
+}: {
+  onClose: () => void;
+  onRequestLicense: (plan: LicenseType) => void;
+  title?: string;
+}) {
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="donate-card" onClick={(e) => e.stopPropagation()}>
+      <div className="donate-card wide" onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>
-        <h3>¡Tu archivo se descargó! 💛</h3>
+        <h3>{title}</h3>
         <p>
-          ChamVa es gratis y sin marcas de agua. Si te ayuda, apóyame con una donación o consigue
-          una licencia de apoyo (1 año).
+          ChamVa es gratis, sin marcas de agua y funciona completo. Si lo usas seguido, invítame un
+          café o compra una licencia: este aviso no vuelve a salir.
         </p>
+        <GoalBar />
         <SupportLinks />
-        <button className="link-btn" onClick={onRequestLicense}>
-          🔑 Solicitar clave de licencia (1 año)
+        <LicensePlans onRequest={onRequestLicense} />
+        <button className="link-btn dim" onClick={onClose}>
+          Seguir sin licencia
         </button>
       </div>
     </div>
@@ -247,31 +355,56 @@ export function DonateDialog({ onClose, onRequestLicense }: { onClose: () => voi
 
 // ---------- Solicitud de licencia ----------
 
-export function RequestLicenseDialog({ onClose }: { onClose: () => void }) {
+export function RequestLicenseDialog({
+  onClose,
+  initialPlan = 'permanente',
+}: {
+  onClose: () => void;
+  initialPlan?: LicenseType;
+}) {
+  const [plan, setPlan] = useState<LicenseType>(initialPlan);
+  const [free, setFree] = useState(false);
   const [name, setName] = useState('');
-  const [type, setType] = useState<DonorType>('natural');
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState('');
+  const planInfo = LICENSE_PLANS.find((p) => p.type === plan)!;
+  const isFree = plan === 'educativa' && free;
 
   const submit = () => {
     if (!name.trim()) {
-      toast('Escribe tu nombre o el de tu institución/empresa.', 'info');
+      toast(plan === 'educativa' ? 'Escribe el nombre de la institución.' : 'Escribe tu nombre.', 'info');
       return;
     }
-    const body = [
-      `Nombre: ${name}`,
-      `Tipo: ${DONOR_TYPE_LABEL[type]}`,
-      `Correo: ${email}`,
-      `Mensaje: ${msg}`,
-      '',
-      'Adjunto el comprobante de mi donación por PayPal (paypal.me/bibliotecologo).',
-    ].join('\n');
-    openExternal(AUTHOR.paypal);
-    window.location.href = `mailto:${AUTHOR.email}?subject=${encodeURIComponent(
-      'Solicitud de licencia ChamVa (1 año)',
-    )}&body=${encodeURIComponent(body)}`;
+    const subject = isFree
+      ? `Solicitud formal de licencia educativa gratuita de ChamVa — ${name}`
+      : `Solicitud de licencia ChamVa: ${planInfo.label}`;
+    const body = (
+      isFree
+        ? [
+            `Señor ${AUTHOR.name}:`,
+            '',
+            `La institución ${name} solicita formalmente una licencia educativa permanente de ChamVa.`,
+            '',
+            `Uso educativo previsto: ${msg || '(describir: cursos, número de estudiantes, docentes…)'}`,
+            '',
+            `Correo de contacto: ${email}`,
+            '',
+            'Adjuntamos un documento que acredita a la institución (carta en papel membrete o similar).',
+          ]
+        : [
+            `Licencia: ${planInfo.label} (${planInfo.price})`,
+            `Nombre${plan === 'educativa' ? ' de la institución' : ''}: ${name}`,
+            `Correo: ${email}`,
+            `Mensaje: ${msg}`,
+            '',
+            `Pagué por: [Nequi ${SUPPORT.nequi} / PayPal / GitHub Sponsors] — adjunto el comprobante.`,
+          ]
+    ).join('\n');
+    openExternal(
+      `mailto:${AUTHOR.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+    );
     onClose();
-    toast('Abrimos PayPal y tu correo para enviar la solicitud.', 'success');
+    toast('Abrimos tu correo con la solicitud lista para enviar.', 'success');
   };
 
   return (
@@ -280,27 +413,41 @@ export function RequestLicenseDialog({ onClose }: { onClose: () => void }) {
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>
-        <h3>Solicitar clave de licencia (1 año)</h3>
-        <p className="support-desc">
-          Dona por PayPal y envíanos tus datos. Te responderemos con tu clave a {AUTHOR.email}.
-        </p>
+        <h3>Solicitar licencia</h3>
 
         <label className="req-field">
-          Nombre completo / Institución / Empresa
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Tu nombre o el de tu organización"
-          />
-        </label>
-        <label className="req-field">
-          Tipo
-          <select value={type} onChange={(e) => setType(e.target.value as DonorType)}>
-            <option value="natural">Persona natural</option>
-            <option value="institucion">Institución</option>
-            <option value="empresa">Empresa</option>
+          Licencia
+          <select value={plan} onChange={(e) => setPlan(e.target.value as LicenseType)}>
+            {LICENSE_PLANS.map((p) => (
+              <option key={p.type} value={p.type}>
+                {p.label} — {p.price}
+              </option>
+            ))}
           </select>
+        </label>
+
+        {plan === 'educativa' && (
+          <label className="req-check">
+            <input type="checkbox" checked={free} onChange={(e) => setFree(e.target.checked)} />
+            Solicitar gratis: somos un colegio o institución educativa y lo justificamos formalmente.
+          </label>
+        )}
+
+        {!isFree && (
+          <div className="pay-steps">
+            <p className="support-desc">
+              1. Paga <b>{planInfo.price}</b> por cualquiera de estos medios:
+            </p>
+            <SupportLinks />
+            <p className="support-desc">
+              2. Envía la solicitud con el comprobante. Te respondemos con tu clave a tu correo.
+            </p>
+          </div>
+        )}
+
+        <label className="req-field">
+          {plan === 'educativa' ? 'Nombre de la institución' : 'Nombre completo'}
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="req-field">
           Tu correo
@@ -312,17 +459,17 @@ export function RequestLicenseDialog({ onClose }: { onClose: () => void }) {
           />
         </label>
         <label className="req-field">
-          Mensaje (opcional)
+          {isFree ? 'Uso educativo (cursos, estudiantes, docentes…)' : 'Mensaje (opcional)'}
           <textarea
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
-            rows={2}
-            placeholder="¿Quieres aparecer en el muro de donantes? ¿Algún comentario?"
+            rows={isFree ? 3 : 2}
+            placeholder={isFree ? '' : '¿Quieres aparecer en el muro de donantes?'}
           />
         </label>
 
         <button className="primary req-send" onClick={submit}>
-          💳 Donar y enviar solicitud
+          ✉ {isFree ? 'Preparar carta formal por correo' : 'Enviar solicitud por correo'}
         </button>
       </div>
     </div>

@@ -135,7 +135,7 @@ export function HomeScreen({
         </>
       )}
 
-      <SupportCorner />
+      <SupportCorner hasLicense={hasLicense} />
 
       <div className="home-foot">
         {hasLicense && <span className="supporter-badge sm">★ Donante</span>}

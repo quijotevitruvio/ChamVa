@@ -1,4 +1,4 @@
-import { AUTHOR } from '../branding';
+import { AUTHOR, SUPPORT } from '../branding';
 import { externalClick } from '../io/openExternal';
 import { t } from '../i18n';
 
@@ -22,7 +22,7 @@ function DancingBuddy() {
   );
 }
 
-export function SupportCorner() {
+export function SupportCorner({ hasLicense }: { hasLicense: boolean }) {
   return (
     <div className="support-corner">
       <DancingBuddy />
@@ -30,9 +30,12 @@ export function SupportCorner() {
         <a href={AUTHOR.repo} onClick={externalClick} title={AUTHOR.repo}>
           ⭐ {t('Dale una estrella en GitHub')}
         </a>
-        <a href={AUTHOR.paypal} onClick={externalClick} title={AUTHOR.paypal} className="coffee">
-          ☕ {t('Invítame un café')}
-        </a>
+        {/* Con licencia no se vuelve a pedir dinero; la estrella sí queda. */}
+        {!hasLicense && (
+          <a href={SUPPORT.sponsors} onClick={externalClick} title="GitHub Sponsors · Nequi · PayPal" className="coffee">
+            ☕ {t('Invítame un café')}
+          </a>
+        )}
       </div>
     </div>
   );

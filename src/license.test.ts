@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { verifyLicense } from './license';
+import { PERMANENT_EXP, isPermanent, verifyLicense } from './license';
 
 // Genera un par de claves ECDSA P-256 y firma un payload igual que
 // tools/sign-license.mjs. Así el test no depende de la clave privada real.
@@ -38,7 +38,36 @@ describe('verifyLicense', () => {
     const { pubB64, sign } = await makeIssuer();
     const key = await sign({ n: 'Ana Pérez', exp: inOneYear });
     const info = await verifyLicense(key, pubB64, NOW);
-    expect(info).toEqual({ n: 'Ana Pérez', exp: inOneYear });
+    expect(info).toEqual({ name: 'Ana Pérez', exp: inOneYear, type: 'anual' });
+  });
+
+  it('lee el tipo firmado y acepta permanentes', async () => {
+    const { pubB64, sign } = await makeIssuer();
+    const key = await sign({ n: 'Colegio San José', exp: PERMANENT_EXP, t: 'educativa' });
+    const info = await verifyLicense(key, pubB64, NOW);
+    expect(info).toEqual({ name: 'Colegio San José', exp: PERMANENT_EXP, type: 'educativa' });
+    expect(isPermanent(info!)).toBe(true);
+  });
+
+  it('un tipo desconocido cuenta como anual', async () => {
+    const { pubB64, sign } = await makeIssuer();
+    const info = await verifyLicense(await sign({ n: 'X', exp: inOneYear, t: 'vip' }), pubB64, NOW);
+    expect(info?.type).toBe('anual');
+  });
+
+  it('no se puede cambiar el tipo sin romper la firma', async () => {
+    const { pubB64, sign } = await makeIssuer();
+    const key = await sign({ n: 'Ana', exp: inOneYear, t: 'anual' });
+    const [, sig] = key.split('.');
+    const forged = b64url(
+      new TextEncoder().encode(JSON.stringify({ n: 'Ana', exp: PERMANENT_EXP, t: 'permanente' })),
+    );
+    expect(await verifyLicense(`${forged}.${sig}`, pubB64, NOW)).toBeNull();
+  });
+
+  it('rechaza exp no numérico', async () => {
+    const { pubB64, sign } = await makeIssuer();
+    expect(await verifyLicense(await sign({ n: 'Ana', exp: '9999999999' }), pubB64, NOW)).toBeNull();
   });
 
   it('rechaza una clave caducada', async () => {

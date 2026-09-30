@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: quijotevitruvio.ChamVa
+PackageVersion: 0.4.0
+PackageLocale: es-ES
+Publisher: Andrés Valencia Tobón
+PublisherUrl: https://github.com/quijotevitruvio
+PublisherSupportUrl: https://github.com/quijotevitruvio/ChamVa/issues
+Author: Andrés Valencia Tobón
+PackageName: ChamVa
+PackageUrl: https://github.com/quijotevitruvio/ChamVa
+License: MIT
+LicenseUrl: https://github.com/quijotevitruvio/ChamVa/blob/main/LICENSE
+Copyright: Copyright (c) Andrés Valencia Tobón
+ShortDescription: Editor de diseño, imagen y video libre, offline y con IA en tu equipo.
+Description: ChamVa es una alternativa gratuita y de código abierto a Canva. Edita diseños, quita fondos con IA local, usa marcos de fotos y texto por palabra, y exporta a PNG, JPG, PDF, GIF o MP4, todo sin cuentas, sin nube y sin marcas de agua.
+Moniker: chamva
+Tags:
+  - canva
+  - diseño
+  - editor
+  - imagen
+  - offline
+  - open-source
+  - quitar-fondo
+  - video
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

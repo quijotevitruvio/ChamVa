@@ -1,8 +1,44 @@
+<div align="center">
+
 # ChamVa
 
-Editor de diseño, imagen y video **libre, sin restricciones y 100 % offline** — una alternativa propia a Canva.
-Instalable en **Windows** y **Android**. Todo el procesamiento (incluida la IA) ocurre en el dispositivo: sin cuentas,
-sin nube, sin marcas de agua.
+**Como Canva, pero gratis, offline y con IA en tu equipo.**
+
+Editor de diseño, imagen y video libre, sin cuentas, sin nube y sin marcas de agua.
+
+[![Última release](https://img.shields.io/github/v/release/quijotevitruvio/ChamVa?style=for-the-badge&color=7c3aed)](https://github.com/quijotevitruvio/ChamVa/releases/latest)
+[![Descargas](https://img.shields.io/github/downloads/quijotevitruvio/ChamVa/total?style=for-the-badge&color=16a34a)](https://github.com/quijotevitruvio/ChamVa/releases)
+[![Licencia MIT](https://img.shields.io/github/license/quijotevitruvio/ChamVa?style=for-the-badge)](LICENSE)
+![Plataformas](https://img.shields.io/badge/plataformas-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android-2563eb?style=for-the-badge)
+
+[**Windows**](https://github.com/quijotevitruvio/ChamVa/releases/latest) ·
+[**Linux**](https://github.com/quijotevitruvio/ChamVa/releases/latest) ·
+[**macOS**](https://github.com/quijotevitruvio/ChamVa/releases/latest) ·
+[**Android**](https://github.com/quijotevitruvio/ChamVa/releases/latest)
+
+</div>
+
+Instalable en **4 plataformas**: **Windows** (.exe / .msi), **Linux** (.AppImage / .deb / .rpm), **macOS** (.dmg universal)
+y **Android** (.apk). Todo el procesamiento, incluida la IA, ocurre en el dispositivo: sin cuentas, sin nube, sin marcas de agua.
+
+## Descarga
+
+Ve a la [última release](https://github.com/quijotevitruvio/ChamVa/releases/latest) y elige tu instalador:
+
+| Sistema | Archivo |
+|---|---|
+| Windows | `ChamVa_x.y.z_x64-setup.exe` o `.msi` |
+| Linux | `.AppImage`, `.deb` o `.rpm` |
+| macOS | `.dmg` (universal: Intel y Apple Silicon) |
+| Android | `ChamVa_x.y.z_arm64.apk` |
+
+## Capturas
+
+<!-- TODO (autor): guarda las capturas en docs/screenshots/inicio.png y docs/screenshots/editor.png
+     y descomenta estas dos líneas.
+![Pantalla de inicio de ChamVa](docs/screenshots/inicio.png)
+![Editor de ChamVa](docs/screenshots/editor.png)
+-->
 
 ## Características
 
@@ -45,7 +81,7 @@ sin nube, sin marcas de agua.
 - Exportar a **WebM / MP4** (ffmpeg.wasm) con **resolución (720/1080), fps** y barra de progreso.
 
 ## Stack
-- **Tauri 2** (Rust) para empaquetar Windows (.exe/.msi) y Android (APK).
+- **Tauri 2** (Rust) para empaquetar Windows (.exe/.msi), Linux (.AppImage/.deb/.rpm), macOS (.dmg universal) y Android (APK).
 - **React 19 + TypeScript + Vite 7**, estado con **Zustand**.
 - **Konva / react-konva** para el lienzo; render y exportación comparten funciones puras sobre el documento.
 - IA local: **@huggingface/transformers** (ONNX Runtime, en Web Worker) y **@techstark/opencv-js** (empaquetado).
@@ -64,7 +100,7 @@ pnpm install            # instalar dependencias
 pnpm dev                # frontend en el navegador (Vite)
 pnpm tauri dev          # app de escritorio con recarga en caliente
 pnpm build              # type-check + build de producción del frontend
-pnpm tauri build        # instalador de Windows (NSIS .exe + MSI)
+pnpm tauri build        # instalador de tu sistema (Windows NSIS/MSI, Linux, macOS)
 pnpm tauri android build --debug --target aarch64 --apk   # APK de Android
 ```
 
@@ -91,31 +127,49 @@ src-tauri/                proyecto Rust/Tauri (config, gen/android)
 ```
 
 ## Estado y pendientes
-Funciona el flujo completo de imagen y video, y compilan tanto el **instalador de Windows** como la **APK**.
+Funciona el flujo completo de imagen y video, y hay instaladores para **Windows, Linux, macOS y Android**.
 Pendiente: **crossfade real** y **RNNoise** auténtico, **fotos de stock** (requiere clave de Unsplash/Pexels),
 y probar la APK en un dispositivo real.
 
-## Autor y apoyo
+## Apoya ChamVa
 
-Hecho por **Andrés Valencia Tobón**. ChamVa es gratis y sin restricciones — si te resulta útil, considera apoyarlo:
+ChamVa es **100 % funcional sin licencia**: nada está bloqueado. Si te sirve, puedes apoyar el proyecto:
 
-- 💳 **Donar (PayPal):** https://paypal.me/bibliotecologo
-- 🐙 **GitHub:** https://github.com/quijotevitruvio
-- 💼 **LinkedIn:** https://www.linkedin.com/in/andr%C3%A9s-valencia-tob%C3%B3n/
+- ☕ **GitHub Sponsors:** https://github.com/sponsors/quijotevitruvio
+- 📱 **Nequi (Colombia):** 3003000958
+- 💳 **PayPal:** https://paypal.me/bibliotecologo
 
-### Licencia de apoyo (1 año)
-Quien quiera apoyar puede obtener una **clave de licencia válida 1 año**. La app la verifica **offline** (firma
-criptográfica ECDSA P-256), sin servidores ni conexión. Para conseguirla, dona y solicita tu clave desde el botón
-«Solicitar clave de licencia» dentro de la app.
+Con una donación puedes pedir una **clave de licencia** (botón «Solicitar clave de licencia» dentro de la app).
+La licencia **quita los recordatorios de apoyo** (como en WinRAR) y te pone en el **muro de donantes**.
 
-**Cómo emite el autor las claves** (necesita la clave privada, guardada en `tools/private-key.txt`, fuera de git):
+| Licencia | Precio |
+|---|---|
+| Personal, 1 año | $20.000 COP |
+| Personal, permanente | $60.000 COP |
+| Institución educativa, permanente | $150.000 COP, o **GRATIS** |
+
+**Colegios e instituciones educativas:** la licencia es gratuita si la institución la solicita formalmente por correo a
+**andres@librosmedellin.com** justificando su uso educativo.
+
+## Sobre el autor
+
+Hecho por **Andrés Valencia Tobón**.
+
+- 🐙 GitHub: https://github.com/quijotevitruvio
+- 💼 LinkedIn: https://www.linkedin.com/in/andr%C3%A9s-valencia-tob%C3%B3n/
+
+### Cómo emite el autor las licencias
+La app verifica las claves **offline** (firma criptográfica ECDSA P-256), sin servidores ni conexión. Emitirlas requiere la
+clave privada, guardada en `tools/private-key.txt`, fuera de git:
 
 ```bash
-pnpm license "Nombre del cliente" 12   # 12 = meses de validez
+pnpm license "Nombre del cliente" 12                      # 12 meses de validez
+pnpm license "Nombre del cliente" --tipo permanente       # no caduca
+pnpm license "Colegio X" --tipo educativa                 # institución educativa, no caduca
 ```
 
 Copia la clave que imprime y entrégasela al cliente; él la pega en «Activar» dentro de la app. La app solo lleva la
-**clave pública** (`src/branding.ts`), así que cualquiera puede verificar pero solo tú puedes emitir.
+**clave pública** (`src/branding.ts`), así que cualquiera puede verificar pero solo el autor puede emitir.
 
 ## Pruebas
 ```bash

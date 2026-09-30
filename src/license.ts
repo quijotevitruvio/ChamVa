@@ -1,16 +1,33 @@
 // Verificación de licencias OFFLINE con firma ECDSA P-256 (SHA-256).
 // Una clave de licencia tiene el formato:  <payloadB64url>.<firmaB64url>
-//   payload = JSON { n: nombre, exp: epoch (segundos) }
+//   payload = JSON { n: nombre, exp: epoch (segundos), t?: tipo }
+//   Las permanentes llevan exp = PERMANENT_EXP (año 2100), así las versiones
+//   antiguas de la app también las aceptan. `t` va dentro de lo firmado.
 //   firma   = ECDSA P-256 (IEEE P1363) del texto payloadB64url, hecha por el
 //             autor con su clave privada. La app la verifica con la pública.
 import { LICENSE_PUBLIC_KEY_SPKI_B64 } from './branding';
 
 const LS_KEY = 'chamva.license';
 
+export type LicenseType = 'anual' | 'permanente' | 'educativa';
+const TYPES: LicenseType[] = ['anual', 'permanente', 'educativa'];
+
+/** 2100-01-01: fecha de caducidad de las licencias permanentes. */
+export const PERMANENT_EXP = 4102444800;
+
+export const LICENSE_TYPE_LABEL: Record<LicenseType, string> = {
+  anual: 'Personal (1 año)',
+  permanente: 'Personal permanente',
+  educativa: 'Institución educativa (permanente)',
+};
+
 export interface LicenseInfo {
   name: string;
   exp: number; // epoch segundos
+  type: LicenseType;
 }
+
+export const isPermanent = (l: LicenseInfo) => l.exp >= PERMANENT_EXP;
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -61,11 +78,14 @@ export async function verifyLicense(
       new TextEncoder().encode(payloadB64),
     );
     if (!ok) return null;
-    const payload = JSON.parse(
-      new TextDecoder().decode(b64urlToBytes(payloadB64)),
-    ) as LicenseInfo;
-    if (!payload.exp || payload.exp * 1000 < now) return null; // caducada
-    return payload;
+    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(payloadB64))) as {
+      n?: unknown;
+      exp?: unknown;
+      t?: unknown;
+    };
+    if (typeof payload.exp !== 'number' || payload.exp * 1000 < now) return null; // caducada
+    const type = TYPES.includes(payload.t as LicenseType) ? (payload.t as LicenseType) : 'anual';
+    return { name: typeof payload.n === 'string' ? payload.n : '', exp: payload.exp, type };
   } catch {
     return null;
   }

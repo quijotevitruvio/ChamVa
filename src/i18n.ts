@@ -113,6 +113,7 @@ const EN: Record<string, string> = {
   'Nueva versión disponible': 'New version available',
   'Dale una estrella en GitHub': 'Star us on GitHub',
   'Invítame un café': 'Buy me a coffee',
+  'Sobre el autor': 'About the author',
   'Actualizar ahora': 'Update now',
   'Más tarde': 'Later',
   'Buscar actualizaciones': 'Check for updates',
