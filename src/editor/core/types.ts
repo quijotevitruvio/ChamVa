@@ -31,12 +31,39 @@ export interface ImageAdjust {
   brightness: number; // 0..2 (1 = normal)
   contrast: number; // 0..2 (1 = normal)
   saturate: number; // 0..2 (1 = normal)
+  // Campos opcionales: los documentos antiguos no los tienen (leer con ?? neutro).
+  temperature?: number; // -1..1 (0 = normal; + cálido, - frío)
+  tint?: number; // -1..1 (0 = normal; + magenta, - verde)
+  highlights?: number; // -1..1 (0 = normal; + recupera luces)
+  shadows?: number; // -1..1 (0 = normal; + levanta sombras)
+  vibrance?: number; // -1..1 (0 = normal; saturación que protege tonos ya saturados)
+  sharpen?: number; // 0..1 (0 = off)
+  blur?: number; // 0..30 px (0 = off)
+  vignette?: number; // 0..1 (0 = off)
+  grain?: number; // 0..1 (0 = off)
+  pixelate?: number; // 0..50 px de bloque (0 = off)
+  posterize?: number; // 0..1 (0 = off)
+  outline?: number; // 0..40 px (0 = off), contorno tipo sticker
+  outlineColor?: string; // hex (def. #ffffff)
 }
 
 export const DEFAULT_ADJUST: ImageAdjust = {
   brightness: 1,
   contrast: 1,
   saturate: 1,
+  temperature: 0,
+  tint: 0,
+  highlights: 0,
+  shadows: 0,
+  vibrance: 0,
+  sharpen: 0,
+  blur: 0,
+  vignette: 0,
+  grain: 0,
+  pixelate: 0,
+  posterize: 0,
+  outline: 0,
+  outlineColor: '#ffffff',
 };
 
 export interface LayerShadow {
@@ -184,7 +211,23 @@ export type ShapeKind =
   | 'triangle'
   | 'star'
   | 'line'
-  | 'arrow';
+  | 'arrow'
+  | 'pentagon'
+  | 'hexagon'
+  | 'octagon'
+  | 'diamond'
+  | 'heart'
+  | 'cross'
+  | 'doubleArrow'
+  | 'blockArrow'
+  | 'bubble'
+  | 'cloud'
+  | 'star6'
+  | 'moon'
+  | 'ring'
+  | 'semicircle'
+  | 'trapezoid'
+  | 'parallelogram';
 
 export interface ShapeLayer extends LayerBase, LayerShadow {
   type: 'shape';
@@ -204,6 +247,22 @@ export const SHAPE_OPTIONS: { kind: ShapeKind; label: string; icon: string }[] =
   { kind: 'star', label: 'Estrella', icon: '★' },
   { kind: 'line', label: 'Línea', icon: '─' },
   { kind: 'arrow', label: 'Flecha', icon: '→' },
+  { kind: 'pentagon', label: 'Pentágono', icon: '⬠' },
+  { kind: 'hexagon', label: 'Hexágono', icon: '⬡' },
+  { kind: 'octagon', label: 'Octógono', icon: '⯃' },
+  { kind: 'diamond', label: 'Rombo', icon: '◇' },
+  { kind: 'heart', label: 'Corazón', icon: '♥' },
+  { kind: 'cross', label: 'Cruz', icon: '✚' },
+  { kind: 'doubleArrow', label: 'Flecha doble', icon: '⇔' },
+  { kind: 'blockArrow', label: 'Flecha de bloque', icon: '➡' },
+  { kind: 'bubble', label: 'Bocadillo', icon: '💬' },
+  { kind: 'cloud', label: 'Nube', icon: '☁' },
+  { kind: 'star6', label: 'Estrella de 6', icon: '✡' },
+  { kind: 'moon', label: 'Luna', icon: '☾' },
+  { kind: 'ring', label: 'Anillo', icon: '◎' },
+  { kind: 'semicircle', label: 'Semicírculo', icon: '◓' },
+  { kind: 'trapezoid', label: 'Trapecio', icon: '⏢' },
+  { kind: 'parallelogram', label: 'Paralelogramo', icon: '▱' },
 ];
 
 export type Layer = ImageLayer | TextLayer | ShapeLayer;

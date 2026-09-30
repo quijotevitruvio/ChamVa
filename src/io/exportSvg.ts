@@ -7,7 +7,7 @@ import {
   type TextLayer,
 } from '../editor/core/types';
 import { needsProcessing, processImage } from '../editor/core/imageProcessing';
-import { isStrokeOnly } from '../editor/core/shapes';
+import { isStrokeOnly, shapeSvgPath } from '../editor/core/shapes';
 
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -77,6 +77,8 @@ function shapeSvg(l: ShapeLayer): string {
       const my = h / 2;
       return `<path d="M0,${my} L${w - head},${my} M${w - head},${my - head / 2} L${w},${my} L${w - head},${my + head / 2}" fill="none"${stroke}/>`;
     }
+    default:
+      return `<path d="${shapeSvgPath(l.shape, w, h, l.cornerRadius)}" fill="${fill}"${stroke}/>`;
   }
 }
 
