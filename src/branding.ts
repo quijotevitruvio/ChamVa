@@ -8,6 +8,7 @@ export const AUTHOR = {
   name: 'Andrés Valencia Tobón',
   email: 'andres@librosmedellin.com',
   github: 'https://github.com/quijotevitruvio',
+  repo: 'https://github.com/quijotevitruvio/ChamVa',
   linkedin: 'https://www.linkedin.com/in/andr%C3%A9s-valencia-tob%C3%B3n/',
   paypal: 'https://paypal.me/bibliotecologo',
 };

@@ -1,3 +1,4 @@
+import { SupportCorner } from './SupportCorner';
 import { useState } from 'react';
 import { APP_VERSION } from '../branding';
 import type { SavedDesign } from '../io/designs';
@@ -133,6 +134,8 @@ export function HomeScreen({
           </div>
         </>
       )}
+
+      <SupportCorner />
 
       <div className="home-foot">
         {hasLicense && <span className="supporter-badge sm">★ Donante</span>}

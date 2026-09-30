@@ -6,16 +6,17 @@ import { isTauri } from '../io/nativeSave';
 import type { Backup } from '../io/designs';
 import { t, useLang, setLang } from '../i18n';
 import { toast } from './toast';
+import { externalClick, openExternal } from '../io/openExternal';
 
 const SupportLinks = () => (
   <div className="support-links">
-    <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
-      💳 Donar (PayPal)
+    <a href={AUTHOR.paypal} onClick={externalClick}>
+      ☕ {t('Invítame un café')} (PayPal)
     </a>
-    <a href={AUTHOR.github} target="_blank" rel="noreferrer">
-      🐙 GitHub
+    <a href={AUTHOR.repo} onClick={externalClick}>
+      ⭐ {t('Dale una estrella en GitHub')}
     </a>
-    <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
+    <a href={AUTHOR.linkedin} onClick={externalClick}>
       💼 LinkedIn
     </a>
   </div>
@@ -265,7 +266,7 @@ export function RequestLicenseDialog({ onClose }: { onClose: () => void }) {
       '',
       'Adjunto el comprobante de mi donación por PayPal (paypal.me/bibliotecologo).',
     ].join('\n');
-    window.open(AUTHOR.paypal, '_blank');
+    openExternal(AUTHOR.paypal);
     window.location.href = `mailto:${AUTHOR.email}?subject=${encodeURIComponent(
       'Solicitud de licencia ChamVa (1 año)',
     )}&body=${encodeURIComponent(body)}`;

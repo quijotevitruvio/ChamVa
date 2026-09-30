@@ -3067,3 +3067,96 @@ button.mini {
     max-width: 92vw;
   }
 }
+
+/* ---- Rincón de apoyo (inicio): muñequito + estrella en GitHub + café ---- */
+.support-corner {
+  position: fixed;
+  left: 18px;
+  bottom: 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 1;
+}
+.support-corner-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.support-corner-links a {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12.5px;
+  white-space: nowrap;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.support-corner-links a:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.support-corner-links a.coffee {
+  background: #ffdd00;
+  border-color: #ffdd00;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+.buddy {
+  overflow: visible;
+  stroke: var(--text);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+.buddy-body {
+  transform-origin: 32px 74px;
+  animation: buddy-dance 0.9s ease-in-out infinite;
+}
+.buddy-arm-l,
+.buddy-arm-r {
+  transform-origin: 32px 40px;
+}
+.buddy-arm-l {
+  animation: buddy-arm-l 0.45s ease-in-out infinite alternate;
+}
+.buddy-arm-r {
+  animation: buddy-arm-r 0.45s ease-in-out infinite alternate;
+}
+.buddy-leg-l,
+.buddy-leg-r {
+  transform-origin: 32px 56px;
+  animation: buddy-leg 0.45s ease-in-out infinite alternate;
+}
+.buddy-leg-r {
+  animation-direction: alternate-reverse;
+}
+@keyframes buddy-dance {
+  0%, 100% { transform: rotate(-8deg) translateY(0); }
+  25% { transform: rotate(0) translateY(-5px); }
+  50% { transform: rotate(8deg) translateY(0); }
+  75% { transform: rotate(0) translateY(-5px); }
+}
+@keyframes buddy-arm-l {
+  from { transform: rotate(0); }
+  to { transform: rotate(55deg); }
+}
+@keyframes buddy-arm-r {
+  from { transform: rotate(-55deg); }
+  to { transform: rotate(0); }
+}
+@keyframes buddy-leg {
+  from { transform: rotate(-12deg); }
+  to { transform: rotate(12deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buddy-body, .buddy-arm-l, .buddy-arm-r, .buddy-leg-l, .buddy-leg-r { animation: none; }
+}
+@media (max-width: 768px) {
+  .support-corner {
+    position: static;
+    margin-top: 16px;
+  }
+}
