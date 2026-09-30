@@ -199,6 +199,8 @@ interface EditorState {
     naturalHeight: number;
     name?: string;
     iconName?: string;
+    chart?: ImageLayer['chart'];
+    table?: ImageLayer['table'];
   }) => void;
   addTextLayer: (preset?: {
     text: string;
@@ -590,7 +592,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       future: [],
     }),
 
-  addImageLayer: ({ src, naturalWidth, naturalHeight, name, iconName }) =>
+  addImageLayer: ({ src, naturalWidth, naturalHeight, name, iconName, chart, table }) =>
     set((s) => {
       const fit = Math.min(
         1,
@@ -618,6 +620,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         flipX: false,
         flipY: false,
         iconName,
+        chart,
+        table,
         ...NO_SHADOW,
       };
       return {
@@ -1100,9 +1104,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   alignLayer: (id, kind) =>
     set((s) => {
       const l = s.doc.layers.find((x) => x.id === id);
-      if (!l || l.type !== 'image') return {};
-      const w = l.naturalWidth * l.scaleX;
-      const h = l.naturalHeight * l.scaleY;
+      if (!l) return {};
+      const { w, h } = layerBox(l);
       let { x, y } = l;
       if (kind === 'left') x = 0;
       else if (kind === 'centerH') x = (s.doc.width - w) / 2;

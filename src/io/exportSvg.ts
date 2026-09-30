@@ -1,13 +1,12 @@
 import {
-  canvasFont,
   gradientPoints,
-  transformText,
   type Doc,
   type ShapeLayer,
   type TextLayer,
 } from '../editor/core/types';
 import { needsProcessing, processImage } from '../editor/core/imageProcessing';
-import { isStrokeOnly, shapeSvgPath } from '../editor/core/shapes';
+import { isStrokeOnly, shapePath, shapeSvgPath } from '../editor/core/shapes';
+import { baseStyle, runFont, styledLines } from '../editor/core/richText';
 
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -82,14 +81,24 @@ function shapeSvg(l: ShapeLayer): string {
   }
 }
 
+// Texto con estilo por palabra: cada línea es un <tspan x y> y cada tramo
+// con estilo propio un <tspan> anidado (peso, cursiva, color, subrayado).
 function textSvg(l: TextLayer, measure: CanvasRenderingContext2D): string {
-  measure.font = canvasFont(l);
   (measure as any).letterSpacing = `${l.letterSpacing || 0}px`;
-  const lines = transformText(l.text, l.textTransform).split('\n');
-  const widths = lines.map((line) => measure.measureText(line).width);
+  const lines = styledLines(l);
+  const base = baseStyle(l);
+  const widths = lines.map((line) =>
+    line.reduce((sum, run) => {
+      measure.font = runFont(l, run);
+      return sum + measure.measureText(run.text).width;
+    }, 0),
+  );
   const boxW = Math.max(0, ...widths);
+  const lh = l.lineHeight ?? 1;
+  const pad = l.textEffect === 'background' ? l.fontSize * 0.3 : 0;
   const weight = l.bold ? ' font-weight="bold"' : '';
   const style = l.italic ? ' font-style="italic"' : '';
+  const deco = l.underline ? ' text-decoration="underline"' : '';
   const ls = l.letterSpacing ? ` letter-spacing="${l.letterSpacing}"` : '';
   const stroke =
     l.strokeWidth > 0
@@ -100,13 +109,28 @@ function textSvg(l: TextLayer, measure: CanvasRenderingContext2D): string {
     : '';
   const tspans = lines
     .map((line, i) => {
-      let lx = 0;
-      if (l.align === 'center') lx = (boxW - widths[i]) / 2;
-      else if (l.align === 'right') lx = boxW - widths[i];
-      return `<tspan x="${lx.toFixed(1)}" y="${(i * l.fontSize).toFixed(1)}">${esc(line)}</tspan>`;
+      let lx = pad;
+      if (l.align === 'center') lx += (boxW - widths[i]) / 2;
+      else if (l.align === 'right') lx += boxW - widths[i];
+      const runs = line
+        .map((run) => {
+          const a: string[] = [];
+          if (run.bold !== base.bold) a.push(`font-weight="${run.bold ? 'bold' : 'normal'}"`);
+          if (run.italic !== base.italic) a.push(`font-style="${run.italic ? 'italic' : 'normal'}"`);
+          if (run.underline !== base.underline) a.push(`text-decoration="${run.underline ? 'underline' : 'none'}"`);
+          if (run.color !== base.color) a.push(`fill="${run.color}"`);
+          const t = esc(run.text);
+          return a.length ? `<tspan ${a.join(' ')}>${t}</tspan>` : t;
+        })
+        .join('');
+      return `<tspan x="${lx.toFixed(1)}" y="${(pad + i * l.fontSize * lh).toFixed(1)}">${runs}</tspan>`;
     })
     .join('');
-  return `<text font-family="${esc(l.fontFamily)}" font-size="${l.fontSize}" fill="${l.fill}"${weight}${style}${ls}${stroke}${shadow} dominant-baseline="text-before-edge">${tspans}</text>`;
+  const bgRect =
+    l.textEffect === 'background'
+      ? `<rect width="${(boxW + pad * 2).toFixed(1)}" height="${(lines.length * l.fontSize * lh + pad * 2).toFixed(1)}" rx="${(l.fontSize * 0.2).toFixed(1)}" fill="${l.effectColor ?? '#000000'}"/>`
+      : '';
+  return `${bgRect}<text font-family="${esc(l.fontFamily)}" font-size="${l.fontSize}" fill="${l.fill}"${weight}${style}${deco}${ls}${stroke}${shadow} dominant-baseline="text-before-edge" xml:space="preserve">${tspans}</text>`;
 }
 
 export async function exportDocToSvg(doc: Doc): Promise<string> {
@@ -132,9 +156,19 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
     const op = layer.opacity !== 1 ? ` opacity="${layer.opacity}"` : '';
     if (layer.type === 'image') {
       const img = await loadImg(layer.src);
-      const baked = needsProcessing(layer)
+      let baked = needsProcessing(layer)
         ? processImage(img, layer).toDataURL('image/png')
         : layer.src;
+      if (layer.maskShape) {
+        const c = document.createElement('canvas');
+        c.width = layer.naturalWidth;
+        c.height = layer.naturalHeight;
+        const cx = c.getContext('2d')!;
+        shapePath(cx, layer.maskShape, layer.naturalWidth, layer.naturalHeight, 0);
+        cx.clip();
+        cx.drawImage(await loadImg(baked), 0, 0, layer.naturalWidth, layer.naturalHeight);
+        baked = c.toDataURL('image/png');
+      }
       parts.push(
         `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}><image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/></g>`,
       );

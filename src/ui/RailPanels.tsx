@@ -1,7 +1,9 @@
 import { useRef, useState, type RefObject } from 'react';
 import QRCode from 'qrcode';
 import { useEditor } from '../editor/state/store';
-import { SHAPE_OPTIONS, TEXT_PRESETS, type Doc } from '../editor/core/types';
+import { FONT_FAMILIES, SHAPE_OPTIONS, TEXT_PRESETS, type Doc } from '../editor/core/types';
+import { isStrokeOnly } from '../editor/core/shapes';
+import { loadImageFile } from '../io/import';
 import { PRESET_TEMPLATES } from '../editor/core/presetTemplates';
 import { searchIcons, iconPreviewUrl, fetchIconAsImage } from '../io/iconify';
 import { TemplateThumb } from './TemplateThumb';
@@ -34,7 +36,7 @@ const inputStyle = {
 interface Props {
   fileRef: RefObject<HTMLInputElement | null>;
   fontFileRef: RefObject<HTMLInputElement | null>;
-  dragUploadId: RefObject<string | null>;
+  onOpenChart: (mode: 'chart' | 'table') => void;
   onSaveTemplate: () => void;
   onExportTemplates: () => void;
   onImportTemplates: (files: FileList | null) => void;
@@ -45,7 +47,7 @@ interface Props {
 export function RailPanels({
   fileRef,
   fontFileRef,
-  dragUploadId,
+  onOpenChart,
   onSaveTemplate,
   onExportTemplates,
   onImportTemplates,
@@ -57,6 +59,7 @@ export function RailPanels({
   const [iconBusy, setIconBusy] = useState(false);
   const [qrText, setQrText] = useState('https://');
   const templatesFileRef = useRef<HTMLInputElement>(null);
+  const logoFileRef = useRef<HTMLInputElement>(null);
   const dragId = useRef<string | null>(null);
 
   const doc = useEditor((s) => s.doc);
@@ -74,6 +77,54 @@ export function RailPanels({
   const setBackground = useEditor((s) => s.setBackground);
   const brandColors = useEditor((s) => s.brandColors);
   const recentColors = useEditor((s) => s.recentColors);
+  const addBrandColor = useEditor((s) => s.addBrandColor);
+  const removeBrandColor = useEditor((s) => s.removeBrandColor);
+  const brandLogos = useEditor((s) => s.brandLogos);
+  const addBrandLogo = useEditor((s) => s.addBrandLogo);
+  const removeBrandLogo = useEditor((s) => s.removeBrandLogo);
+  const brandFonts = useEditor((s) => s.brandFonts);
+  const toggleBrandFont = useEditor((s) => s.toggleBrandFont);
+  const customFonts = useEditor((s) => s.customFonts);
+  const addFrame = useEditor((s) => s.addFrame);
+  const [newBrandColor, setNewBrandColor] = useState('#6c8cff');
+
+  // Un color de marca se aplica al elemento seleccionado; si no hay, al fondo.
+  const applyBrandColor = (c: string) => {
+    const st = useEditor.getState();
+    const l = st.doc.layers.find((x) => x.id === st.selectedId);
+    if (l?.type === 'text') st.setTextStyleAll(l.id, { fill: c });
+    else if (l?.type === 'shape') st.updateLayer(l.id, { fill: c });
+    else setBackground({ type: 'solid', color: c });
+  };
+
+  // Una fuente de marca se aplica al texto seleccionado; si no hay, crea uno.
+  const applyBrandFont = (family: string) => {
+    const st = useEditor.getState();
+    const l = st.doc.layers.find((x) => x.id === st.selectedId);
+    if (l?.type === 'text') {
+      st.updateLayer(l.id, { fontFamily: family });
+      return;
+    }
+    st.beginBatch();
+    st.addTextLayer({ text: 'Tu texto', fontSize: 72, bold: true });
+    const id = useEditor.getState().selectedId;
+    if (id) useEditor.getState().updateLayer(id, { fontFamily: family });
+    st.endBatch();
+  };
+
+  const onUploadLogos = async (files: FileList | null) => {
+    for (const file of Array.from(files ?? [])) {
+      try {
+        const img = await loadImageFile(file);
+        addBrandLogo({
+          id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `logo-${Date.now()}`,
+          ...img,
+        });
+      } catch (e) {
+        toast('No se pudo cargar el logo: ' + (e as Error).message, 'error');
+      }
+    }
+  };
 
   const doIconSearch = async () => {
     if (!iconQuery.trim()) return;
@@ -158,7 +209,7 @@ export function RailPanels({
                       key={u.id}
                       className="upload-thumb"
                       draggable
-                      onDragStart={() => (dragUploadId.current = u.id)}
+                      onDragStart={(e) => e.dataTransfer.setData('application/x-chamva-upload', u.id)}
                       onClick={() => addImageLayer(u)}
                       title="Clic o arrastra al lienzo"
                     >
@@ -208,6 +259,31 @@ export function RailPanels({
                     {s.icon}
                   </button>
                 ))}
+              </div>
+
+              <h4 className="rail-sub">{t('Marcos para fotos')}</h4>
+              <p className="rail-hint">Arrastra una foto encima de un marco para rellenarlo.</p>
+              <div className="rail-shapes">
+                {SHAPE_OPTIONS.filter((s) => !isStrokeOnly(s.kind)).map((s) => (
+                  <button
+                    key={'frame-' + s.kind}
+                    className="frame-btn"
+                    onClick={() => addFrame(s.kind)}
+                    title={`Marco: ${s.label}`}
+                  >
+                    {s.icon}
+                  </button>
+                ))}
+              </div>
+
+              <h4 className="rail-sub">{t('Gráficas y tablas')}</h4>
+              <div className="row">
+                <button className="rail-item" onClick={() => onOpenChart('chart')}>
+                  📊 {t('Gráfica')}
+                </button>
+                <button className="rail-item" onClick={() => onOpenChart('table')}>
+                  ▦ {t('Tabla')}
+                </button>
               </div>
 
               <h4 className="rail-sub">{t('Buscar iconos')}</h4>
@@ -362,29 +438,117 @@ export function RailPanels({
           {activeTab === 'marca' && (
             <>
               {head('Kit de Marca')}
-              <p className="rail-hint">
-                Guarda colores desde el panel <b>Fondo</b> (+ Añadir). Aquí los reutilizas como fondo.
-              </p>
-              {brandColors.length > 0 && (
-                <>
-                  <h4 className="rail-sub">{t('Mis colores')}</h4>
-                  <div className="rail-swatches">
-                    {brandColors.map((c) => (
-                      <button key={c} style={{ background: c }} title={c} onClick={() => setBackground({ type: 'solid', color: c })} />
-                    ))}
-                  </div>
-                </>
+
+              <h4 className="rail-sub">{t('Logos')}</h4>
+              <button className="rail-big" onClick={() => logoFileRef.current?.click()}>
+                ⬆ {t('Subir logo')}
+              </button>
+              <input
+                ref={logoFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  onUploadLogos(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              {brandLogos.length > 0 && (
+                <div className="uploads-grid">
+                  {brandLogos.map((u) => (
+                    <div
+                      key={u.id}
+                      className="upload-thumb"
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData('application/x-chamva-upload', u.id)}
+                      onClick={() => addImageLayer(u)}
+                      title="Clic o arrastra al lienzo"
+                    >
+                      <img src={u.src} alt={u.name} />
+                      <button
+                        className="upload-del"
+                        title="Quitar del kit"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeBrandLogo(u.id);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
+
+              <h4 className="rail-sub">{t('Colores de marca')}</h4>
+              <p className="rail-hint">Clic: se aplica al elemento seleccionado (o al fondo).</p>
+              <div className="rail-swatches">
+                {brandColors.map((c) => (
+                  <button
+                    key={c}
+                    style={{ background: c }}
+                    title={`${c} — clic derecho para quitar`}
+                    onClick={() => applyBrandColor(c)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      removeBrandColor(c);
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="font-row">
+                <input
+                  type="color"
+                  value={newBrandColor}
+                  onChange={(e) => setNewBrandColor(e.target.value)}
+                  style={{ width: 36, height: 30, padding: 0, border: 'none', background: 'none' }}
+                />
+                <button className="rail-item" style={{ flex: 1 }} onClick={() => addBrandColor(newBrandColor)}>
+                  ＋ {t('Añadir color')}
+                </button>
+              </div>
               {recentColors.length > 0 && (
                 <>
                   <h4 className="rail-sub">{t('Recientes')}</h4>
                   <div className="rail-swatches">
                     {recentColors.map((c) => (
-                      <button key={c} style={{ background: c }} title={c} onClick={() => setBackground({ type: 'solid', color: c })} />
+                      <button key={c} style={{ background: c }} title={c} onClick={() => applyBrandColor(c)} />
                     ))}
                   </div>
                 </>
               )}
+
+              <h4 className="rail-sub">{t('Fuentes de marca')}</h4>
+              {brandFonts.map((f) => (
+                <div key={f} className="font-row">
+                  <button
+                    className="rail-item"
+                    style={{ flex: 1, fontFamily: f }}
+                    onClick={() => applyBrandFont(f)}
+                    title="Aplicar al texto seleccionado (o crear uno)"
+                  >
+                    {f}
+                  </button>
+                  <button className="font-upload" title="Quitar del kit" onClick={() => toggleBrandFont(f)}>
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <select
+                value=""
+                onChange={(e) => e.target.value && toggleBrandFont(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">＋ {t('Añadir fuente de marca')}…</option>
+                {[...customFonts, ...FONT_FAMILIES]
+                  .filter((f) => !brandFonts.includes(f))
+                  .map((f) => (
+                    <option key={f} value={f} style={{ fontFamily: f }}>
+                      {f}
+                    </option>
+                  ))}
+              </select>
             </>
           )}
         </div>

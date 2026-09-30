@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Stage,
   Layer,
@@ -17,6 +17,28 @@ import { getCheckerboard } from './useImage';
 import { ImageLayerNode } from './ImageLayerNode';
 import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
+import { InlineTextEditor } from './InlineTextEditor';
+import { loadImageFile } from '../../io/import';
+import type { Layer as DocLayer } from '../core/types';
+
+// ¿El punto (en coordenadas del documento) cae dentro de la capa? Tiene en
+// cuenta posición, escala y giro (el origen de giro es la esquina superior izq.).
+function hitsLayer(l: DocLayer, px: number, py: number, w: number, h: number): boolean {
+  const r = (-l.rotation * Math.PI) / 180;
+  const dx = px - l.x;
+  const dy = py - l.y;
+  const lx = (dx * Math.cos(r) - dy * Math.sin(r)) / (l.scaleX || 1);
+  const ly = (dx * Math.sin(r) + dy * Math.cos(r)) / (l.scaleY || 1);
+  return lx >= 0 && ly >= 0 && lx <= w && ly <= h;
+}
+
+// Editores de texto con foco: los atajos del lienzo no deben actuar.
+export function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || !!el.isContentEditable;
+}
 
 // Pantalla táctil: manijas del Transformer más grandes para dedos.
 const IS_COARSE =
@@ -37,6 +59,12 @@ export function EditorCanvas() {
   const setZoom = useEditor((s) => s.setZoom);
   const setViewScale = useEditor((s) => s.setViewScale);
   const animPlayNonce = useEditor((s) => s.animPlayNonce);
+  const textEditNonce = useEditor((s) => s.textEditNonce);
+  const editingTextId = useEditor((s) => s.editingTextId);
+  const setEditingText = useEditor((s) => s.setEditingText);
+  const beginBatch = useEditor((s) => s.beginBatch);
+  const endBatch = useEditor((s) => s.endBatch);
+  const [editorPos, setEditorPos] = useState<{ left: number; top: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -65,8 +93,7 @@ export function EditorCanvas() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (isTypingTarget(e.target)) return;
       if (e.code === 'Space') {
         e.preventDefault();
         setSpaceDown(true);
@@ -98,7 +125,9 @@ export function EditorCanvas() {
   const onStageDragStart = (e: Konva.KonvaEventObject<DragEvent>) => {
     const node = e.target as Konva.Node;
     const id = findLayerId(node);
+    const selectedIds = useEditor.getState().selectedIds;
     if (id && selectedIds.length > 1 && selectedIds.includes(id)) {
+      beginBatch();
       groupDrag.current = {
         startX: node.x(),
         startY: node.y(),
@@ -353,7 +382,8 @@ export function EditorCanvas() {
     };
   }, [doc.width, doc.height, zoom, setViewScale]);
 
-  // Conectar el Transformer al nodo seleccionado (oculto durante el recorte).
+  // Conectar el Transformer al nodo seleccionado (oculto durante el recorte
+  // y mientras se edita un texto sobre el lienzo).
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -361,12 +391,68 @@ export function EditorCanvas() {
       ? []
       : selectedIds
           .map((id) => doc.layers.find((l) => l.id === id))
-          .filter((l): l is NonNullable<typeof l> => !!l && !l.locked)
+          .filter(
+            (l): l is NonNullable<typeof l> => !!l && !l.locked && l.id !== editingTextId,
+          )
           .map((l) => nodeRefs.current.get(l.id))
           .filter((n): n is Konva.Node => !!n);
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, doc.layers, cropMode]);
+  }, [selectedIds, doc.layers, cropMode, editingTextId]);
+
+  // Doble clic en un texto (o "Editar texto"): abrir el editor sobre el lienzo.
+  useEffect(() => {
+    if (!textEditNonce) return;
+    const st = useEditor.getState();
+    const l = st.doc.layers.find((x) => x.id === st.selectedId);
+    if (l?.type === 'text' && !l.locked) setEditingText(l.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textEditNonce]);
+
+  // Posición del editor en línea: origen de la capa dentro del área del lienzo.
+  useLayoutEffect(() => {
+    const l = doc.layers.find((x) => x.id === editingTextId);
+    const stage = stageRef.current;
+    if (!l || !stage) {
+      setEditorPos(null);
+      return;
+    }
+    const c = stage.container();
+    setEditorPos({ left: c.offsetLeft + l.x * scale, top: c.offsetTop + l.y * scale });
+    // Solo al abrir y si cambia el zoom (la capa no se mueve mientras se edita).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingTextId, scale]);
+
+  // Soltar una foto sobre un marco → rellenarlo. Si no hay marco debajo, el
+  // evento sigue hacia App (que la añade como capa normal).
+  const onDropOnCanvas = async (e: React.DragEvent) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const st = useEditor.getState();
+    const frames = st.doc.layers.filter((l) => l.type === 'shape' && l.frame && l.visible);
+    if (!frames.length) return;
+    stage.setPointersPositions(e.nativeEvent);
+    const pt = stage.getPointerPosition();
+    if (!pt) return;
+    const px = pt.x / scale;
+    const py = pt.y / scale;
+    const target = [...frames]
+      .reverse()
+      .find((f) => f.type === 'shape' && hitsLayer(f, px, py, f.width, f.height));
+    if (!target) return;
+    const uploadId = e.dataTransfer.getData('application/x-chamva-upload');
+    const file = [...e.dataTransfer.files].find((f) => f.type.startsWith('image/'));
+    if (!uploadId && !file) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (uploadId) {
+      const up = st.uploads.find((u) => u.id === uploadId) ?? st.brandLogos.find((u) => u.id === uploadId);
+      if (up) await st.fillFrame(target.id, up);
+    } else if (file) {
+      const img = await loadImageFile(file);
+      await st.fillFrame(target.id, img);
+    }
+  };
 
   // Conectar el Transformer de recorte al rectángulo de recorte.
   useEffect(() => {
@@ -380,6 +466,7 @@ export function EditorCanvas() {
     <div
       className={`canvas-area ${spaceDown ? 'panning' : ''}`}
       ref={containerRef}
+      onDrop={onDropOnCanvas}
       onWheel={(e) => {
         if (e.deltaY === 0) return;
         // Zoom hacia el cursor: tras el cambio de escala, reajustar el scroll
@@ -464,6 +551,7 @@ export function EditorCanvas() {
               updateLayer(o.id, { x: o.node.x(), y: o.node.y() }),
             );
             groupDrag.current = null;
+            endBatch();
           }
           setGuides({ vx: [], hy: [] });
           setDists([]);
@@ -535,6 +623,13 @@ export function EditorCanvas() {
             ref={transformerRef}
             rotateEnabled
             keepRatio={false}
+            onTransformStart={() => {
+              if ((transformerRef.current?.nodes().length ?? 0) > 1) beginBatch();
+            }}
+            onTransformEnd={() => {
+              // Los nodos reciben su transformend después: cerrar el lote luego.
+              setTimeout(endBatch, 0);
+            }}
             anchorSize={IS_COARSE ? 18 : 10}
             rotateAnchorOffset={IS_COARSE ? 40 : 24}
             rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
@@ -644,6 +739,30 @@ export function EditorCanvas() {
           )}
         </Layer>
       </Stage>
+
+      {editingTextId &&
+        editorPos &&
+        (() => {
+          const l = doc.layers.find((x) => x.id === editingTextId);
+          if (!l || l.type !== 'text') return null;
+          return (
+            <InlineTextEditor
+              key={editingTextId}
+              layer={l}
+              left={editorPos.left}
+              top={editorPos.top}
+              scale={scale}
+              onDone={(text, spans) => {
+                setEditingText(null);
+                const cur = useEditor.getState().doc.layers.find((x) => x.id === l.id);
+                if (!cur || cur.type !== 'text') return;
+                const same =
+                  cur.text === text && JSON.stringify(cur.spans ?? null) === JSON.stringify(spans ?? null);
+                if (!same) updateLayer(l.id, { text, spans });
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

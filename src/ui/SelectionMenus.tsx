@@ -19,12 +19,24 @@ export function ContextMenu({
   const reorderLayers = useEditor((s) => s.reorderLayers);
   const updateLayer = useEditor((s) => s.updateLayer);
   const removeLayer = useEditor((s) => s.removeLayer);
+  const selectedIds = useEditor((s) => s.selectedIds);
+  const groupSelected = useEditor((s) => s.groupSelected);
+  const ungroupSelected = useEditor((s) => s.ungroupSelected);
+  const removeSelected = useEditor((s) => s.removeSelected);
   const run = (fn: () => void) => () => {
     fn();
     onClose();
   };
+  const multi = selectedIds.length > 1;
   return (
     <div className="ctx-menu" style={{ left: pos.x, top: pos.y }} onClick={(e) => e.stopPropagation()}>
+      {multi && <button onClick={run(groupSelected)}>🔗 {t('Agrupar')} (Ctrl+G)</button>}
+      {selected.groupId && <button onClick={run(ungroupSelected)}>⛓ {t('Desagrupar')}</button>}
+      {multi && (
+        <button className="danger" onClick={run(removeSelected)}>
+          🗑 {t('Borrar selección')}
+        </button>
+      )}
       {selected.type === 'text' && (
         <button onClick={run(() => requestTextEdit(selected.id))}>✎ {t('Editar texto')}</button>
       )}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from './editor/state/store';
-import { EditorCanvas } from './editor/canvas/EditorCanvas';
+import { EditorCanvas, isTypingTarget } from './editor/canvas/EditorCanvas';
 import { TRANSPARENT_BG, type Doc, type ImageLayer, type Layer } from './editor/core/types';
 import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
@@ -55,6 +55,9 @@ import { DownloadMenu, type Fmt } from './ui/DownloadMenu';
 import { ContextMenu, FloatToolbar } from './ui/SelectionMenus';
 import { PageBar } from './ui/PageBar';
 import { UpdateBanner } from './ui/UpdateBanner';
+import { ChartEditor } from './ui/ChartEditor';
+import type { ChartSpec, TableSpec } from './editor/core/charts';
+import { DEFAULT_ADJUST } from './editor/core/types';
 import './App.css';
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
@@ -76,7 +79,6 @@ export default function App() {
   const projectRef = useRef<HTMLInputElement>(null);
   const fontFileRef = useRef<HTMLInputElement>(null);
   const textEditRef = useRef<HTMLTextAreaElement>(null);
-  const dragUploadId = useRef<string | null>(null);
   const clipLayer = useRef<Layer | null>(null);
 
   // ---- store ----
@@ -84,7 +86,6 @@ export default function App() {
   const selectedId = useEditor((s) => s.selectedId);
   const past = useEditor((s) => s.past);
   const future = useEditor((s) => s.future);
-  const uploads = useEditor((s) => s.uploads);
   const templates = useEditor((s) => s.templates);
   const addImageLayer = useEditor((s) => s.addImageLayer);
   const addUpload = useEditor((s) => s.addUpload);
@@ -109,7 +110,7 @@ export default function App() {
   const loadPages = useEditor((s) => s.loadPages);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
-  const textEditNonce = useEditor((s) => s.textEditNonce);
+  const editingTextId = useEditor((s) => s.editingTextId);
   useLang(); // re-renderiza al cambiar el idioma
 
   const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
@@ -147,6 +148,18 @@ export default function App() {
   const [showDonate, setShowDonate] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  // Móvil: el panel de propiedades es una hoja inferior que se abre a demanda.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (!selectedId) setSheetOpen(false);
+  }, [selectedId]);
+  // Editor de gráficas/tablas: nueva (sin layerId) o reeditar una capa.
+  const [chartDialog, setChartDialog] = useState<{
+    mode: 'chart' | 'table';
+    layerId?: string;
+    initial: { chart?: ChartSpec; table?: TableSpec };
+  } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [maskSession, setMaskSession] = useState<{
     layer: ImageLayer;
@@ -242,11 +255,14 @@ export default function App() {
   // ---- atajos globales ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (isTypingTarget(e.target)) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const st = useEditor.getState();
-      if (e.key === '?' || (e.key === 'F1' && !ctrl)) {
+      if (ctrl && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        if (e.shiftKey) st.ungroupSelected();
+        else st.groupSelected();
+      } else if (e.key === '?' || (e.key === 'F1' && !ctrl)) {
         e.preventDefault();
         setShowShortcuts((v) => !v);
       } else if (ctrl && e.key.toLowerCase() === 'z') {
@@ -386,13 +402,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Doble clic en un texto del lienzo → enfocar el editor de texto del panel.
-  useEffect(() => {
-    if (textEditNonce > 0) {
-      textEditRef.current?.focus();
-      textEditRef.current?.select();
-    }
-  }, [textEditNonce]);
 
   // ---- acciones ----
   const onUploadFont = async (files: FileList | null) => {
@@ -510,6 +519,47 @@ export default function App() {
         setMaskSession(null);
       },
     });
+  };
+
+  const onPortraitBlur = async (engine: BgQuality = bgQuality): Promise<void> => {
+    const target = selected;
+    if (!target || target.type !== 'image') return;
+    setBgBusy(true);
+    setBgMsg('Preparando modelo…');
+    try {
+      const out = await removeImageBackground(target.src, {
+        quality: engine,
+        edges: bgEdges,
+        onProgress: (ratio, stage) => {
+          const pct = Math.round(ratio * 100);
+          setBgMsg(stage.startsWith('fetch') ? `Descargando modelo… ${pct}%` : `Procesando… ${pct}%`);
+        },
+      });
+      const st = useEditor.getState();
+      const blur = Math.max(6, Math.min(30, Math.round(Math.min(target.naturalWidth, target.naturalHeight) / 60)));
+      st.beginBatch();
+      st.updateLayer(target.id, { adjust: { ...DEFAULT_ADJUST, ...(target.adjust ?? {}), blur } });
+      st.addProcessedLayer(target.id, out, `${target.name} (retrato)`, { keepSource: true });
+      st.endBatch();
+      toast('Fondo desenfocado: la persona queda nítida encima.', 'success');
+    } catch (e) {
+      const err = e as Error;
+      if (err.message === 'cancelado') toast('Operación cancelada', 'info');
+      else if (err.name === 'GpuUnavailableError' && engine === 'birefnet') {
+        chooseBgEngine('modnet');
+        setBgBusy(false);
+        return onPortraitBlur('modnet');
+      } else toast('No se pudo desenfocar el fondo: ' + err.message, 'error');
+    } finally {
+      setBgBusy(false);
+      setBgMsg('');
+    }
+  };
+
+  const onEditChart = (layerId: string) => {
+    const l = useEditor.getState().doc.layers.find((x) => x.id === layerId);
+    if (!l || l.type !== 'image' || (!l.chart && !l.table)) return;
+    setChartDialog({ mode: l.chart ? 'chart' : 'table', layerId, initial: { chart: l.chart, table: l.table } });
   };
 
   const onUpscale = async () => {
@@ -803,18 +853,22 @@ export default function App() {
         <button className="cut-bg" onClick={onQuickRemoveBg} disabled={bgBusy} title="Quitar el fondo de la imagen y dejarlo transparente">
           {bgBusy ? `✂ ${bgMsg || '…'}` : `✂ ${t('Quitar fondo')}`}
         </button>
-        <button onClick={onPrepareOffline} disabled={offlineBusy} title="Descarga los modelos de IA para usarlos sin internet">
-          {offlineMsg || `⬇ ${t('Preparar offline')}`}
-        </button>
-        <button onClick={playAnimations} title="Previsualizar animaciones">
-          ▶ {t('Animar')}
-        </button>
-        <button onClick={() => setShowPresent(true)} title="Modo presentación">
-          ▶ {t('Presentar')}
-        </button>
-        <button onClick={() => setShowVideo(true)} title="Editor de video y audio">
-          🎬 {t('Video')}
-        </button>
+        <div className="menu-wrap">
+          <button className={showMore ? 'active' : ''} onClick={() => setShowMore((v) => !v)} title="Más herramientas">
+            ⋯ {t('Más')}
+          </button>
+          {showMore && (
+            <div className="dropdown" onClick={() => setShowMore(false)}>
+              <button onClick={() => setShowVideo(true)}>🎬 {t('Editor de video')}</button>
+              <button onClick={playAnimations}>▶ {t('Previsualizar animaciones')}</button>
+              <button onClick={() => setShowPresent(true)}>🖥 {t('Modo presentación')}</button>
+              <button onClick={() => setShowShortcuts(true)}>⌨ {t('Atajos de teclado')}</button>
+              <button onClick={() => setShowSettings(true)} disabled={offlineBusy}>
+                ⬇ {t('Usar sin internet')}…
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Inputs ocultos: siempre montados para que los botones del riel funcionen */}
         <input
@@ -897,9 +951,10 @@ export default function App() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          if (dragUploadId.current) {
-            const up = uploads.find((u) => u.id === dragUploadId.current);
-            dragUploadId.current = null;
+          const upId = e.dataTransfer.getData('application/x-chamva-upload');
+          if (upId) {
+            const st = useEditor.getState();
+            const up = st.uploads.find((u) => u.id === upId) ?? st.brandLogos.find((u) => u.id === upId);
             if (up) addImageLayer(up);
             return;
           }
@@ -923,7 +978,7 @@ export default function App() {
         <RailPanels
           fileRef={fileRef}
           fontFileRef={fontFileRef}
-          dragUploadId={dragUploadId}
+          onOpenChart={(mode) => setChartDialog({ mode, initial: {} })}
           onSaveTemplate={onSaveTemplate}
           onExportTemplates={onExportTemplates}
           onImportTemplates={onImportTemplates}
@@ -964,6 +1019,10 @@ export default function App() {
           bgEdges={bgEdges}
           setBgEdges={setBgEdges}
           onRemoveBackground={onRemoveBackground}
+          onPortraitBlur={() => onPortraitBlur()}
+          onEditChart={onEditChart}
+          className={sheetOpen ? 'sheet-open' : ''}
+          onCloseSheet={() => setSheetOpen(false)}
           upBusy={upBusy}
           upMsg={upMsg}
           onUpscale={onUpscale}
@@ -975,9 +1034,16 @@ export default function App() {
         />
       </div>
 
+      {/* Móvil: botón para abrir el panel de propiedades como hoja inferior */}
+      {selected && !sheetOpen && !editingTextId && (
+        <button className="mobile-edit-btn" onClick={() => setSheetOpen(true)}>
+          ✏ {t('Editar')}
+        </button>
+      )}
+
       {ctxMenu && selected && <ContextMenu selected={selected} pos={ctxMenu} onClose={() => setCtxMenu(null)} />}
 
-      {selRect && selected && !cropMode && !maskSession && (
+      {selRect && selected && !cropMode && !maskSession && !editingTextId && !sheetOpen && (
         <FloatToolbar
           selected={selected}
           rect={selRect}
@@ -1022,11 +1088,13 @@ export default function App() {
         <HomeScreen
           designs={designs}
           hasLicense={!!license}
-          onNewDesign={() => {
-            newDesign();
+          onNewDesign={(size) => {
+            newDesign(size);
+            setCustomW(String(size.width));
+            setCustomH(String(size.height));
             setShowHome(false);
           }}
-          onEditImages={() => {
+          onContinue={() => {
             setShowVideo(false);
             setShowHome(false);
           }}
@@ -1060,6 +1128,36 @@ export default function App() {
       )}
 
       {showRequest && <RequestLicenseDialog onClose={() => setShowRequest(false)} />}
+
+      {chartDialog && (
+        <ChartEditor
+          mode={chartDialog.mode}
+          initial={chartDialog.initial}
+          onCancel={() => setChartDialog(null)}
+          onApply={(r) => {
+            const id = chartDialog.layerId;
+            if (id) {
+              updateLayer(id, {
+                src: r.src,
+                naturalWidth: r.naturalWidth,
+                naturalHeight: r.naturalHeight,
+                chart: r.chart,
+                table: r.table,
+              });
+            } else {
+              addImageLayer({
+                src: r.src,
+                naturalWidth: r.naturalWidth,
+                naturalHeight: r.naturalHeight,
+                name: r.chart ? 'Gráfica' : 'Tabla',
+                chart: r.chart,
+                table: r.table,
+              });
+            }
+            setChartDialog(null);
+          }}
+        />
+      )}
 
       <Toaster />
     </div>

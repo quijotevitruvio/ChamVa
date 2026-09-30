@@ -1,13 +1,67 @@
-import type { RefObject } from 'react';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useEditor } from '../editor/state/store';
-import { DEFAULT_ADJUST, FONT_FAMILIES } from '../editor/core/types';
+import { FONT_FAMILIES, SHAPE_OPTIONS, type Layer, type TextLayer } from '../editor/core/types';
+import { isStrokeOnly } from '../editor/core/shapes';
+import { toggleTarget, resolveCharStyles } from '../editor/core/richText';
 import { ANIMATIONS } from '../editor/core/animations';
 import { fetchIconAsImage } from '../io/iconify';
+import { loadImageFile } from '../io/import';
 import { BG_ENGINES } from '../ai/bgcore';
 import { cancelAI, type BgQuality, type EdgeMode } from '../ai/worker-client';
+import { AdjustPanel } from './AdjustPanel';
+import { toast } from './toast';
 import { t } from '../i18n';
 
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] as const;
+const BLEND_LABEL: Record<(typeof BLEND_MODES)[number], string> = {
+  normal: 'Normal',
+  multiply: 'Multiplicar',
+  screen: 'Trama',
+  overlay: 'Superponer',
+  darken: 'Oscurecer',
+  lighten: 'Aclarar',
+};
+
+// Sección plegable; recuerda si el usuario la dejó abierta o cerrada.
+function Section({
+  id,
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  id: string;
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const key = `chamva.sec.${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? defaultOpen : v === '1';
+    } catch {
+      return defaultOpen;
+    }
+  });
+  return (
+    <details
+      className="prop-section"
+      open={open}
+      onToggle={(e) => {
+        const o = (e.currentTarget as HTMLDetailsElement).open;
+        setOpen(o);
+        try {
+          localStorage.setItem(key, o ? '1' : '0');
+        } catch {
+          /* noop */
+        }
+      }}
+    >
+      <summary>{t(title)}</summary>
+      <div className="prop-section-body">{children}</div>
+    </details>
+  );
+}
 
 interface Props {
   bgBusy: boolean;
@@ -17,35 +71,21 @@ interface Props {
   bgEdges: EdgeMode;
   setBgEdges: (m: EdgeMode) => void;
   onRemoveBackground: () => void;
+  onPortraitBlur: () => void;
   upBusy: boolean;
   upMsg: string;
   onUpscale: () => void;
   onOpenMask: () => void;
   onShowFilters: () => void;
   onExportLayer: () => void;
+  onEditChart: (layerId: string) => void;
   textEditRef: RefObject<HTMLTextAreaElement | null>;
   fontFileRef: RefObject<HTMLInputElement | null>;
+  className?: string;
+  onCloseSheet?: () => void; // móvil: cerrar la hoja inferior
 }
 
-// Panel derecho: propiedades de la capa seleccionada. Lee el store
-// directamente; App solo aporta lo que depende de IA/diálogos.
-export function PropertiesPanel({
-  bgBusy,
-  bgMsg,
-  bgQuality,
-  chooseBgEngine,
-  bgEdges,
-  setBgEdges,
-  onRemoveBackground,
-  upBusy,
-  upMsg,
-  onUpscale,
-  onOpenMask,
-  onShowFilters,
-  onExportLayer,
-  textEditRef,
-  fontFileRef,
-}: Props) {
+export function PropertiesPanel(p: Props) {
   const doc = useEditor((s) => s.doc);
   const selectedId = useEditor((s) => s.selectedId);
   const selectedIds = useEditor((s) => s.selectedIds);
@@ -57,418 +97,556 @@ export function PropertiesPanel({
   const alignLayer = useEditor((s) => s.alignLayer);
   const alignSelected = useEditor((s) => s.alignSelected);
   const distributeSelected = useEditor((s) => s.distributeSelected);
+  const groupSelected = useEditor((s) => s.groupSelected);
+  const ungroupSelected = useEditor((s) => s.ungroupSelected);
   const cropMode = useEditor((s) => s.cropMode);
   const beginCrop = useEditor((s) => s.beginCrop);
   const duplicateLayer = useEditor((s) => s.duplicateLayer);
   const removeLayer = useEditor((s) => s.removeLayer);
+  const removeSelected = useEditor((s) => s.removeSelected);
   const customFonts = useEditor((s) => s.customFonts);
+  const brandFonts = useEditor((s) => s.brandFonts);
+  const textSel = useEditor((s) => s.textSel);
+  const setTextSel = useEditor((s) => s.setTextSel);
+  const styleTextRange = useEditor((s) => s.styleTextRange);
+  const setTextStyleAll = useEditor((s) => s.setTextStyleAll);
+  const requestTextEdit = useEditor((s) => s.requestTextEdit);
+  const fillFrame = useEditor((s) => s.fillFrame);
+  const frameFileRef = useRef<HTMLInputElement>(null);
 
   const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
+  const cls = `panel ${p.className ?? ''}`;
 
   if (!selected) {
     return (
-      <aside className="panel">
+      <aside className={cls}>
         <p className="empty">
-          Selecciona un elemento para editarlo, o usa el panel de la izquierda
-          para añadir.
+          Selecciona un elemento para editarlo, o usa el panel de la izquierda para añadir.
         </p>
       </aside>
     );
   }
 
-  return (
-    <aside className="panel">
-      <section className="props">
-        <h3>{t('Propiedades')}</h3>
+  const multi = selectedIds.length > 1;
+  const inGroup = !!selected.groupId;
+  const maskShapes = SHAPE_OPTIONS.filter((s) => !isStrokeOnly(s.kind));
 
-        {selectedIds.length > 1 && (
-          <>
-            <p className="rail-sub">{selectedIds.length} seleccionados</p>
-            <div className="align-grid">
-              <button onClick={() => alignSelected('left')} title="Izquierda">⬅</button>
-              <button onClick={() => alignSelected('centerH')} title="Centro H">⬌</button>
-              <button onClick={() => alignSelected('right')} title="Derecha">➡</button>
-              <button onClick={() => alignSelected('top')} title="Arriba">⬆</button>
-              <button onClick={() => alignSelected('centerV')} title="Centro V">⬍</button>
-              <button onClick={() => alignSelected('bottom')} title="Abajo">⬇</button>
+  // Recuerda qué parte del texto está seleccionada en el cuadro del panel.
+  const captureSel = (el: HTMLTextAreaElement) =>
+    setTextSel({ id: selected.id, start: el.selectionStart, end: el.selectionEnd });
+
+  // --- estilo de texto: a la palabra seleccionada o a todo el texto ---
+  const rangeOf = (l: TextLayer) =>
+    textSel && textSel.id === l.id && textSel.end > textSel.start ? textSel : null;
+  const toggleText = (l: TextLayer, key: 'bold' | 'italic' | 'underline') => {
+    const r = rangeOf(l);
+    if (r) styleTextRange(l.id, r.start, r.end, { [key]: toggleTarget(l, r.start, r.end, key) });
+    else setTextStyleAll(l.id, { [key]: !l[key] });
+  };
+  const isActive = (l: TextLayer, key: 'bold' | 'italic' | 'underline') => {
+    const r = rangeOf(l);
+    return r ? !toggleTarget(l, r.start, r.end, key) : !!l[key];
+  };
+  const colorOf = (l: TextLayer) => {
+    const r = rangeOf(l);
+    return r ? resolveCharStyles(l)[r.start]?.color ?? l.fill : l.fill;
+  };
+  const setTextColor = (l: TextLayer, c: string) => {
+    const r = rangeOf(l);
+    if (r) styleTextRange(l.id, r.start, r.end, { color: c });
+    else setTextStyleAll(l.id, { fill: c });
+  };
+
+  const range = (
+    label: string,
+    value: number,
+    min: number,
+    max: number,
+    step: number,
+    onChange: (v: number) => void,
+    shown?: string,
+  ) => (
+    <label className="prop">
+      {label}: {shown ?? Math.round(value)}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onPointerDown={checkpoint}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </label>
+  );
+
+  const shadowControls = (l: Layer & { shadow: boolean; shadowColor: string; shadowBlur: number }) => (
+    <>
+      <div className="row text-row">
+        <button
+          className={l.shadow ? 'active' : ''}
+          style={{ flex: 1 }}
+          onClick={() => updateLayer(l.id, { shadow: !l.shadow })}
+        >
+          Sombra {l.shadow ? '✓' : ''}
+        </button>
+        <input
+          type="color"
+          value={l.shadowColor}
+          onChange={(e) => updateLayer(l.id, { shadowColor: e.target.value })}
+          title="Color de la sombra"
+        />
+      </div>
+      {l.shadow &&
+        range('Desenfoque', l.shadowBlur, 0, 60, 1, (v) => updateLayerLive(l.id, { shadowBlur: v }))}
+    </>
+  );
+
+  return (
+    <aside className={cls}>
+      <section className="props">
+        <div className="props-head">
+          <h3>{t('Propiedades')}</h3>
+          {p.onCloseSheet && (
+            <button className="sheet-close" onClick={p.onCloseSheet} title="Cerrar">
+              ✕
+            </button>
+          )}
+        </div>
+
+        {(multi || inGroup) && (
+          <Section id="group" title="Selección y grupo" defaultOpen>
+            {multi && <p className="rail-sub">{selectedIds.length} seleccionados</p>}
+            <div className="row">
+              {multi && !selectedIds.every((id) => doc.layers.find((l) => l.id === id)?.groupId === selected.groupId && selected.groupId) && (
+                <button onClick={groupSelected} title="Ctrl+G">
+                  🔗 {t('Agrupar')}
+                </button>
+              )}
+              {inGroup && (
+                <button onClick={ungroupSelected} title="Ctrl+Shift+G">
+                  ⛓‍💥 {t('Desagrupar')}
+                </button>
+              )}
             </div>
-            {selectedIds.length >= 3 && (
-              <div className="row">
-                <button onClick={() => distributeSelected('h')}>Distribuir H</button>
-                <button onClick={() => distributeSelected('v')}>Distribuir V</button>
-              </div>
+            {inGroup && !multi && (
+              <p className="rail-hint">Editas un elemento suelto del grupo (doble clic para entrar).</p>
             )}
-          </>
+            {multi && (
+              <>
+                <div className="align-grid">
+                  <button onClick={() => alignSelected('left')} title="Izquierda">⬅</button>
+                  <button onClick={() => alignSelected('centerH')} title="Centro H">⬌</button>
+                  <button onClick={() => alignSelected('right')} title="Derecha">➡</button>
+                  <button onClick={() => alignSelected('top')} title="Arriba">⬆</button>
+                  <button onClick={() => alignSelected('centerV')} title="Centro V">⬍</button>
+                  <button onClick={() => alignSelected('bottom')} title="Abajo">⬇</button>
+                </div>
+                {selectedIds.length >= 3 && (
+                  <div className="row">
+                    <button onClick={() => distributeSelected('h')}>Distribuir H</button>
+                    <button onClick={() => distributeSelected('v')}>Distribuir V</button>
+                  </div>
+                )}
+                <button className="danger full" onClick={removeSelected}>
+                  🗑 Borrar selección
+                </button>
+              </>
+            )}
+          </Section>
         )}
 
         {selected.type === 'image' && (
           <>
-            <div className="bg-quality">
-              <button className="magic full" onClick={onRemoveBackground} disabled={bgBusy}>
-                {bgBusy ? '✂ …' : '✂ Quitar fondo (IA)'}
+            {(selected.chart || selected.table) && (
+              <button className="magic full" onClick={() => p.onEditChart(selected.id)}>
+                ✏ {selected.chart ? t('Editar gráfica') : t('Editar tabla')}
               </button>
-              <select
-                value={bgQuality}
-                disabled={bgBusy}
-                onChange={(e) => chooseBgEngine(e.target.value as BgQuality)}
-                title="Motor de IA para quitar el fondo (todos locales)"
-              >
-                {BG_ENGINES.map((en) => (
-                  <option key={en.id} value={en.id}>
-                    {en.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="prop">
-              {t('Bordes')}
-              <select
-                value={bgEdges}
-                disabled={bgBusy}
-                onChange={(e) => setBgEdges(e.target.value as EdgeMode)}
-                title="Cómo refinar el borde del recorte"
-              >
-                <option value="auto">{t('Automático')}</option>
-                <option value="photo">{t('Foto (suave)')}</option>
-                <option value="graphic">{t('Logo / texto (nítido)')}</option>
-                <option value="none">{t('Sin refinar')}</option>
-              </select>
-            </label>
-            {bgBusy && (
-              <p className="bgmsg">
-                {bgMsg}{' '}
-                <button className="mini" onClick={cancelAI}>
-                  ✕ {t('Cancelar')}
-                </button>
-              </p>
             )}
 
-            <div className="row">
-              <button onClick={() => updateLayer(selected.id, { flipX: !selected.flipX })}>
-                ↔ Voltear H
-              </button>
-              <button onClick={() => updateLayer(selected.id, { flipY: !selected.flipY })}>
-                ↕ Voltear V
-              </button>
-            </div>
-
-            <button className="full" onClick={beginCrop} disabled={cropMode}>
-              ⛶ Recortar
-            </button>
-
-            <button className="magic full" onClick={onOpenMask}>
-              🪄 Borrador / Pincel
-            </button>
-
-            <button className="magic full" onClick={onUpscale} disabled={upBusy}>
-              {upBusy ? '🔍 …' : '🔍 Optimizar (HD ×2)'}
-            </button>
-            {upBusy && (
-              <p className="bgmsg">
-                {upMsg}{' '}
-                <button className="mini" onClick={cancelAI}>
-                  ✕ {t('Cancelar')}
+            <Section id="img-bg" title="Quitar fondo" defaultOpen>
+              <div className="bg-quality">
+                <button className="magic full" onClick={p.onRemoveBackground} disabled={p.bgBusy}>
+                  {p.bgBusy ? '✂ …' : '✂ Quitar fondo (IA)'}
                 </button>
-              </p>
-            )}
+                <select
+                  value={p.bgQuality}
+                  disabled={p.bgBusy}
+                  onChange={(e) => p.chooseBgEngine(e.target.value as BgQuality)}
+                  title="Motor de IA para quitar el fondo (todos locales)"
+                >
+                  {BG_ENGINES.map((en) => (
+                    <option key={en.id} value={en.id}>
+                      {en.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="prop">
+                {t('Bordes')}
+                <select
+                  value={p.bgEdges}
+                  disabled={p.bgBusy}
+                  onChange={(e) => p.setBgEdges(e.target.value as EdgeMode)}
+                  title="Cómo refinar el borde del recorte"
+                >
+                  <option value="auto">{t('Automático')}</option>
+                  <option value="photo">{t('Foto (suave)')}</option>
+                  <option value="graphic">{t('Logo / texto (nítido)')}</option>
+                  <option value="none">{t('Sin refinar')}</option>
+                </select>
+              </label>
+              <button
+                className="full"
+                onClick={p.onPortraitBlur}
+                disabled={p.bgBusy}
+                title="Deja la persona nítida y desenfoca lo de atrás"
+              >
+                🌫 {t('Desenfocar fondo (retrato)')}
+              </button>
+              {p.bgBusy && (
+                <p className="bgmsg">
+                  {p.bgMsg}{' '}
+                  <button className="mini" onClick={cancelAI}>
+                    ✕ {t('Cancelar')}
+                  </button>
+                </p>
+              )}
+            </Section>
 
-            <div className="align-grid">
-              <button onClick={() => alignLayer(selected.id, 'left')} title="Izquierda">⬅</button>
-              <button onClick={() => alignLayer(selected.id, 'centerH')} title="Centro H">⬌</button>
-              <button onClick={() => alignLayer(selected.id, 'right')} title="Derecha">➡</button>
-              <button onClick={() => alignLayer(selected.id, 'top')} title="Arriba">⬆</button>
-              <button onClick={() => alignLayer(selected.id, 'centerV')} title="Centro V">⬍</button>
-              <button onClick={() => alignLayer(selected.id, 'bottom')} title="Abajo">⬇</button>
-            </div>
+            <Section id="img-edit" title="Editar foto" defaultOpen>
+              <div className="row">
+                <button onClick={() => updateLayer(selected.id, { flipX: !selected.flipX })}>↔ Voltear H</button>
+                <button onClick={() => updateLayer(selected.id, { flipY: !selected.flipY })}>↕ Voltear V</button>
+              </div>
+              <div className="row">
+                <button onClick={beginCrop} disabled={cropMode}>
+                  ⛶ Recortar
+                </button>
+                <button onClick={p.onOpenMask}>🪄 Borrador</button>
+              </div>
+              <button className="magic full" onClick={p.onUpscale} disabled={p.upBusy}>
+                {p.upBusy ? '🔍 …' : '🔍 Optimizar (HD ×2)'}
+              </button>
+              {p.upBusy && (
+                <p className="bgmsg">
+                  {p.upMsg}{' '}
+                  <button className="mini" onClick={cancelAI}>
+                    ✕ {t('Cancelar')}
+                  </button>
+                </p>
+              )}
+              <button className="magic full" onClick={p.onShowFilters}>
+                🎨 Filtros y Duotono
+              </button>
+              <label className="prop">
+                Recortar a forma
+                <select
+                  value={selected.maskShape ?? ''}
+                  onChange={(e) =>
+                    updateLayer(selected.id, {
+                      maskShape: (e.target.value || undefined) as typeof selected.maskShape,
+                    })
+                  }
+                >
+                  <option value="">Ninguna</option>
+                  {maskShapes.map((s) => (
+                    <option key={s.kind} value={s.kind}>
+                      {s.icon} {s.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selected.iconName && (
+                <label className="prop">
+                  Color del icono
+                  <input
+                    type="color"
+                    onChange={async (e) => {
+                      const color = e.target.value;
+                      try {
+                        const img = await fetchIconAsImage(selected.iconName!, 300, color);
+                        updateLayer(selected.id, { src: img.src });
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </Section>
+
+            <Section id="img-adjust" title="Ajustes de luz y color">
+              <AdjustPanel layer={selected} />
+            </Section>
           </>
         )}
 
         {selected.type === 'text' && (
           <>
-            <label className="prop">
-              Texto
-              <textarea
-                ref={textEditRef}
-                className="text-edit"
-                rows={2}
-                value={selected.text}
-                onFocus={checkpoint}
-                onChange={(e) => updateLayerLive(selected.id, { text: e.target.value })}
-              />
-            </label>
-            <label className="prop">
-              Fuente
-              <div className="font-row">
-                <select
-                  value={selected.fontFamily}
-                  onChange={(e) => updateLayer(selected.id, { fontFamily: e.target.value })}
-                >
-                  {customFonts.length > 0 && (
-                    <optgroup label="Mis fuentes">
-                      {customFonts.map((f) => (
-                        <option key={f} value={f}>
+            <Section id="txt-main" title="Texto" defaultOpen>
+              <label className="prop">
+                Texto
+                <textarea
+                  ref={p.textEditRef}
+                  className="text-edit"
+                  rows={2}
+                  value={selected.text}
+                  onFocus={checkpoint}
+                  onSelect={(e) => captureSel(e.currentTarget)}
+                  onMouseUp={(e) => captureSel(e.currentTarget)}
+                  onKeyUp={(e) => captureSel(e.currentTarget)}
+                  onChange={(e) => updateLayerLive(selected.id, { text: e.target.value })}
+                />
+              </label>
+              <p className="rail-hint">
+                {rangeOf(selected)
+                  ? '✨ Los botones B / I / U y el color se aplican a la selección.'
+                  : 'Selecciona una palabra (aquí o con doble clic en el lienzo) para darle estilo solo a ella.'}
+              </p>
+              <button className="full" onClick={() => requestTextEdit(selected.id)}>
+                ✎ {t('Editar sobre el diseño')}
+              </button>
+              <label className="prop">
+                Fuente
+                <div className="font-row">
+                  <select
+                    value={selected.fontFamily}
+                    onChange={(e) => updateLayer(selected.id, { fontFamily: e.target.value })}
+                  >
+                    {brandFonts.length > 0 && (
+                      <optgroup label="Fuentes de marca">
+                        {brandFonts.map((f) => (
+                          <option key={'b' + f} value={f} style={{ fontFamily: f }}>
+                            {f}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {customFonts.length > 0 && (
+                      <optgroup label="Mis fuentes">
+                        {customFonts.map((f) => (
+                          <option key={f} value={f}>
+                            {f}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Fuentes">
+                      {FONT_FAMILIES.map((f) => (
+                        <option key={f} value={f} style={{ fontFamily: f }}>
                           {f}
                         </option>
                       ))}
                     </optgroup>
-                  )}
-                  <optgroup label="Fuentes">
-                    {FONT_FAMILIES.map((f) => (
-                      <option key={f} value={f} style={{ fontFamily: f }}>
-                        {f}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-                <button
-                  className="font-upload"
-                  title="Cargar fuente propia (.ttf/.otf/.woff)"
-                  onClick={() => fontFileRef.current?.click()}
-                >
-                  ⬆
-                </button>
-              </div>
-            </label>
-            <div className="row text-row">
-              <input
-                type="number"
-                min={6}
-                value={Math.round(selected.fontSize)}
-                onFocus={checkpoint}
-                onChange={(e) =>
-                  updateLayerLive(selected.id, {
-                    fontSize: Math.max(6, Number(e.target.value) || 6),
-                  })
-                }
-                title="Tamaño"
-              />
-              <input
-                type="color"
-                value={selected.fill}
-                onChange={(e) => updateLayer(selected.id, { fill: e.target.value })}
-                title="Color"
-              />
-              <button
-                className={selected.bold ? 'active' : ''}
-                onClick={() => updateLayer(selected.id, { bold: !selected.bold })}
-                title="Negrita"
-              >
-                <b>B</b>
-              </button>
-              <button
-                className={selected.italic ? 'active' : ''}
-                onClick={() => updateLayer(selected.id, { italic: !selected.italic })}
-                title="Cursiva"
-              >
-                <i>I</i>
-              </button>
-            </div>
-            <div className="row">
-              {(['left', 'center', 'right'] as const).map((a) => (
-                <button
-                  key={a}
-                  className={selected.align === a ? 'active' : ''}
-                  onClick={() => updateLayer(selected.id, { align: a })}
-                >
-                  {a === 'left' ? '⬅' : a === 'center' ? '⬌' : '➡'}
-                </button>
-              ))}
-            </div>
-
-            <div className="row">
-              {(
-                [
-                  ['none', 'Aa'],
-                  ['upper', 'AA'],
-                  ['lower', 'aa'],
-                  ['caps', 'Ab'],
-                ] as const
-              ).map(([mode, lbl]) => (
-                <button
-                  key={mode}
-                  className={selected.textTransform === mode ? 'active' : ''}
-                  onClick={() => updateLayer(selected.id, { textTransform: mode })}
-                  title={
-                    mode === 'none'
-                      ? 'Normal'
-                      : mode === 'upper'
-                        ? 'MAYÚSCULAS'
-                        : mode === 'lower'
-                          ? 'minúsculas'
-                          : 'Capitalizar'
-                  }
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
-
-            <label className="prop">
-              Espaciado: {Math.round(selected.letterSpacing)}
-              <input
-                type="range"
-                min={-5}
-                max={40}
-                step={1}
-                value={selected.letterSpacing}
-                onPointerDown={checkpoint}
-                onChange={(e) =>
-                  updateLayerLive(selected.id, { letterSpacing: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="prop">
-              Interlineado: {(selected.lineHeight ?? 1).toFixed(2)}
-              <input
-                type="range"
-                min={0.8}
-                max={2.5}
-                step={0.05}
-                value={selected.lineHeight ?? 1}
-                onPointerDown={checkpoint}
-                onChange={(e) =>
-                  updateLayerLive(selected.id, { lineHeight: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="prop">
-              Curvar: {Math.round(selected.curve ?? 0)}°
-              <input
-                type="range"
-                min={-180}
-                max={180}
-                step={5}
-                value={selected.curve ?? 0}
-                onPointerDown={checkpoint}
-                onChange={(e) => updateLayerLive(selected.id, { curve: Number(e.target.value) })}
-              />
-            </label>
-
-            <div className="row">
-              <button
-                onClick={() =>
-                  updateLayer(selected.id, {
-                    shadow: true,
-                    shadowColor: selected.fill,
-                    shadowBlur: Math.round(selected.fontSize * 0.5),
-                    shadowX: 0,
-                    shadowY: 0,
-                  })
-                }
-                title="Resplandor de neón"
-              >
-                ✨ Neón
-              </button>
-              <button onClick={() => updateLayer(selected.id, { shadow: false })}>
-                Sin efecto
-              </button>
-            </div>
-
-            <label className="prop">
-              Lista
-              <select
-                value={selected.listStyle ?? 'none'}
-                onChange={(e) =>
-                  updateLayer(selected.id, {
-                    listStyle: e.target.value as 'none' | 'bullet' | 'number',
-                  })
-                }
-              >
-                <option value="none">Sin lista</option>
-                <option value="bullet">• Viñetas</option>
-                <option value="number">1. Numerada</option>
-              </select>
-            </label>
-            <label className="prop">
-              Efecto de texto
-              <select
-                value={selected.textEffect ?? 'none'}
-                onChange={(e) =>
-                  updateLayer(selected.id, {
-                    textEffect: e.target.value as 'none' | 'echo' | 'background',
-                    effectColor:
-                      selected.effectColor ??
-                      (e.target.value === 'background' ? '#000000' : selected.fill),
-                  })
-                }
-              >
-                <option value="none">Ninguno</option>
-                <option value="echo">Eco</option>
-                <option value="background">Fondo</option>
-              </select>
-            </label>
-            {selected.textEffect && selected.textEffect !== 'none' && (
+                  </select>
+                  <button
+                    className="font-upload"
+                    title="Cargar fuente propia (.ttf/.otf/.woff)"
+                    onClick={() => p.fontFileRef.current?.click()}
+                  >
+                    ⬆
+                  </button>
+                </div>
+              </label>
               <div className="row text-row">
-                <span style={{ fontSize: 13, flex: 1 }}>Color del efecto</span>
+                <input
+                  type="number"
+                  min={6}
+                  value={Math.round(selected.fontSize)}
+                  onFocus={checkpoint}
+                  onChange={(e) =>
+                    updateLayerLive(selected.id, { fontSize: Math.max(6, Number(e.target.value) || 6) })
+                  }
+                  title="Tamaño"
+                />
                 <input
                   type="color"
-                  value={selected.effectColor ?? '#000000'}
-                  onChange={(e) => updateLayer(selected.id, { effectColor: e.target.value })}
-                  title="Color del eco / fondo"
+                  value={colorOf(selected)}
+                  onChange={(e) => setTextColor(selected, e.target.value)}
+                  title="Color"
+                />
+                <button
+                  className={isActive(selected, 'bold') ? 'active' : ''}
+                  onClick={() => toggleText(selected, 'bold')}
+                  title="Negrita"
+                >
+                  <b>B</b>
+                </button>
+                <button
+                  className={isActive(selected, 'italic') ? 'active' : ''}
+                  onClick={() => toggleText(selected, 'italic')}
+                  title="Cursiva"
+                >
+                  <i>I</i>
+                </button>
+                <button
+                  className={isActive(selected, 'underline') ? 'active' : ''}
+                  onClick={() => toggleText(selected, 'underline')}
+                  title="Subrayado"
+                >
+                  <u>U</u>
+                </button>
+              </div>
+              <div className="row">
+                {(['left', 'center', 'right'] as const).map((a) => (
+                  <button
+                    key={a}
+                    className={selected.align === a ? 'active' : ''}
+                    onClick={() => updateLayer(selected.id, { align: a })}
+                  >
+                    {a === 'left' ? '⬅' : a === 'center' ? '⬌' : '➡'}
+                  </button>
+                ))}
+              </div>
+            </Section>
+
+            <Section id="txt-space" title="Espaciado, mayúsculas y listas">
+              <div className="row">
+                {(
+                  [
+                    ['none', 'Aa', 'Normal'],
+                    ['upper', 'AA', 'MAYÚSCULAS'],
+                    ['lower', 'aa', 'minúsculas'],
+                    ['caps', 'Ab', 'Capitalizar'],
+                  ] as const
+                ).map(([mode, lbl, title]) => (
+                  <button
+                    key={mode}
+                    className={selected.textTransform === mode ? 'active' : ''}
+                    onClick={() => updateLayer(selected.id, { textTransform: mode })}
+                    title={title}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {range('Espaciado', selected.letterSpacing, -5, 40, 1, (v) =>
+                updateLayerLive(selected.id, { letterSpacing: v }),
+              )}
+              {range(
+                'Interlineado',
+                selected.lineHeight ?? 1,
+                0.8,
+                2.5,
+                0.05,
+                (v) => updateLayerLive(selected.id, { lineHeight: v }),
+                (selected.lineHeight ?? 1).toFixed(2),
+              )}
+              {range(
+                'Curvar',
+                selected.curve ?? 0,
+                -180,
+                180,
+                5,
+                (v) => updateLayerLive(selected.id, { curve: v }),
+                `${Math.round(selected.curve ?? 0)}°`,
+              )}
+              <label className="prop">
+                Lista
+                <select
+                  value={selected.listStyle ?? 'none'}
+                  onChange={(e) =>
+                    updateLayer(selected.id, { listStyle: e.target.value as 'none' | 'bullet' | 'number' })
+                  }
+                >
+                  <option value="none">Sin lista</option>
+                  <option value="bullet">• Viñetas</option>
+                  <option value="number">1. Numerada</option>
+                </select>
+              </label>
+            </Section>
+
+            <Section id="txt-fx" title="Efectos de texto">
+              <div className="row">
+                <button
+                  onClick={() =>
+                    updateLayer(selected.id, {
+                      shadow: true,
+                      shadowColor: selected.fill,
+                      shadowBlur: Math.round(selected.fontSize * 0.5),
+                      shadowX: 0,
+                      shadowY: 0,
+                    })
+                  }
+                  title="Resplandor de neón"
+                >
+                  ✨ Neón
+                </button>
+                <button onClick={() => updateLayer(selected.id, { shadow: false, textEffect: 'none', strokeWidth: 0 })}>
+                  Sin efecto
+                </button>
+              </div>
+              <label className="prop">
+                Efecto
+                <select
+                  value={selected.textEffect ?? 'none'}
+                  onChange={(e) =>
+                    updateLayer(selected.id, {
+                      textEffect: e.target.value as 'none' | 'echo' | 'background',
+                      effectColor:
+                        selected.effectColor ?? (e.target.value === 'background' ? '#000000' : selected.fill),
+                    })
+                  }
+                >
+                  <option value="none">Ninguno</option>
+                  <option value="echo">Eco</option>
+                  <option value="background">Fondo</option>
+                </select>
+              </label>
+              {selected.textEffect && selected.textEffect !== 'none' && (
+                <div className="row text-row">
+                  <span style={{ fontSize: 13, flex: 1 }}>Color del efecto</span>
+                  <input
+                    type="color"
+                    value={selected.effectColor ?? '#000000'}
+                    onChange={(e) => updateLayer(selected.id, { effectColor: e.target.value })}
+                  />
+                </div>
+              )}
+              <div className="row text-row">
+                <span style={{ fontSize: 13, flex: 1 }}>Contorno</span>
+                <input
+                  type="color"
+                  value={selected.strokeColor}
+                  onChange={(e) => updateLayer(selected.id, { strokeColor: e.target.value })}
+                  title="Color del contorno"
                 />
               </div>
-            )}
-
-            <div className="row text-row">
-              <span style={{ fontSize: 13, flex: 1 }}>Contorno</span>
-              <input
-                type="color"
-                value={selected.strokeColor}
-                onChange={(e) => updateLayer(selected.id, { strokeColor: e.target.value })}
-                title="Color del contorno"
-              />
-            </div>
-            <label className="prop">
-              Grosor contorno: {Math.round(selected.strokeWidth)}
-              <input
-                type="range"
-                min={0}
-                max={20}
-                step={1}
-                value={selected.strokeWidth}
-                onPointerDown={checkpoint}
-                onChange={(e) =>
-                  updateLayerLive(selected.id, { strokeWidth: Number(e.target.value) })
-                }
-              />
-            </label>
-
-            <div className="row text-row">
-              <button
-                className={selected.shadow ? 'active' : ''}
-                style={{ flex: 1 }}
-                onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}
-              >
-                Sombra {selected.shadow ? '✓' : ''}
-              </button>
-              <input
-                type="color"
-                value={selected.shadowColor}
-                onChange={(e) => updateLayer(selected.id, { shadowColor: e.target.value })}
-                title="Color de la sombra"
-              />
-            </div>
-            {selected.shadow && (
-              <label className="prop">
-                Desenfoque sombra: {Math.round(selected.shadowBlur)}
-                <input
-                  type="range"
-                  min={0}
-                  max={40}
-                  step={1}
-                  value={selected.shadowBlur}
-                  onPointerDown={checkpoint}
-                  onChange={(e) =>
-                    updateLayerLive(selected.id, { shadowBlur: Number(e.target.value) })
-                  }
-                />
-              </label>
-            )}
+              {range('Grosor contorno', selected.strokeWidth, 0, 20, 1, (v) =>
+                updateLayerLive(selected.id, { strokeWidth: v }),
+              )}
+              {shadowControls(selected)}
+            </Section>
           </>
         )}
 
         {selected.type === 'shape' && (
-          <>
+          <Section id="shape" title={selected.frame ? 'Marco' : 'Forma'} defaultOpen>
+            {selected.frame && (
+              <>
+                <button className="magic full" onClick={() => frameFileRef.current?.click()}>
+                  🖼 {t('Poner una foto en el marco')}
+                </button>
+                <input
+                  ref={frameFileRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    try {
+                      await fillFrame(selected.id, await loadImageFile(file));
+                    } catch (err) {
+                      toast('No se pudo poner la foto: ' + (err as Error).message, 'error');
+                    }
+                  }}
+                />
+                <p className="rail-hint">También puedes arrastrar una foto encima del marco.</p>
+              </>
+            )}
             <div className="row text-row">
               <label className="shape-color">
                 Relleno
@@ -487,271 +665,142 @@ export function PropertiesPanel({
                 />
               </label>
             </div>
-            <label className="prop">
-              Grosor del borde: {Math.round(selected.strokeWidth)}
-              <input
-                type="range"
-                min={0}
-                max={40}
-                step={1}
-                value={selected.strokeWidth}
-                onPointerDown={checkpoint}
-                onChange={(e) =>
-                  updateLayerLive(selected.id, { strokeWidth: Number(e.target.value) })
-                }
-              />
-            </label>
-            {selected.shape === 'rect' && (
-              <label className="prop">
-                Esquinas: {Math.round(selected.cornerRadius)}
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.round(Math.min(selected.width, selected.height) / 2)}
-                  step={1}
-                  value={selected.cornerRadius}
-                  onPointerDown={checkpoint}
-                  onChange={(e) =>
-                    updateLayerLive(selected.id, { cornerRadius: Number(e.target.value) })
-                  }
-                />
-              </label>
+            {range('Grosor del borde', selected.strokeWidth, 0, 40, 1, (v) =>
+              updateLayerLive(selected.id, { strokeWidth: v }),
             )}
-          </>
-        )}
-
-        <label className="prop">
-          {t('Rotación')}: {Math.round(((selected.rotation % 360) + 360) % 360)}°
-          <input
-            type="range"
-            min={0}
-            max={360}
-            step={1}
-            value={((Math.round(selected.rotation) % 360) + 360) % 360}
-            onPointerDown={checkpoint}
-            onChange={(e) => setLayerRotation(selected.id, Number(e.target.value), true)}
-          />
-        </label>
-        <div className="row">
-          <button
-            onClick={() => setLayerRotation(selected.id, selected.rotation - 90)}
-            title="Girar 90° a la izquierda"
-          >
-            ⟲ 90°
-          </button>
-          <button
-            onClick={() => setLayerRotation(selected.id, selected.rotation + 90)}
-            title="Girar 90° a la derecha"
-          >
-            ⟳ 90°
-          </button>
-        </div>
-
-        <label className="prop">
-          {t('Opacidad')}
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={selected.opacity}
-            onPointerDown={checkpoint}
-            onChange={(e) => updateLayerLive(selected.id, { opacity: Number(e.target.value) })}
-          />
-        </label>
-
-        <label className="prop">
-          Mezcla
-          <select
-            value={selected.blendMode}
-            onChange={(e) =>
-              updateLayer(selected.id, {
-                blendMode: e.target.value as (typeof BLEND_MODES)[number],
-              })
-            }
-          >
-            {BLEND_MODES.map((m) => (
-              <option key={m} value={m}>
-                {m === 'normal'
-                  ? 'Normal'
-                  : m === 'multiply'
-                    ? 'Multiplicar'
-                    : m === 'screen'
-                      ? 'Trama'
-                      : m === 'overlay'
-                        ? 'Superponer'
-                        : m === 'darken'
-                          ? 'Oscurecer'
-                          : 'Aclarar'}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="prop">
-          Entrada
-          <select
-            value={selected.anim ?? 'none'}
-            onChange={(e) => updateLayer(selected.id, { anim: e.target.value })}
-          >
-            {ANIMATIONS.map((an) => (
-              <option key={an.id} value={an.id}>
-                {an.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="prop">
-          Salida
-          <select
-            value={selected.animOut ?? 'none'}
-            onChange={(e) => updateLayer(selected.id, { animOut: e.target.value })}
-          >
-            {ANIMATIONS.map((an) => (
-              <option key={an.id} value={an.id}>
-                {an.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {((selected.anim ?? 'none') !== 'none' || (selected.animOut ?? 'none') !== 'none') && (
-          <label className="prop">
-            Duración: {(selected.animDuration ?? 0.6).toFixed(1)}s
-            <input
-              type="range"
-              min={0.2}
-              max={3}
-              step={0.1}
-              value={selected.animDuration ?? 0.6}
-              onPointerDown={checkpoint}
-              onChange={(e) =>
-                updateLayerLive(selected.id, { animDuration: Number(e.target.value) })
-              }
-            />
-          </label>
-        )}
-
-        {(selected.type === 'image' || selected.type === 'shape') && (
-          <>
-            <div className="row text-row">
-              <button
-                className={selected.shadow ? 'active' : ''}
-                style={{ flex: 1 }}
-                onClick={() => updateLayer(selected.id, { shadow: !selected.shadow })}
-              >
-                Sombra {selected.shadow ? '✓' : ''}
-              </button>
-              <input
-                type="color"
-                value={selected.shadowColor}
-                onChange={(e) => updateLayer(selected.id, { shadowColor: e.target.value })}
-                title="Color de la sombra"
-              />
-            </div>
-            {selected.shadow && (
-              <label className="prop">
-                Desenfoque: {Math.round(selected.shadowBlur)}
-                <input
-                  type="range"
-                  min={0}
-                  max={60}
-                  step={1}
-                  value={selected.shadowBlur}
-                  onPointerDown={checkpoint}
-                  onChange={(e) =>
-                    updateLayerLive(selected.id, { shadowBlur: Number(e.target.value) })
-                  }
-                />
-              </label>
-            )}
-          </>
+            {selected.shape === 'rect' &&
+              range(
+                'Esquinas',
+                selected.cornerRadius,
+                0,
+                Math.round(Math.min(selected.width, selected.height) / 2),
+                1,
+                (v) => updateLayerLive(selected.id, { cornerRadius: v }),
+              )}
+            {shadowControls(selected)}
+          </Section>
         )}
 
         {selected.type === 'image' && (
-          <>
-            {(
-              [
-                ['Brillo', 'brightness'],
-                ['Contraste', 'contrast'],
-                ['Saturación', 'saturate'],
-              ] as const
-            ).map(([label, key]) => (
-              <label className="prop" key={key}>
-                {label}
-                <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.01}
-                  value={selected.adjust?.[key] ?? 1}
-                  onPointerDown={checkpoint}
-                  onChange={(e) =>
-                    updateLayerLive(selected.id, {
-                      adjust: { ...(selected.adjust ?? DEFAULT_ADJUST), [key]: Number(e.target.value) },
-                    })
-                  }
-                />
-              </label>
-            ))}
-
-            <button className="magic full" onClick={onShowFilters}>
-              🎨 Filtros y Duotono
-            </button>
-
-            <label className="prop">
-              Recortar a forma
-              <select
-                value={selected.maskShape ?? ''}
-                onChange={(e) =>
-                  updateLayer(selected.id, {
-                    maskShape: (e.target.value || undefined) as typeof selected.maskShape,
-                  })
-                }
-              >
-                <option value="">Ninguna</option>
-                <option value="ellipse">Círculo</option>
-                <option value="rect">Rectángulo</option>
-                <option value="triangle">Triángulo</option>
-                <option value="star">Estrella</option>
-              </select>
-            </label>
-
-            {selected.iconName && (
-              <label className="prop">
-                Color del icono
-                <input
-                  type="color"
-                  onChange={async (e) => {
-                    const color = e.target.value;
-                    const name = selected.iconName!;
-                    try {
-                      const img = await fetchIconAsImage(name, 300, color);
-                      updateLayer(selected.id, { src: img.src });
-                    } catch (err) {
-                      console.error(err);
-                    }
-                  }}
-                />
-              </label>
-            )}
-          </>
+          <Section id="img-shadow" title="Sombra">
+            {shadowControls(selected)}
+          </Section>
         )}
-        <div className="row">
-          <button onClick={() => moveLayer(selected.id, 'up')}>⬆ Subir</button>
-          <button onClick={() => moveLayer(selected.id, 'down')}>⬇ Bajar</button>
-        </div>
-        <div className="row">
-          <button onClick={() => updateLayer(selected.id, { locked: !selected.locked })}>
-            {selected.locked ? '🔓 Desbloquear' : '🔒 Bloquear'}
+
+        <Section id="pos" title="Posición, giro y transparencia">
+          {range(
+            t('Rotación'),
+            ((Math.round(selected.rotation) % 360) + 360) % 360,
+            0,
+            360,
+            1,
+            (v) => setLayerRotation(selected.id, v, true),
+            `${Math.round(((selected.rotation % 360) + 360) % 360)}°`,
+          )}
+          <div className="row">
+            <button onClick={() => setLayerRotation(selected.id, selected.rotation - 90)} title="Girar 90° a la izquierda">
+              ⟲ 90°
+            </button>
+            <button onClick={() => setLayerRotation(selected.id, selected.rotation + 90)} title="Girar 90° a la derecha">
+              ⟳ 90°
+            </button>
+          </div>
+          {range(
+            t('Opacidad'),
+            selected.opacity,
+            0,
+            1,
+            0.01,
+            (v) => updateLayerLive(selected.id, { opacity: v }),
+            `${Math.round(selected.opacity * 100)}%`,
+          )}
+          <label className="prop">
+            Mezcla
+            <select
+              value={selected.blendMode}
+              onChange={(e) =>
+                updateLayer(selected.id, { blendMode: e.target.value as (typeof BLEND_MODES)[number] })
+              }
+            >
+              {BLEND_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {BLEND_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!multi && (
+            <>
+              <span className="rail-sub">Alinear en la página</span>
+              <div className="align-grid">
+                <button onClick={() => alignLayer(selected.id, 'left')} title="Izquierda">⬅</button>
+                <button onClick={() => alignLayer(selected.id, 'centerH')} title="Centro H">⬌</button>
+                <button onClick={() => alignLayer(selected.id, 'right')} title="Derecha">➡</button>
+                <button onClick={() => alignLayer(selected.id, 'top')} title="Arriba">⬆</button>
+                <button onClick={() => alignLayer(selected.id, 'centerV')} title="Centro V">⬍</button>
+                <button onClick={() => alignLayer(selected.id, 'bottom')} title="Abajo">⬇</button>
+              </div>
+            </>
+          )}
+          <div className="row">
+            <button onClick={() => moveLayer(selected.id, 'up')}>⬆ Subir capa</button>
+            <button onClick={() => moveLayer(selected.id, 'down')}>⬇ Bajar capa</button>
+          </div>
+        </Section>
+
+        <Section id="anim" title="Animación">
+          <label className="prop">
+            Entrada
+            <select
+              value={selected.anim ?? 'none'}
+              onChange={(e) => updateLayer(selected.id, { anim: e.target.value })}
+            >
+              {ANIMATIONS.map((an) => (
+                <option key={an.id} value={an.id}>
+                  {an.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="prop">
+            Salida
+            <select
+              value={selected.animOut ?? 'none'}
+              onChange={(e) => updateLayer(selected.id, { animOut: e.target.value })}
+            >
+              {ANIMATIONS.map((an) => (
+                <option key={an.id} value={an.id}>
+                  {an.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {((selected.anim ?? 'none') !== 'none' || (selected.animOut ?? 'none') !== 'none') &&
+            range(
+              'Duración',
+              selected.animDuration ?? 0.6,
+              0.2,
+              3,
+              0.1,
+              (v) => updateLayerLive(selected.id, { animDuration: v }),
+              `${(selected.animDuration ?? 0.6).toFixed(1)}s`,
+            )}
+        </Section>
+
+        <div className="props-actions">
+          <div className="row">
+            <button onClick={() => updateLayer(selected.id, { locked: !selected.locked })}>
+              {selected.locked ? '🔓 Desbloquear' : '🔒 Bloquear'}
+            </button>
+            <button onClick={() => duplicateLayer(selected.id)}>⧉ Duplicar</button>
+          </div>
+          <button className="full" onClick={p.onExportLayer}>
+            ⬇ Exportar esta capa (PNG)
           </button>
-          <button onClick={() => duplicateLayer(selected.id)}>⧉ Duplicar</button>
+          <button className="danger full" onClick={() => removeLayer(selected.id)}>
+            🗑 Borrar capa
+          </button>
         </div>
-        <button className="full" onClick={onExportLayer}>
-          ⬇ Exportar esta capa (PNG)
-        </button>
-        <button className="danger full" onClick={() => removeLayer(selected.id)}>
-          🗑 Borrar capa
-        </button>
       </section>
     </aside>
   );
