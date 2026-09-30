@@ -87,7 +87,7 @@ export const AuthorCard = () => {
     <div className="author-card">
       {photo ? (
         // Foto opcional: el autor puede poner la suya en public/autor.jpg.
-        <img src="/autor.jpg" alt={AUTHOR.name} onError={() => setPhoto(false)} />
+        <img src={import.meta.env.BASE_URL + 'autor.jpg'} alt={AUTHOR.name} onError={() => setPhoto(false)} />
       ) : (
         <span className="author-avatar">{initials}</span>
       )}

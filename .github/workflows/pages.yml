@@ -1,0 +1,59 @@
+# Publica https://chamva.trescerbero.com con GitHub Pages en cada push a main:
+#   /      → site/ (página de presentación y descargas)
+#   /app/  → ChamVa en el navegador (build web con base /app/)
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web de la app en /app/
+        run: npx vite build --outDir _site/app --emptyOutDir
+        env:
+          CHAMVA_BASE: /app/
+
+      - name: Página de presentación y dominio
+        run: |
+          cp -r site/. _site/
+          echo "chamva.trescerbero.com" > _site/CNAME
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

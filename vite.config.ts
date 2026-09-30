@@ -8,6 +8,10 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // Ruta base: '/' para Tauri; la web pública se compila con CHAMVA_BASE=/app/.
+  // @ts-expect-error process is a nodejs global
+  base: process.env.CHAMVA_BASE || '/',
+
   // El worker de IA (src/ai/ai.worker.ts) usa import() dinámico → formato ES.
   worker: {
     format: "es" as const,
