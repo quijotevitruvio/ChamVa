@@ -1,3 +1,4 @@
+import type { ChartSpec, TableSpec } from './charts';
 // Modelo de datos del "documento" de ChamVa.
 // El diseño NO se guarda como imagen, sino como este JSON de capas.
 // Render y exportación son funciones que reciben este Doc y producen píxeles/vectores.
@@ -67,6 +68,8 @@ export interface ImageLayer extends LayerBase, LayerShadow {
   flipY: boolean;
   maskShape?: ShapeKind; // recorta la imagen a una forma (marco)
   iconName?: string; // si viene de Iconify, permite recolorear
+  chart?: ChartSpec; // gráfica reeditable (se re-renderiza a src)
+  table?: TableSpec; // tabla reeditable (se re-renderiza a src)
 }
 
 export type TextTransform = 'none' | 'upper' | 'lower' | 'caps';
