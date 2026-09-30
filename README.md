@@ -8,21 +8,30 @@ sin nube, sin marcas de agua.
 
 ### 🖼 Editor de imagen / diseño
 - Lienzo por capas (imágenes, texto, formas, iconos, QR) con modelo de documento en JSON.
-- **Pantalla de inicio** para elegir entre editar imágenes o video.
+- **Inicio "¿Qué vas a crear?"** con tamaños por caso de uso (post, historia, volante, tarjeta, póster, CV…),
+  diseños recientes y acceso al editor de video.
 - Subir imágenes (quedan en la galería para reutilizar), crear lienzos de distintos tamaños y **redimensionar**
   (Magic Resize).
 - **Quitar fondo** inteligente con varios motores locales (MODNet, BiRefNet-lite y RMBG-1.4 vía transformers.js),
   con vista previa antes/después, modos de borde (foto / logo) y descontaminación de color para eliminar el halo,
   más **borrador mágico** (pincel para borrar/restaurar) e inpaint con OpenCV.
-- **Upscale** ×2 (Swin2SR), filtros y duotono, ajustes (brillo/contraste/saturación), recorte con **relación de
-  aspecto** fija, recorte a forma (máscara), volteo, sombras, modos de fusión, opacidad y transparencia en todos los
-  colores.
-- **Texto**: tipografías (incluida la carga de fuentes propias), mayúsculas/negrita/cursiva, alineación, espaciado,
-  **interlineado**, curvado, contorno, sombra, efecto **neón / eco / fondo** y **listas** (viñetas / numeradas).
-- **Iconos** (Iconify) recolorables, **panel de color** estilo Canva (hex/nombre, cuentagotas, kit de marca,
-  degradados), plantillas de fábrica y plantillas guardadas.
-- Multi-página con **miniaturas y reordenar**, multiselección con **alinear/distribuir**, snapping y **guías de
-  distancia** en px, animaciones de entrada/salida y modo presentación.
+- **Ajustes tipo "Photoshop para dummies"**: auto-mejorar, estilos de un clic, luces/sombras, temperatura, tinte,
+  intensidad, nitidez, desenfoque, grano, viñeta, pixelado, posterizar y contorno de sticker; **desenfocar fondo
+  (retrato)** con un clic.
+- **Upscale** ×2 (Swin2SR), filtros y duotono, recorte con **relación de aspecto** fija, recorte a forma, volteo,
+  sombras, modos de fusión, opacidad y transparencia en todos los colores.
+- **Marcos para fotos**: suelta una foto encima de un marco (corazón, hexágono, estrella…) y se recorta sola.
+- **22 formas** (polígonos, corazón, nube, bocadillo, flechas de bloque, luna, anillo…) y **gráficas y tablas**
+  editables (barras, líneas, área, torta, dona; pegar datos desde Excel).
+- **Texto**: se edita **directamente sobre el diseño** (doble clic) y admite **negrita, cursiva, subrayado y color
+  por palabra**; tipografías (incluida la carga de fuentes propias), alineación, espaciado, **interlineado**, curvado,
+  contorno, sombra, efecto **neón / eco / fondo** y **listas** (viñetas / numeradas).
+- **Kit de marca** con logos, colores y fuentes (el color se aplica al elemento seleccionado).
+- **Iconos** (Iconify) recolorables, **panel de color** estilo Canva (hex/nombre, cuentagotas, degradados),
+  plantillas de fábrica y plantillas guardadas.
+- Multi-página con **miniaturas y reordenar**, **grupos** (Ctrl+G), multiselección con **alinear/distribuir**,
+  snapping y **guías de distancia** en px, animaciones de entrada/salida y modo presentación.
+- Panel de propiedades en **secciones plegables** y **versión móvil** (riel abajo, propiedades como hoja inferior).
 - **Autoguardado** (IndexedDB) y recuperación al reabrir.
 - Exportar a **PNG, JPG, WebP, AVIF, SVG, PDF, GIF, GIF animado, MP4, ICO** y copiar al portapapeles.
 
