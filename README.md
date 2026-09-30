@@ -92,8 +92,8 @@ src-tauri/                proyecto Rust/Tauri (config, gen/android)
 
 ## Estado y pendientes
 Funciona el flujo completo de imagen y video, y compilan tanto el **instalador de Windows** como la **APK**.
-Pendiente: estilo de texto **por palabra** (editor inline), **crossfade real** y **RNNoise** auténtico,
-**fotos de stock** (requiere clave de Unsplash/Pexels), **gráficas/tablas**, y probar la APK en un dispositivo real.
+Pendiente: **crossfade real** y **RNNoise** auténtico, **fotos de stock** (requiere clave de Unsplash/Pexels),
+y probar la APK en un dispositivo real.
 
 ## Autor y apoyo
 
