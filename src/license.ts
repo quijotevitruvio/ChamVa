@@ -25,21 +25,29 @@ function b64urlToBytes(s: string): Uint8Array {
   return b64ToBytes(b64 + pad);
 }
 
-let cachedKey: CryptoKey | null = null;
-async function publicKey(): Promise<CryptoKey> {
-  if (cachedKey) return cachedKey;
-  cachedKey = await crypto.subtle.importKey(
-    'spki',
-    b64ToBytes(LICENSE_PUBLIC_KEY_SPKI_B64),
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['verify'],
-  );
-  return cachedKey;
+const keyCache = new Map<string, Promise<CryptoKey>>();
+function publicKey(spkiB64: string): Promise<CryptoKey> {
+  let p = keyCache.get(spkiB64);
+  if (!p) {
+    p = crypto.subtle.importKey(
+      'spki',
+      b64ToBytes(spkiB64),
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    );
+    keyCache.set(spkiB64, p);
+  }
+  return p;
 }
 
 // Verifica firma + caducidad. Devuelve la info si la clave es válida y vigente.
-export async function verifyLicense(key: string): Promise<LicenseInfo | null> {
+// `spkiB64` permite verificar contra otra clave pública (tests).
+export async function verifyLicense(
+  key: string,
+  spkiB64: string = LICENSE_PUBLIC_KEY_SPKI_B64,
+  now: number = Date.now(),
+): Promise<LicenseInfo | null> {
   try {
     const trimmed = key.trim();
     const dot = trimmed.indexOf('.');
@@ -48,7 +56,7 @@ export async function verifyLicense(key: string): Promise<LicenseInfo | null> {
     const sigB64 = trimmed.slice(dot + 1);
     const ok = await crypto.subtle.verify(
       { name: 'ECDSA', hash: 'SHA-256' },
-      await publicKey(),
+      await publicKey(spkiB64),
       b64urlToBytes(sigB64),
       new TextEncoder().encode(payloadB64),
     );
@@ -56,7 +64,7 @@ export async function verifyLicense(key: string): Promise<LicenseInfo | null> {
     const payload = JSON.parse(
       new TextDecoder().decode(b64urlToBytes(payloadB64)),
     ) as LicenseInfo;
-    if (!payload.exp || payload.exp * 1000 < Date.now()) return null; // caducada
+    if (!payload.exp || payload.exp * 1000 < now) return null; // caducada
     return payload;
   } catch {
     return null;

@@ -1,35 +1,30 @@
-// Borrador Mágico: rellena la zona pintada con el contenido de alrededor (inpainting
-// clásico Telea, vía OpenCV.js). Local; OpenCV se descarga la 1ª vez y queda en caché.
+// Borrador Mágico: rellena la zona pintada con el contenido de alrededor
+// (inpainting Telea, OpenCV.js). OpenCV va EMPAQUETADO con la app
+// (@techstark/opencv-js): sin descargas en tiempo de ejecución, 100% offline.
 
-const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js';
 let cvPromise: Promise<any> | null = null;
 
 export function loadOpenCV(): Promise<any> {
   if (cvPromise) return cvPromise;
-  cvPromise = new Promise((resolve, reject) => {
-    const w = window as any;
-    if (w.cv && w.cv.Mat) {
-      resolve(w.cv);
-      return;
+  cvPromise = (async () => {
+    const mod: any = await import('@techstark/opencv-js');
+    // Según la versión, el módulo exporta el objeto cv o una promesa de él.
+    let cv = mod.default ?? mod;
+    if (typeof cv?.then === 'function') cv = await cv;
+    if (!cv.Mat && cv.ready) await cv.ready;
+    if (!cv.Mat && cv.onRuntimeInitialized !== undefined) {
+      await new Promise<void>((resolve) => {
+        const prev = cv.onRuntimeInitialized;
+        cv.onRuntimeInitialized = () => {
+          prev?.();
+          resolve();
+        };
+        if (cv.Mat) resolve();
+      });
     }
-    const script = document.createElement('script');
-    script.src = OPENCV_URL;
-    script.async = true;
-    script.onload = () => {
-      // OpenCV.js inicializa el runtime WASM de forma asíncrona.
-      const start = Date.now();
-      const check = () => {
-        const cv = (window as any).cv;
-        if (cv && cv.Mat) resolve(cv);
-        else if (Date.now() - start > 60000)
-          reject(new Error('OpenCV tardó demasiado en iniciar'));
-        else setTimeout(check, 100);
-      };
-      check();
-    };
-    script.onerror = () => reject(new Error('No se pudo descargar OpenCV'));
-    document.body.appendChild(script);
-  });
+    if (!cv.Mat) throw new Error('OpenCV no inicializó');
+    return cv;
+  })();
   return cvPromise;
 }
 

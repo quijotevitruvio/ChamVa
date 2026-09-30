@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ChamVa",
-  "version": "0.2.1",
-  "identifier": "com.chamva.app",
+  "version": "0.3.0",
+  "identifier": "com.chamva.editor",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -18,7 +18,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost blob: data: https://huggingface.co https://*.huggingface.co https://*.hf.co https://api.iconify.design https://unpkg.com https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob: https://api.iconify.design https://*.iconify.design; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' blob: data: asset: http://asset.localhost",
+      "devCsp": null
     }
   },
   "bundle": {
@@ -26,7 +27,9 @@
     "targets": "all",
     "fileAssociations": [
       {
-        "ext": ["chamva"],
+        "ext": [
+          "chamva"
+        ],
         "name": "Proyecto ChamVa",
         "description": "Proyecto de ChamVa (diseño multipágina)",
         "role": "Editor",
@@ -39,6 +42,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ2QzE5MzMwRTkwM0Q3MUMKUldRYzF3UHBNSlBCUnA5MmhZck5GYUNFdE4ydmdoa3ZGcDBIRzdia3RPRnRIalVuZk4vOTArbkIK",
+      "endpoints": [
+        "https://github.com/quijotevitruvio/ChamVa/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

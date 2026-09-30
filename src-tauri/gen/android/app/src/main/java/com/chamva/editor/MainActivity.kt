@@ -1,4 +1,4 @@
-package com.chamva.app
+package com.chamva.editor
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

@@ -1,58 +1,62 @@
 // Carga y persistencia de fuentes propias (.ttf/.otf/.woff/.woff2).
-const LS_FONTS = 'chamva.customFonts';
+// Se guardan en IndexedDB como Blob (antes iban en localStorage, cuyo límite de
+// ~5 MB se agotaba con una o dos fuentes y fallaba en silencio).
+import { idbGet, idbSet } from '../../io/idb';
+
+const KEY = 'fonts';
+const LS_FONTS_LEGACY = 'chamva.customFonts';
 
 interface StoredFont {
   family: string;
-  dataUrl: string;
+  blob: Blob;
 }
 
-function readStored(): StoredFont[] {
+async function register(family: string, blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob);
+  const face = new FontFace(family, `url(${url})`);
+  await face.load();
+  document.fonts.add(face);
+}
+
+// Migra las fuentes del formato antiguo (dataURL en localStorage) a IndexedDB.
+async function migrateLegacy(): Promise<StoredFont[]> {
   try {
-    return JSON.parse(localStorage.getItem(LS_FONTS) || '[]');
+    const raw = localStorage.getItem(LS_FONTS_LEGACY);
+    if (!raw) return [];
+    const old = JSON.parse(raw) as { family: string; dataUrl: string }[];
+    const out: StoredFont[] = [];
+    for (const f of old) {
+      const blob = await (await fetch(f.dataUrl)).blob();
+      out.push({ family: f.family, blob });
+    }
+    localStorage.removeItem(LS_FONTS_LEGACY);
+    return out;
   } catch {
     return [];
   }
 }
 
-async function register(family: string, dataUrl: string): Promise<void> {
-  const face = new FontFace(family, `url(${dataUrl})`);
-  await face.load();
-  document.fonts.add(face);
-}
-
 // Registra todas las fuentes guardadas y devuelve sus nombres.
-export function loadStoredFonts(): string[] {
-  const stored = readStored();
-  stored.forEach((f) => {
-    register(f.family, f.dataUrl).catch(() => {});
-  });
+export async function loadStoredFonts(): Promise<string[]> {
+  let stored = (await idbGet<StoredFont[]>(KEY)) ?? [];
+  const legacy = await migrateLegacy();
+  if (legacy.length) {
+    stored = [...stored, ...legacy.filter((l) => !stored.some((s) => s.family === l.family))];
+    await idbSet(KEY, stored);
+  }
+  await Promise.all(stored.map((f) => register(f.family, f.blob).catch(() => {})));
   return stored.map((f) => f.family);
-}
-
-function fileToDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onerror = () => reject(r.error);
-    r.onload = () => resolve(r.result as string);
-    r.readAsDataURL(file);
-  });
 }
 
 // Carga una fuente desde un archivo, la registra y la persiste. Devuelve el nombre.
 export async function addFontFromFile(file: File): Promise<string> {
   const family =
     file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Fuente';
-  const dataUrl = await fileToDataURL(file);
-  await register(family, dataUrl);
-
-  const stored = readStored();
+  await register(family, file);
+  const stored = (await idbGet<StoredFont[]>(KEY)) ?? [];
   if (!stored.some((f) => f.family === family)) {
-    stored.push({ family, dataUrl });
-    try {
-      localStorage.setItem(LS_FONTS, JSON.stringify(stored));
-    } catch {
-      // Si excede la cuota, la fuente queda solo para esta sesión.
-    }
+    stored.push({ family, blob: file });
+    await idbSet(KEY, stored);
   }
   return family;
 }

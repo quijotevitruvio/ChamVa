@@ -5,10 +5,12 @@
 import {
   removeImageBackground as removeOnMain,
   type BgQuality,
+  type EdgeMode,
+  type BgOptions,
 } from './background-removal';
 import { upscaleImage as upscaleOnMain, type UpscaleResult } from './upscale';
 
-export type { BgQuality };
+export type { BgQuality, EdgeMode, BgOptions };
 export type { UpscaleResult };
 
 type Progress = (ratio: number, stage: string) => void;
@@ -37,8 +39,11 @@ function getWorker(): Worker {
       return;
     }
     pending.delete(id);
-    if (error) p.reject(new Error(error));
-    else if (done) p.resolve(rest);
+    if (error) {
+      const err = new Error(error);
+      if (e.data.gpuUnavailable) err.name = 'GpuUnavailableError';
+      p.reject(err);
+    } else if (done) p.resolve(rest);
   };
   worker.onerror = () => {
     // Fallo global del worker: rechazar todo lo pendiente (los llamadores
@@ -85,26 +90,21 @@ function blobToDataURL(blob: Blob): Promise<string> {
 
 export async function removeImageBackground(
   src: string,
-  options: {
-    quality?: BgQuality;
-    refine?: boolean;
-    onProgress?: Progress;
-  } = {},
+  options: BgOptions = {},
 ): Promise<string> {
-  const { quality = 'maxima', refine = true, onProgress } = options;
-  // imgly (alta/rapido) sigue en el hilo principal: su bundle no está
-  // preparado para workers. RMBG (máxima) sí va al worker.
-  if (quality !== 'maxima') {
-    return removeOnMain(src, options);
-  }
+  const { quality = 'modnet', edges = 'auto', onProgress } = options;
   try {
     const { blob } = await call<{ blob: Blob }>(
-      { op: 'removeBg', src, refine },
+      { op: 'removeBg', src, quality, edges },
       onProgress,
     );
     return await blobToDataURL(blob);
   } catch (e) {
-    if ((e as Error).message === 'cancelado') throw e;
+    const err = e as Error;
+    if (err.message === 'cancelado') throw err;
+    // El motor de GPU no está disponible: se lo comunicamos al llamador
+    // (que cambia a MODNet) en vez de reintentar a ciegas.
+    if (err.name === 'GpuUnavailableError') throw err;
     // Reintento en el hilo principal si el worker no está disponible.
     return removeOnMain(src, options);
   }
@@ -182,13 +182,16 @@ async function restoreAlpha(
   return { dataUrl: out.toDataURL('image/png'), width, height };
 }
 
-export async function prefetchBgModel(onProgress?: Progress): Promise<void> {
+export async function prefetchBgModel(
+  onProgress?: Progress,
+  quality: BgQuality = 'modnet',
+): Promise<void> {
   try {
-    await call({ op: 'prefetchBg' }, onProgress);
+    await call({ op: 'prefetchBg', quality }, onProgress);
   } catch (e) {
     if ((e as Error).message === 'cancelado') throw e;
     const { prefetchBgModel: main } = await import('./background-removal');
-    await main(onProgress);
+    await main(onProgress, quality);
   }
 }
 

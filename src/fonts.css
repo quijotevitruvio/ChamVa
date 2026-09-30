@@ -1,0 +1,27 @@
+/* Fuentes de Google empaquetadas con la app vía @fontsource (licencia OFL).
+   Antes se cargaban de fonts.googleapis.com y sin internet caían a Arial.
+   Solo subconjunto latino, pesos 400 y 700: ~700 KB en total. */
+@import '@fontsource/montserrat/latin-400.css';
+@import '@fontsource/montserrat/latin-700.css';
+@import '@fontsource/poppins/latin-400.css';
+@import '@fontsource/poppins/latin-700.css';
+@import '@fontsource/roboto/latin-400.css';
+@import '@fontsource/roboto/latin-700.css';
+@import '@fontsource/oswald/latin-400.css';
+@import '@fontsource/oswald/latin-700.css';
+@import '@fontsource/anton/latin-400.css';
+@import '@fontsource/bebas-neue/latin-400.css';
+@import '@fontsource/playfair-display/latin-400.css';
+@import '@fontsource/playfair-display/latin-700.css';
+@import '@fontsource/lobster/latin-400.css';
+@import '@fontsource/pacifico/latin-400.css';
+@import '@fontsource/dancing-script/latin-400.css';
+@import '@fontsource/dancing-script/latin-700.css';
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/raleway/latin-400.css';
+@import '@fontsource/raleway/latin-700.css';
+@import '@fontsource/nunito/latin-400.css';
+@import '@fontsource/nunito/latin-700.css';
+@import '@fontsource/merriweather/latin-400.css';
+@import '@fontsource/merriweather/latin-700.css';

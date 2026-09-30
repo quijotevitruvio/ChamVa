@@ -1,57 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from './editor/state/store';
 import { EditorCanvas } from './editor/canvas/EditorCanvas';
-import {
-  CANVAS_PRESETS,
-  DEFAULT_ADJUST,
-  FONT_FAMILIES,
-  TEXT_PRESETS,
-  TRANSPARENT_BG,
-  SHAPE_OPTIONS,
-  type Doc,
-} from './editor/core/types';
-import { ANIMATIONS } from './editor/core/animations';
-import { PRESET_TEMPLATES } from './editor/core/presetTemplates';
-import { TemplateThumb } from './ui/TemplateThumb';
-import { PageThumb } from './ui/PageThumb';
+import { TRANSPARENT_BG, type Doc, type ImageLayer, type Layer } from './editor/core/types';
 import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
-import { idbGet, idbSet } from './io/idb';
-import { AUTHOR, APP_VERSION } from './branding';
-import { DONORS, DONOR_TYPE_LABEL, type DonorType } from './donors';
-import {
-  activateLicense,
-  getStoredLicense,
-  clearLicense,
-  type LicenseInfo,
-} from './license';
+import { idbGet, idbSet, requestPersistentStorage, setStorageErrorHandler } from './io/idb';
+import { dehydrateDocs, rehydrateDocs, gcAssets } from './io/assets';
+import { getStoredLicense, type LicenseInfo } from './license';
 import { loadImageFile } from './io/import';
 import { addFontFromFile } from './editor/core/fonts';
-import {
-  exportDoc,
-  downloadBlob,
-  renderDocToCanvas,
-  type ExportFormat,
-} from './io/export';
+import { exportDoc, downloadBlob, renderDocToCanvas, type ExportFormat } from './io/export';
 import { exportDocToSvg } from './io/exportSvg';
 import { exportPagesToGif } from './io/exportGif';
 import { exportPagesToPdf } from './io/exportPdf';
 import { exportAnimatedGif } from './io/exportAnim';
-import { gifToMp4 } from './io/ffmpegConvert';
+import { gifToMp4, prefetchFFmpeg } from './io/ffmpegConvert';
 import { exportIco } from './io/exportIco';
-import { searchIcons, iconPreviewUrl, fetchIconAsImage } from './io/iconify';
-import QRCode from 'qrcode';
 import { saveProject, readProjectFile, parseProject } from './io/project';
 import {
   removeImageBackground,
   upscaleImage,
   prefetchBgModel,
   prefetchUpscaleModel,
-  cancelAI,
   type BgQuality,
+  type EdgeMode,
 } from './ai/worker-client';
+import { BG_ENGINES } from './ai/bgcore';
 import { loadOpenCV } from './ai/inpaint';
-import { t, useLang, setLang } from './i18n';
+import { checkForUpdate, type UpdateInfo } from './updater';
+import { isTauri } from './io/nativeSave';
+import { t, useLang } from './i18n';
 import {
   loadDesigns,
   upsertDesign,
@@ -61,15 +39,22 @@ import {
   type SavedDesign,
   type Backup,
 } from './io/designs';
-import { ColorPanel } from './ui/ColorPanel';
+import { needsProcessing, processImage } from './editor/core/imageProcessing';
 import { FiltersPanel } from './ui/FiltersPanel';
 import { MaskEditor } from './ui/MaskEditor';
 import { VideoEditor } from './ui/VideoEditor';
 import { Presentation } from './ui/Presentation';
-import {
-  needsProcessing,
-  processImage,
-} from './editor/core/imageProcessing';
+import { BgPreview } from './ui/BgPreview';
+import { PropertiesPanel } from './ui/PropertiesPanel';
+import { RailPanels } from './ui/RailPanels';
+import { SettingsDialog, DonateDialog, RequestLicenseDialog } from './ui/LicenseDialogs';
+import { HomeScreen } from './ui/HomeScreen';
+import { ShortcutsDialog } from './ui/ShortcutsDialog';
+import { SizeMenu } from './ui/SizeMenu';
+import { DownloadMenu, type Fmt } from './ui/DownloadMenu';
+import { ContextMenu, FloatToolbar } from './ui/SelectionMenus';
+import { PageBar } from './ui/PageBar';
+import { UpdateBanner } from './ui/UpdateBanner';
 import './App.css';
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
@@ -81,117 +66,55 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-const clamp = (v: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, v));
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+const EXPORT_LS = 'chamva.exportOpts';
+const BG_ENGINE_LS = 'chamva.bgEngine';
 
 export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const projectRef = useRef<HTMLInputElement>(null);
-  const dragId = useRef<string | null>(null);
-  const dragUploadId = useRef<string | null>(null);
-  const clipLayer = useRef<import('./editor/core/types').Layer | null>(null);
-
-  const BLEND_MODES = [
-    'normal',
-    'multiply',
-    'screen',
-    'overlay',
-    'darken',
-    'lighten',
-  ] as const;
-  const textEditRef = useRef<HTMLTextAreaElement>(null);
   const fontFileRef = useRef<HTMLInputElement>(null);
-  const textEditNonce = useEditor((s) => s.textEditNonce);
+  const textEditRef = useRef<HTMLTextAreaElement>(null);
+  const dragUploadId = useRef<string | null>(null);
+  const clipLayer = useRef<Layer | null>(null);
 
-  const onUploadFont = async (files: FileList | null, layerId?: string) => {
-    const file = files?.[0];
-    if (!file) return;
-    try {
-      const family = await addFontFromFile(file);
-      addCustomFont(family);
-      if (layerId) updateLayer(layerId, { fontFamily: family });
-    } catch (e) {
-      toast('No se pudo cargar la fuente: ' + (e as Error).message, 'error');
-    }
-  };
-
-  // Reordenar capas arrastrando en el panel (vista de arriba hacia abajo).
-  const handleLayerDrop = (targetId: string) => {
-    const id = dragId.current;
-    dragId.current = null;
-    if (!id || id === targetId) return;
-    const topFirst = doc.layers.map((l) => l.id).reverse();
-    const without = topFirst.filter((x) => x !== id);
-    const ti = without.indexOf(targetId);
-    without.splice(ti, 0, id);
-    reorderLayers(without.reverse());
-  };
-
+  // ---- store ----
   const doc = useEditor((s) => s.doc);
   const selectedId = useEditor((s) => s.selectedId);
   const past = useEditor((s) => s.past);
   const future = useEditor((s) => s.future);
-  const addImageLayer = useEditor((s) => s.addImageLayer);
   const uploads = useEditor((s) => s.uploads);
-  const addUpload = useEditor((s) => s.addUpload);
-  const removeUpload = useEditor((s) => s.removeUpload);
   const templates = useEditor((s) => s.templates);
+  const addImageLayer = useEditor((s) => s.addImageLayer);
+  const addUpload = useEditor((s) => s.addUpload);
   const addTemplate = useEditor((s) => s.addTemplate);
-  const removeTemplate = useEditor((s) => s.removeTemplate);
   const applyTemplate = useEditor((s) => s.applyTemplate);
-  const addTextLayer = useEditor((s) => s.addTextLayer);
-  const addShapeLayer = useEditor((s) => s.addShapeLayer);
-  const reorderLayers = useEditor((s) => s.reorderLayers);
-  const setCanvasSize = useEditor((s) => s.setCanvasSize);
-  const removeLayer = useEditor((s) => s.removeLayer);
-  const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
-  const updateLayerLive = useEditor((s) => s.updateLayerLive);
-  const setLayerRotation = useEditor((s) => s.setLayerRotation);
-  const checkpoint = useEditor((s) => s.checkpoint);
   const addProcessedLayer = useEditor((s) => s.addProcessedLayer);
   const setBackground = useEditor((s) => s.setBackground);
   const replaceLayerImage = useEditor((s) => s.replaceLayerImage);
-  const moveLayer = useEditor((s) => s.moveLayer);
-  const alignLayer = useEditor((s) => s.alignLayer);
-  const alignSelected = useEditor((s) => s.alignSelected);
-  const distributeSelected = useEditor((s) => s.distributeSelected);
-  const selectedIds = useEditor((s) => s.selectedIds);
   const cropMode = useEditor((s) => s.cropMode);
   const cropRect = useEditor((s) => s.cropRect);
-  const beginCrop = useEditor((s) => s.beginCrop);
   const cancelCrop = useEditor((s) => s.cancelCrop);
   const cropAspect = useEditor((s) => s.cropAspect);
   const setCropAspect = useEditor((s) => s.setCropAspect);
-  const duplicateLayer = useEditor((s) => s.duplicateLayer);
   const pasteLayer = useEditor((s) => s.pasteLayer);
-  const requestTextEdit = useEditor((s) => s.requestTextEdit);
   const playAnimations = useEditor((s) => s.playAnimations);
-  const customFonts = useEditor((s) => s.customFonts);
   const addCustomFont = useEditor((s) => s.addCustomFont);
-  const brandColors = useEditor((s) => s.brandColors);
-  const recentColors = useEditor((s) => s.recentColors);
   const selRect = useEditor((s) => s.selRect);
   const pages = useEditor((s) => s.pages);
   const pageIndex = useEditor((s) => s.pageIndex);
-  const addPage = useEditor((s) => s.addPage);
-  const duplicatePage = useEditor((s) => s.duplicatePage);
   const newDesign = useEditor((s) => s.newDesign);
-  const addResizedPage = useEditor((s) => s.addResizedPage);
-  const switchPage = useEditor((s) => s.switchPage);
-  const deletePage = useEditor((s) => s.deletePage);
-  const reorderPages = useEditor((s) => s.reorderPages);
   const loadPages = useEditor((s) => s.loadPages);
-  const [dragPage, setDragPage] = useState<number | null>(null);
-  const zoom = useEditor((s) => s.zoom);
-  const setZoom = useEditor((s) => s.setZoom);
-  const viewScale = useEditor((s) => s.viewScale);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
+  const textEditNonce = useEditor((s) => s.textEditNonce);
+  useLang(); // re-renderiza al cambiar el idioma
 
-  // Opciones de exportación: se recuerdan entre sesiones.
-  type Fmt = ExportFormat | 'svg' | 'gif' | 'pdf' | 'anim' | 'anim-mp4' | 'ico';
-  const EXPORT_LS = 'chamva.exportOpts';
+  const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
+
+  // ---- exportación (opciones recordadas) ----
   const savedExport = (() => {
     try {
       return JSON.parse(localStorage.getItem(EXPORT_LS) ?? '{}') as {
@@ -214,68 +137,159 @@ export default function App() {
   const [customW, setCustomW] = useState(String(doc.width));
   const [customH, setCustomH] = useState(String(doc.height));
   const [busy, setBusy] = useState(false);
-  const [bgBusy, setBgBusy] = useState(false);
-  const [bgMsg, setBgMsg] = useState('');
-  const [bgQuality, setBgQuality] = useState<BgQuality>('maxima');
-  const [activeTab, setActiveTab] = useState<string | null>(null);
-  const [iconQuery, setIconQuery] = useState('');
-  const [iconResults, setIconResults] = useState<string[]>([]);
-  const [iconBusy, setIconBusy] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
 
-  const doIconSearch = async () => {
-    if (!iconQuery.trim()) return;
-    setIconBusy(true);
-    setIconResults(await searchIcons(iconQuery));
-    setIconBusy(false);
-  };
-  const addIcon = async (name: string) => {
-    try {
-      const img = await fetchIconAsImage(name);
-      addImageLayer({ ...img, iconName: name });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-  const [qrText, setQrText] = useState('https://');
-  const addQR = async () => {
-    if (!qrText.trim()) return;
-    try {
-      const src = await QRCode.toDataURL(qrText, { width: 512, margin: 1 });
-      addImageLayer({ src, naturalWidth: 512, naturalHeight: 512, name: 'QR' });
-    } catch (e) {
-      toast('No se pudo generar el QR: ' + (e as Error).message, 'error');
-    }
-  };
-  const [showMask, setShowMask] = useState(false);
+  // ---- diálogos / vistas ----
+  const [showFilters, setShowFilters] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
   const [showHome, setShowHome] = useState(true);
-  const [upBusy, setUpBusy] = useState(false);
-  const lang = useLang(); // re-renderiza al cambiar el idioma
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDonate, setShowDonate] = useState(false);
+  const [showRequest, setShowRequest] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [maskSession, setMaskSession] = useState<{
+    layer: ImageLayer;
+    onApply: (dataUrl: string) => void;
+  } | null>(null);
 
-  // Galería de diseños recientes (pantalla de inicio) y copias de seguridad.
+  // ---- licencia ----
+  const [license, setLicense] = useState<LicenseInfo | null>(null);
+  useEffect(() => {
+    getStoredLicense().then(setLicense);
+  }, []);
+
+  // ---- IA: quitar fondo / optimizar ----
+  const [bgBusy, setBgBusy] = useState(false);
+  const [bgMsg, setBgMsg] = useState('');
+  const [bgEdges, setBgEdges] = useState<EdgeMode>('auto');
+  const [bgPreview, setBgPreview] = useState<{ target: ImageLayer; result: string } | null>(null);
+  const [bgQuality, setBgQuality] = useState<BgQuality>(() => {
+    const saved = localStorage.getItem(BG_ENGINE_LS) as BgQuality | null;
+    return saved && BG_ENGINES.some((e) => e.id === saved) ? saved : 'modnet';
+  });
+  const chooseBgEngine = (q: BgQuality) => {
+    setBgQuality(q);
+    localStorage.setItem(BG_ENGINE_LS, q);
+  };
+  const [upBusy, setUpBusy] = useState(false);
+  const [upMsg, setUpMsg] = useState('');
+  const [offlineMsg, setOfflineMsg] = useState('');
+
+  // ---- auto-actualizador ----
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [updatePct, setUpdatePct] = useState<number | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState('');
+  useEffect(() => {
+    if (!isTauri()) return;
+    const id = setTimeout(() => {
+      checkForUpdate().then((u) => u && setUpdate(u)).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(id);
+  }, []);
+  const installUpdate = async () => {
+    if (!update) return;
+    setUpdatePct(0);
+    try {
+      await update.install(setUpdatePct);
+    } catch (e) {
+      setUpdatePct(null);
+      toast('No se pudo actualizar: ' + (e as Error).message, 'error');
+    }
+  };
+  const manualCheckUpdate = async () => {
+    setUpdateMsg('…');
+    try {
+      const u = await checkForUpdate();
+      if (u) {
+        setUpdate(u);
+        setUpdateDismissed(false);
+        setUpdateMsg(`${t('Nueva versión disponible')}: ${u.version}`);
+      } else setUpdateMsg(t('Estás en la última versión'));
+    } catch (e) {
+      setUpdateMsg('✕ ' + (e as Error).message);
+    }
+  };
+
+  // ---- galería de diseños y copias ----
   const [designs, setDesigns] = useState<SavedDesign[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
   useEffect(() => {
     if (showHome) loadDesigns().then(setDesigns);
   }, [showHome]);
+  useEffect(() => {
+    if (showSettings) loadBackups().then(setBackups);
+  }, [showSettings]);
 
-  const openDesign = (d: SavedDesign) => {
-    loadPages(d.pages, d.pageIndex);
-    const first = d.pages[d.pageIndex] ?? d.pages[0];
-    setCustomW(String(first.width));
-    setCustomH(String(first.height));
+  const setSizeInputs = (d: Doc) => {
+    setCustomW(String(d.width));
+    setCustomH(String(d.height));
+  };
+  const openDesign = async (d: SavedDesign) => {
+    const p = await rehydrateDocs(d.pages);
+    loadPages(p, d.pageIndex);
+    setSizeInputs(p[d.pageIndex] ?? p[0]);
     setShowHome(false);
   };
-
-  const startNewDesign = () => {
-    newDesign();
+  const restoreBackup = async (b: Backup) => {
+    loadPages(await rehydrateDocs(b.pages), b.pageIndex);
+    setShowSettings(false);
     setShowHome(false);
+    toast('Copia restaurada', 'success');
   };
 
-  // Menú contextual (clic derecho) sobre el lienzo.
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  // ---- atajos globales ----
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      const st = useEditor.getState();
+      if (e.key === '?' || (e.key === 'F1' && !ctrl)) {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+      } else if (ctrl && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      } else if (ctrl && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      } else if (ctrl && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        if (selectedId) st.duplicateLayer(selectedId);
+      } else if (ctrl && e.key.toLowerCase() === 'c') {
+        const l = st.doc.layers.find((x) => x.id === st.selectedId);
+        if (l) clipLayer.current = l;
+      } else if (ctrl && e.key.toLowerCase() === 'v') {
+        if (clipLayer.current) {
+          e.preventDefault();
+          pasteLayer(clipLayer.current);
+        }
+      } else if (e.key === 'Escape') {
+        if (st.cropMode) st.cancelCrop();
+        else if (st.selectedId) st.selectLayer(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault();
+        // Las capas bloqueadas no se borran con la tecla (protege el fondo).
+        const l = st.doc.layers.find((x) => x.id === selectedId);
+        if (!l?.locked) st.removeSelected();
+      } else if (e.key.startsWith('Arrow') && selectedId) {
+        e.preventDefault();
+        const l = st.doc.layers.find((x) => x.id === selectedId);
+        if (l && !l.locked) {
+          const step = e.shiftKey ? 10 : 1;
+          const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+          const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+          st.updateLayer(selectedId, { x: l.x + dx, y: l.y + dy });
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo, pasteLayer, selectedId]);
+
+  // Cerrar el menú contextual al hacer clic fuera o desplazarse.
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
@@ -286,504 +300,30 @@ export default function App() {
       window.removeEventListener('scroll', close, true);
     };
   }, [ctxMenu]);
-  // Licencia + apoyo/donaciones
-  const [license, setLicense] = useState<LicenseInfo | null>(null);
-  const [licenseInput, setLicenseInput] = useState('');
-  const [licenseMsg, setLicenseMsg] = useState('');
-  const [showDonate, setShowDonate] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+
+  // ---- arranque: hidratar, almacenamiento persistente, GC de imágenes ----
   useEffect(() => {
-    getStoredLicense().then(setLicense);
-  }, []);
-  useEffect(() => {
-    if (showSettings) loadBackups().then(setBackups);
-  }, [showSettings]);
-  const onActivateLicense = async () => {
-    const info = await activateLicense(licenseInput);
-    if (info) {
-      setLicense(info);
-      setLicenseMsg('');
-      setLicenseInput('');
-      toast(`¡Licencia activada! Gracias, ${info.name} 💛`, 'success');
-    } else {
-      setLicenseMsg('Clave inválida o caducada.');
-    }
-  };
-  // Formulario de solicitud de licencia.
-  const [showRequest, setShowRequest] = useState(false);
-  const [reqName, setReqName] = useState('');
-  const [reqType, setReqType] = useState<DonorType>('natural');
-  const [reqEmail, setReqEmail] = useState('');
-  const [reqMsg, setReqMsg] = useState('');
-
-  const requestLicense = () => setShowRequest(true);
-
-  const submitRequest = () => {
-    if (!reqName.trim()) {
-      toast('Escribe tu nombre o el de tu institución/empresa.', 'info');
-      return;
-    }
-    const body = [
-      `Nombre: ${reqName}`,
-      `Tipo: ${DONOR_TYPE_LABEL[reqType]}`,
-      `Correo: ${reqEmail}`,
-      `Mensaje: ${reqMsg}`,
-      '',
-      'Adjunto el comprobante de mi donación por PayPal (paypal.me/bibliotecologo).',
-    ].join('\n');
-    window.open(AUTHOR.paypal, '_blank');
-    window.location.href = `mailto:${AUTHOR.email}?subject=${encodeURIComponent(
-      'Solicitud de licencia ChamVa (1 año)',
-    )}&body=${encodeURIComponent(body)}`;
-    setShowRequest(false);
-    toast('Abrimos PayPal y tu correo para enviar la solicitud.', 'success');
-  };
-
-  // Muro de donantes: lista incluida + tu propio nombre si tienes licencia.
-  const donorWall = (() => {
-    const list = DONORS.map((d) => ({ ...d, isYou: false }));
-    if (license && !list.some((d) => d.name === license.name)) {
-      list.unshift({ name: license.name, type: 'natural', isYou: true });
-    } else if (license) {
-      const i = list.findIndex((d) => d.name === license.name);
-      if (i >= 0) list[i].isYou = true;
-    }
-    return list;
-  })();
-  const [upMsg, setUpMsg] = useState('');
-  const [offlineMsg, setOfflineMsg] = useState('');
-
-  const onPrepareOffline = async () => {
-    const pct = (r: number) => (r > 0 ? ` ${Math.round(r * 100)}%` : '…');
-    setOfflineMsg('Descargando quitafondos…');
-    try {
-      await prefetchBgModel((r) => setOfflineMsg(`Quitafondos${pct(r)}`));
-      setOfflineMsg('Descargando optimizador…');
-      await prefetchUpscaleModel((r) => setOfflineMsg(`Optimizador${pct(r)}`));
-      setOfflineMsg('Descargando borrador mágico…');
-      await loadOpenCV();
-      setOfflineMsg('✓ Listo para usar sin internet');
-      setTimeout(() => setOfflineMsg(''), 4000);
-    } catch (e) {
-      console.error(e);
-      setOfflineMsg('✕ Error al descargar (revisa tu conexión)');
-      setTimeout(() => setOfflineMsg(''), 4000);
-    }
-  };
-
-  const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
-
-  // --- quitar fondo (IA local) ---
-  const doRemoveBg = async (target: typeof selected) => {
-    if (!target || target.type !== 'image') return;
-    setBgBusy(true);
-    setBgMsg('Preparando modelo…');
-    try {
-      // Dejar el lienzo transparente para que se vea el recorte — solo si el
-      // usuario no había elegido un fondo propio (blanco por defecto).
-      const bg = useEditor.getState().doc.background;
-      if (bg.type === 'solid' && /^#(fff|ffffff)$/i.test(bg.color)) {
-        setBackground(TRANSPARENT_BG);
-      }
-      const out = await removeImageBackground(target.src, {
-        quality: bgQuality,
-        refine: true,
-        onProgress: (ratio, stage) => {
-          const pct = Math.round(ratio * 100);
-          setBgMsg(
-            stage.startsWith('fetch')
-              ? `Descargando modelo… ${pct}%`
-              : `Procesando… ${pct}%`,
-          );
-        },
-      });
-      addProcessedLayer(target.id, out, `${target.name} sin fondo`);
-    } catch (e) {
-      if ((e as Error).message === 'cancelado') {
-        toast('Operación cancelada', 'info');
-      } else {
-        console.error(e);
-        toast('No se pudo quitar el fondo: ' + (e as Error).message, 'error');
-      }
-    } finally {
-      setBgBusy(false);
-      setBgMsg('');
-    }
-  };
-
-  const onRemoveBackground = () => doRemoveBg(selected);
-
-  // Botón fácil de la barra: usa la imagen seleccionada o la única que haya.
-  const imageLayers = doc.layers.filter((l) => l.type === 'image');
-  const quickBgTarget =
-    selected?.type === 'image'
-      ? selected
-      : imageLayers.length === 1
-        ? imageLayers[0]
-        : null;
-  const onQuickRemoveBg = () => {
-    if (!quickBgTarget) {
-      toast('Selecciona primero una imagen (haz clic sobre ella).', 'info');
-      return;
-    }
-    doRemoveBg(quickBgTarget);
-  };
-
-  // --- optimizar / upscale (IA local) ---
-  const onUpscale = async () => {
-    if (!selected || selected.type !== 'image') return;
-    setUpBusy(true);
-    setUpMsg('Preparando modelo…');
-    try {
-      const res = await upscaleImage(selected.src, (ratio, stage) => {
-        const pct = Math.round(ratio * 100);
-        setUpMsg(
-          stage === 'fetch'
-            ? `Descargando modelo… ${pct}%`
-            : `Mejorando… ${pct}%`,
-        );
-      });
-      // Mantener el tamaño visible: subir resolución, reducir escala en proporción.
-      updateLayer(selected.id, {
-        src: res.dataUrl,
-        originalSrc: undefined,
-        naturalWidth: res.width,
-        naturalHeight: res.height,
-        scaleX: (selected.scaleX * selected.naturalWidth) / res.width,
-        scaleY: (selected.scaleY * selected.naturalHeight) / res.height,
-      });
-    } catch (e) {
-      if ((e as Error).message === 'cancelado') {
-        toast('Operación cancelada', 'info');
-      } else {
-        console.error(e);
-        toast('No se pudo optimizar: ' + (e as Error).message, 'error');
-      }
-    } finally {
-      setUpBusy(false);
-      setUpMsg('');
-    }
-  };
-
-  // --- aplicar recorte ---
-  const onApplyCrop = async () => {
-    if (!selected || selected.type !== 'image' || !cropRect) return;
-    const img = await loadImageElement(selected.src);
-    const processed = needsProcessing(selected)
-      ? processImage(img, selected)
-      : img;
-
-    // Rectángulo de recorte (coords del lienzo) → píxeles de la imagen fuente.
-    let sx = (cropRect.x - selected.x) / selected.scaleX;
-    let sy = (cropRect.y - selected.y) / selected.scaleY;
-    let sw = cropRect.width / selected.scaleX;
-    let sh = cropRect.height / selected.scaleY;
-    sx = clamp(sx, 0, selected.naturalWidth);
-    sy = clamp(sy, 0, selected.naturalHeight);
-    sw = clamp(sw, 1, selected.naturalWidth - sx);
-    sh = clamp(sh, 1, selected.naturalHeight - sy);
-
-    const w = Math.round(sw);
-    const h = Math.round(sh);
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(processed, sx, sy, sw, sh, 0, 0, w, h);
-
-    replaceLayerImage(selected.id, {
-      src: canvas.toDataURL('image/png'),
-      naturalWidth: w,
-      naturalHeight: h,
-      x: selected.x + sx * selected.scaleX,
-      y: selected.y + sy * selected.scaleY,
-    });
-    cancelCrop();
-  };
-
-  // --- subir imágenes ---
-  // Sube imágenes a la galería "Subidos" (y opcionalmente al lienzo).
-  const importFiles = async (
-    files: FileList | File[] | null,
-    addToCanvas: boolean,
-  ) => {
-    if (!files) return;
-    for (const file of Array.from(files)) {
-      try {
-        const img = await loadImageFile(file);
-        const id =
-          typeof crypto !== 'undefined' && 'randomUUID' in crypto
-            ? crypto.randomUUID()
-            : `up-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-        addUpload({ id, ...img });
-        if (addToCanvas) addImageLayer(img);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
-
-  // --- descargar (PNG/JPG/WebP/SVG/GIF, esta página o todas) ---
-  const baseName = (d: { name: string }) =>
-    (d.name || 'chamva').replace(/[^\w\-]+/g, '_');
-
-  const onDownload = async () => {
-    setBusy(true);
-    setShowDownload(false);
-    try {
-      localStorage.setItem(
-        EXPORT_LS,
-        JSON.stringify({ format, scale, quality, scope }),
-      );
-    } catch {
-      /* noop */
-    }
-    try {
-      const st = useEditor.getState();
-      const allPages = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
-
-      if (format === 'gif') {
-        const blob = await exportPagesToGif(allPages, { maxSize: 800, delay: 800 });
-        downloadBlob(blob, `${baseName(allPages[0])}.gif`);
-        return;
-      }
-
-      if (format === 'pdf') {
-        const pdfPages = scope === 'all' ? allPages : [st.doc];
-        const blob = await exportPagesToPdf(pdfPages);
-        downloadBlob(blob, `${baseName(pdfPages[0])}.pdf`);
-        return;
-      }
-
-      if (format === 'anim') {
-        const blob = await exportAnimatedGif(st.doc);
-        downloadBlob(blob, `${baseName(st.doc)}_anim.gif`);
-        return;
-      }
-
-      if (format === 'anim-mp4') {
-        const gif = await exportAnimatedGif(st.doc);
-        const mp4 = await gifToMp4(gif);
-        downloadBlob(mp4, `${baseName(st.doc)}_anim.mp4`);
-        return;
-      }
-
-      if (format === 'ico') {
-        const blob = await exportIco(st.doc);
-        downloadBlob(blob, `${baseName(st.doc)}.ico`);
-        return;
-      }
-
-      const targets = scope === 'all' ? allPages : [st.doc];
-      for (let i = 0; i < targets.length; i++) {
-        const page = targets[i];
-        let blob: Blob;
-        let ext: string;
-        if (format === 'svg') {
-          blob = new Blob([await exportDocToSvg(page)], {
-            type: 'image/svg+xml',
-          });
-          ext = 'svg';
-        } else {
-          blob = await exportDoc(page, {
-            format: format as ExportFormat,
-            quality,
-            scale,
-          });
-          ext = format === 'jpeg' ? 'jpg' : format;
-        }
-        const suffix = targets.length > 1 ? `_pag${i + 1}` : '';
-        downloadBlob(blob, `${baseName(page)}${suffix}.${ext}`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast('Error al descargar: ' + (e as Error).message, 'error');
-    } finally {
-      setBusy(false);
-      // La descarga nunca se bloquea. Sin licencia se muestra el aviso de
-      // apoyo como máximo una vez al día (no tras cada descarga).
-      if (!license) {
-        const KEY = 'chamva.donateShownAt';
-        const last = Number(localStorage.getItem(KEY) ?? 0);
-        if (Date.now() - last > 24 * 60 * 60 * 1000) {
-          localStorage.setItem(KEY, String(Date.now()));
-          setShowDonate(true);
-        }
-      }
-    }
-  };
-
-  const onCopyToClipboard = async () => {
-    try {
-      const blob = await exportDoc(doc, { format: 'png', scale: 1 });
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': blob }),
-      ]);
-      setShowDownload(false);
-      toast('Copiado al portapapeles', 'success');
-    } catch (e) {
-      toast('No se pudo copiar al portapapeles: ' + (e as Error).message, 'error');
-    }
-  };
-
-  const onSaveTemplate = async () => {
-    try {
-      const scale = Math.min(1, 220 / Math.max(doc.width, doc.height));
-      const thumb = (await renderDocToCanvas(doc, scale, '#ffffff')).toDataURL(
-        'image/jpeg',
-        0.6,
-      );
-      const id =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `tpl-${Date.now()}`;
-      addTemplate({
-        id,
-        name: doc.name || `Plantilla ${templates.length + 1}`,
-        thumb,
-        doc: JSON.parse(JSON.stringify(doc)),
-      });
-      toast('Plantilla guardada', 'success');
-    } catch (e) {
-      toast('No se pudo guardar la plantilla: ' + (e as Error).message, 'error');
-    }
-  };
-
-  // Exportar/importar "Mis plantillas" como archivo (para compartirlas).
-  const templatesFileRef = useRef<HTMLInputElement>(null);
-  const onExportTemplates = () => {
-    if (!templates.length) {
-      toast('No tienes plantillas guardadas todavía.', 'info');
-      return;
-    }
-    const blob = new Blob(
-      [JSON.stringify({ kind: 'chamva-templates', version: 1, templates })],
-      { type: 'application/json' },
+    setStorageErrorHandler(() =>
+      toast(
+        'No se pudo guardar en el almacenamiento local (¿espacio lleno?). Guarda tu proyecto como archivo.',
+        'error',
+      ),
     );
-    downloadBlob(blob, 'mis-plantillas.chamva-templates.json');
-  };
-  const onImportTemplates = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      const list = data?.kind === 'chamva-templates' ? data.templates : null;
-      if (!Array.isArray(list)) throw new Error('archivo no reconocido');
-      let added = 0;
-      for (const tpl of list) {
-        if (tpl?.doc && tpl?.thumb) {
-          addTemplate({
-            id:
-              typeof crypto !== 'undefined' && 'randomUUID' in crypto
-                ? crypto.randomUUID()
-                : `tpl-${Date.now()}-${added}`,
-            name: tpl.name ?? 'Plantilla importada',
-            thumb: tpl.thumb,
-            doc: tpl.doc,
-          });
-          added++;
-        }
-      }
-      toast(`${added} plantilla(s) importada(s)`, 'success');
-    } catch (e) {
-      toast('No se pudieron importar: ' + (e as Error).message, 'error');
-    }
-  };
-
-  const onExportLayer = async () => {
-    if (!selected) return;
-    const single = { ...doc, background: TRANSPARENT_BG, layers: [selected] };
-    const blob = await exportDoc(single, { format: 'png', scale: 1 });
-    downloadBlob(blob, `${baseName(doc)}_capa.png`);
-  };
-
-  // --- proyecto (multipágina) ---
-  const onSaveProject = () => {
-    const st = useEditor.getState();
-    const allPages = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
-    saveProject(allPages, st.pageIndex);
-  };
-
-  const onOpenProject = async (files: FileList | File[] | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    try {
-      const project = await readProjectFile(file);
-      loadPages(project.pages, project.pageIndex);
-      const first = project.pages[project.pageIndex] ?? project.pages[0];
-      setCustomW(String(first.width));
-      setCustomH(String(first.height));
-    } catch (e) {
-      toast('No se pudo abrir el proyecto: ' + (e as Error).message, 'error');
-    }
-  };
-
-  // --- atajos de teclado ---
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        e.shiftKey ? redo() : undo();
-      } else if (ctrl && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        redo();
-      } else if (ctrl && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        if (selectedId) useEditor.getState().duplicateLayer(selectedId);
-      } else if (ctrl && e.key.toLowerCase() === 'c') {
-        const st = useEditor.getState();
-        const l = st.doc.layers.find((x) => x.id === st.selectedId);
-        if (l) clipLayer.current = l;
-      } else if (ctrl && e.key.toLowerCase() === 'v') {
-        if (clipLayer.current) {
-          e.preventDefault();
-          pasteLayer(clipLayer.current);
-        }
-      } else if (e.key === 'Escape') {
-        const st = useEditor.getState();
-        if (st.cropMode) st.cancelCrop();
-        else if (st.selectedId) st.selectLayer(null);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-        e.preventDefault();
-        const st = useEditor.getState();
-        // Las capas bloqueadas no se borran con la tecla (protege el fondo).
-        const l = st.doc.layers.find((x) => x.id === selectedId);
-        if (!l?.locked) st.removeSelected();
-      } else if (e.key.startsWith('Arrow') && selectedId) {
-        e.preventDefault();
-        const st = useEditor.getState();
-        const l = st.doc.layers.find((x) => x.id === selectedId);
-        if (l && !l.locked) {
-          const step = e.shiftKey ? 10 : 1;
-          const dx =
-            e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-          const dy =
-            e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-          st.updateLayer(selectedId, { x: l.x + dx, y: l.y + dy });
-        }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, removeLayer, pasteLayer, selectedId]);
-
-  // Cargar subidos/plantillas guardados (IndexedDB) al iniciar.
-  useEffect(() => {
+    requestPersistentStorage();
     useEditor.getState().hydrate();
+    const gc = setTimeout(() => {
+      gcAssets().then((n) => n && console.info(`Imágenes huérfanas borradas: ${n}`));
+    }, 30_000);
+    return () => clearTimeout(gc);
   }, []);
 
-  // Autoguardado: restaurar el último diseño al iniciar y guardar al editar.
+  // ---- autoguardado ----
   const [autosaveReady, setAutosaveReady] = useState(false);
   useEffect(() => {
     (async () => {
       try {
         const saved = await idbGet<{ pages: Doc[]; index: number }>('autosave');
-        if (saved?.pages?.length) {
-          loadPages(saved.pages, saved.index ?? 0);
-        }
+        if (saved?.pages?.length) loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0);
       } catch {
         /* sin recuperación si falla */
       } finally {
@@ -793,29 +333,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Las imágenes van por referencia (io/assets.ts): cada escritura pesa KB.
+  // Galería y copias, que releen/reescriben listas, van cada 30 s como mucho.
+  const lastGallery = useRef(0);
   useEffect(() => {
     if (!autosaveReady) return;
     const id = setTimeout(async () => {
       const st = useEditor.getState();
       const snapshot = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
-      idbSet('autosave', { pages: snapshot, index: st.pageIndex });
-      // Copia de seguridad periódica (últimas 5, una cada 2 min como mucho).
-      pushBackup(snapshot, st.pageIndex);
-      // Galería de diseños recientes: miniatura pequeña de la primera página.
+      const light = await dehydrateDocs(snapshot);
+      idbSet('autosave', { pages: light, index: st.pageIndex });
+      if (Date.now() - lastGallery.current < 30_000) return;
+      lastGallery.current = Date.now();
+      pushBackup(light, st.pageIndex);
       if (snapshot[0]?.layers.length || snapshot.length > 1) {
         try {
           const first = snapshot[0];
           const s = Math.min(1, 160 / Math.max(first.width, first.height));
-          const thumb = (await renderDocToCanvas(first, s, '#ffffff')).toDataURL(
-            'image/jpeg',
-            0.6,
-          );
+          const thumb = (await renderDocToCanvas(first, s, '#ffffff')).toDataURL('image/jpeg', 0.6);
           upsertDesign({
             id: first.id,
             name: first.name || 'Diseño sin título',
             updatedAt: Date.now(),
             pageIndex: st.pageIndex,
-            pages: snapshot,
+            pages: light,
             thumb,
           });
         } catch {
@@ -826,9 +367,9 @@ export default function App() {
     return () => clearTimeout(id);
   }, [doc, pages, pageIndex, autosaveReady]);
 
-  // App abierta con doble clic sobre un .chamva (solo Tauri): cargar el proyecto.
+  // App abierta con doble clic sobre un .chamva (solo Tauri).
   useEffect(() => {
-    if (!('__TAURI_INTERNALS__' in window)) return;
+    if (!isTauri()) return;
     (async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
@@ -853,30 +394,364 @@ export default function App() {
     }
   }, [textEditNonce]);
 
-  const applyCustomSize = () => {
-    const w = Math.max(1, Math.round(Number(customW) || doc.width));
-    const h = Math.max(1, Math.round(Number(customH) || doc.height));
-    setCanvasSize(w, h);
+  // ---- acciones ----
+  const onUploadFont = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const family = await addFontFromFile(file);
+      addCustomFont(family);
+      const sel = useEditor.getState().doc.layers.find((l) => l.id === useEditor.getState().selectedId);
+      if (sel?.type === 'text') updateLayer(sel.id, { fontFamily: family });
+      toast(`Fuente "${family}" lista`, 'success');
+    } catch (e) {
+      toast('No se pudo cargar la fuente: ' + (e as Error).message, 'error');
+    }
   };
+
+  const onPrepareOffline = async () => {
+    const pct = (r: number) => (r > 0 ? ` ${Math.round(r * 100)}%` : '…');
+    setOfflineMsg('Descargando quitafondos…');
+    try {
+      await prefetchBgModel((r) => setOfflineMsg(`Quitafondos${pct(r)}`), bgQuality);
+      setOfflineMsg('Descargando optimizador…');
+      await prefetchUpscaleModel((r) => setOfflineMsg(`Optimizador${pct(r)}`));
+      setOfflineMsg('Cargando borrador mágico…');
+      await loadOpenCV();
+      setOfflineMsg('Descargando conversor de video…');
+      await prefetchFFmpeg();
+      setOfflineMsg('✓ Listo para usar sin internet');
+      setTimeout(() => setOfflineMsg(''), 4000);
+    } catch (e) {
+      console.error(e);
+      setOfflineMsg('✕ Error al descargar (revisa tu conexión)');
+      setTimeout(() => setOfflineMsg(''), 4000);
+    }
+  };
+
+  const doRemoveBg = async (
+    target: Layer | null,
+    edges: EdgeMode = bgEdges,
+    engine: BgQuality = bgQuality,
+  ) => {
+    if (!target || target.type !== 'image') return;
+    setBgBusy(true);
+    setBgMsg('Preparando modelo…');
+    try {
+      // Lienzo transparente para ver el recorte — solo si el fondo era el blanco por defecto.
+      const bg = useEditor.getState().doc.background;
+      if (bg.type === 'solid' && /^#(fff|ffffff)$/i.test(bg.color)) setBackground(TRANSPARENT_BG);
+      const out = await removeImageBackground(target.src, {
+        quality: engine,
+        edges,
+        onProgress: (ratio, stage) => {
+          const pct = Math.round(ratio * 100);
+          setBgMsg(stage.startsWith('fetch') ? `Descargando modelo… ${pct}%` : `Procesando… ${pct}%`);
+        },
+      });
+      setBgPreview({ target, result: out });
+    } catch (e) {
+      const err = e as Error;
+      if (err.message === 'cancelado') {
+        toast('Operación cancelada', 'info');
+      } else if (err.name === 'GpuUnavailableError' && engine === 'birefnet') {
+        toast('Tu equipo no soporta el motor BiRefNet (GPU). Usando MODNet.', 'info');
+        chooseBgEngine('modnet');
+        setBgBusy(false);
+        setBgMsg('');
+        return doRemoveBg(target, edges, 'modnet');
+      } else {
+        console.error(e);
+        toast(
+          /fetch|network|load/i.test(err.message)
+            ? 'Necesitas internet la primera vez para descargar el modelo (o usa "Preparar offline" en Ajustes).'
+            : 'No se pudo quitar el fondo: ' + err.message,
+          'error',
+        );
+      }
+    } finally {
+      setBgBusy(false);
+      setBgMsg('');
+    }
+  };
+  const onRemoveBackground = () => doRemoveBg(selected);
+  const onQuickRemoveBg = () => {
+    const imageLayers = doc.layers.filter((l) => l.type === 'image');
+    const target = selected?.type === 'image' ? selected : imageLayers.length === 1 ? imageLayers[0] : null;
+    if (!target) {
+      toast('Selecciona primero una imagen (haz clic sobre ella).', 'info');
+      return;
+    }
+    doRemoveBg(target);
+  };
+  const useBgResult = () => {
+    if (!bgPreview) return;
+    addProcessedLayer(bgPreview.target.id, bgPreview.result, `${bgPreview.target.name} sin fondo`);
+    setBgPreview(null);
+  };
+  const refineBgResult = () => {
+    if (!bgPreview) return;
+    const { target, result } = bgPreview;
+    setBgPreview(null);
+    setMaskSession({
+      layer: { ...target, src: result, originalSrc: target.src },
+      onApply: (dataUrl) => {
+        addProcessedLayer(target.id, dataUrl, `${target.name} sin fondo`);
+        setMaskSession(null);
+      },
+    });
+  };
+  const openMaskForSelected = () => {
+    if (!selected || selected.type !== 'image') return;
+    setMaskSession({
+      layer: selected,
+      onApply: (dataUrl) => {
+        updateLayer(selected.id, { src: dataUrl });
+        setMaskSession(null);
+      },
+    });
+  };
+
+  const onUpscale = async () => {
+    if (!selected || selected.type !== 'image') return;
+    setUpBusy(true);
+    setUpMsg('Preparando modelo…');
+    try {
+      const res = await upscaleImage(selected.src, (ratio, stage) => {
+        const pct = Math.round(ratio * 100);
+        setUpMsg(stage === 'fetch' ? `Descargando modelo… ${pct}%` : `Mejorando… ${pct}%`);
+      });
+      // Mantener el tamaño visible: subir resolución, reducir escala en proporción.
+      updateLayer(selected.id, {
+        src: res.dataUrl,
+        originalSrc: undefined,
+        naturalWidth: res.width,
+        naturalHeight: res.height,
+        scaleX: (selected.scaleX * selected.naturalWidth) / res.width,
+        scaleY: (selected.scaleY * selected.naturalHeight) / res.height,
+      });
+    } catch (e) {
+      if ((e as Error).message === 'cancelado') toast('Operación cancelada', 'info');
+      else {
+        console.error(e);
+        toast('No se pudo optimizar: ' + (e as Error).message, 'error');
+      }
+    } finally {
+      setUpBusy(false);
+      setUpMsg('');
+    }
+  };
+
+  const onApplyCrop = async () => {
+    if (!selected || selected.type !== 'image' || !cropRect) return;
+    const img = await loadImageElement(selected.src);
+    const processed = needsProcessing(selected) ? processImage(img, selected) : img;
+    let sx = (cropRect.x - selected.x) / selected.scaleX;
+    let sy = (cropRect.y - selected.y) / selected.scaleY;
+    let sw = cropRect.width / selected.scaleX;
+    let sh = cropRect.height / selected.scaleY;
+    sx = clamp(sx, 0, selected.naturalWidth);
+    sy = clamp(sy, 0, selected.naturalHeight);
+    sw = clamp(sw, 1, selected.naturalWidth - sx);
+    sh = clamp(sh, 1, selected.naturalHeight - sy);
+    const w = Math.round(sw);
+    const h = Math.round(sh);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d')!.drawImage(processed, sx, sy, sw, sh, 0, 0, w, h);
+    replaceLayerImage(selected.id, {
+      src: canvas.toDataURL('image/png'),
+      naturalWidth: w,
+      naturalHeight: h,
+      x: selected.x + sx * selected.scaleX,
+      y: selected.y + sy * selected.scaleY,
+    });
+    cancelCrop();
+  };
+
+  const importFiles = async (files: FileList | File[] | null, addToCanvas: boolean) => {
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      try {
+        const img = await loadImageFile(file);
+        const id =
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `up-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+        addUpload({ id, ...img });
+        if (addToCanvas) addImageLayer(img);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const baseName = (d: { name: string }) => (d.name || 'chamva').replace(/[^\w\-]+/g, '_');
+
+  const onDownload = async () => {
+    setBusy(true);
+    setShowDownload(false);
+    try {
+      localStorage.setItem(EXPORT_LS, JSON.stringify({ format, scale, quality, scope }));
+    } catch {
+      /* noop */
+    }
+    try {
+      const st = useEditor.getState();
+      const allPages = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
+      if (format === 'gif') {
+        downloadBlob(await exportPagesToGif(allPages, { maxSize: 800, delay: 800 }), `${baseName(allPages[0])}.gif`);
+        return;
+      }
+      if (format === 'pdf') {
+        const pdfPages = scope === 'all' ? allPages : [st.doc];
+        downloadBlob(await exportPagesToPdf(pdfPages), `${baseName(pdfPages[0])}.pdf`);
+        return;
+      }
+      if (format === 'anim') {
+        downloadBlob(await exportAnimatedGif(st.doc), `${baseName(st.doc)}_anim.gif`);
+        return;
+      }
+      if (format === 'anim-mp4') {
+        downloadBlob(await gifToMp4(await exportAnimatedGif(st.doc)), `${baseName(st.doc)}_anim.mp4`);
+        return;
+      }
+      if (format === 'ico') {
+        downloadBlob(await exportIco(st.doc), `${baseName(st.doc)}.ico`);
+        return;
+      }
+      const targets = scope === 'all' ? allPages : [st.doc];
+      for (let i = 0; i < targets.length; i++) {
+        const page = targets[i];
+        let blob: Blob;
+        let ext: string;
+        if (format === 'svg') {
+          blob = new Blob([await exportDocToSvg(page)], { type: 'image/svg+xml' });
+          ext = 'svg';
+        } else {
+          blob = await exportDoc(page, { format: format as ExportFormat, quality, scale });
+          ext = format === 'jpeg' ? 'jpg' : format;
+        }
+        const suffix = targets.length > 1 ? `_pag${i + 1}` : '';
+        downloadBlob(blob, `${baseName(page)}${suffix}.${ext}`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast('Error al descargar: ' + (e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+      // La descarga nunca se bloquea. Sin licencia, el aviso de apoyo sale
+      // como máximo una vez al día.
+      if (!license) {
+        const KEY = 'chamva.donateShownAt';
+        const last = Number(localStorage.getItem(KEY) ?? 0);
+        if (Date.now() - last > 24 * 60 * 60 * 1000) {
+          localStorage.setItem(KEY, String(Date.now()));
+          setShowDonate(true);
+        }
+      }
+    }
+  };
+
+  const onCopyToClipboard = async () => {
+    try {
+      const blob = await exportDoc(doc, { format: 'png', scale: 1 });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      setShowDownload(false);
+      toast('Copiado al portapapeles', 'success');
+    } catch (e) {
+      toast('No se pudo copiar al portapapeles: ' + (e as Error).message, 'error');
+    }
+  };
+
+  const onSaveTemplate = async () => {
+    try {
+      const s = Math.min(1, 220 / Math.max(doc.width, doc.height));
+      const thumb = (await renderDocToCanvas(doc, s, '#ffffff')).toDataURL('image/jpeg', 0.6);
+      const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `tpl-${Date.now()}`;
+      addTemplate({ id, name: doc.name || `Plantilla ${templates.length + 1}`, thumb, doc: JSON.parse(JSON.stringify(doc)) });
+      toast('Plantilla guardada', 'success');
+    } catch (e) {
+      toast('No se pudo guardar la plantilla: ' + (e as Error).message, 'error');
+    }
+  };
+  const onExportTemplates = () => {
+    if (!templates.length) {
+      toast('No tienes plantillas guardadas todavía.', 'info');
+      return;
+    }
+    const blob = new Blob([JSON.stringify({ kind: 'chamva-templates', version: 1, templates })], {
+      type: 'application/json',
+    });
+    downloadBlob(blob, 'mis-plantillas.chamva-templates.json');
+  };
+  const onImportTemplates = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const list = data?.kind === 'chamva-templates' ? data.templates : null;
+      if (!Array.isArray(list)) throw new Error('archivo no reconocido');
+      let added = 0;
+      for (const tpl of list) {
+        if (tpl?.doc && tpl?.thumb) {
+          addTemplate({
+            id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `tpl-${Date.now()}-${added}`,
+            name: tpl.name ?? 'Plantilla importada',
+            thumb: tpl.thumb,
+            doc: tpl.doc,
+          });
+          added++;
+        }
+      }
+      toast(`${added} plantilla(s) importada(s)`, 'success');
+    } catch (e) {
+      toast('No se pudieron importar: ' + (e as Error).message, 'error');
+    }
+  };
+  const onApplyTemplate = (d: Doc) => {
+    applyTemplate(d);
+    setSizeInputs(d);
+  };
+
+  const onExportLayer = async () => {
+    if (!selected) return;
+    const single = { ...doc, background: TRANSPARENT_BG, layers: [selected] };
+    downloadBlob(await exportDoc(single, { format: 'png', scale: 1 }), `${baseName(doc)}_capa.png`);
+  };
+
+  const onSaveProject = () => {
+    const st = useEditor.getState();
+    saveProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex);
+  };
+  const onOpenProject = async (files: FileList | File[] | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const project = await readProjectFile(file);
+      loadPages(project.pages, project.pageIndex);
+      setSizeInputs(project.pages[project.pageIndex] ?? project.pages[0]);
+    } catch (e) {
+      toast('No se pudo abrir el proyecto: ' + (e as Error).message, 'error');
+    }
+  };
+
+  const offlineBusy = !!offlineMsg && !offlineMsg.startsWith('✓') && !offlineMsg.startsWith('✕');
 
   return (
     <div className="app">
+      {update && !updateDismissed && (
+        <UpdateBanner update={update} pct={updatePct} onInstall={installUpdate} onDismiss={() => setUpdateDismissed(true)} />
+      )}
+
       <header className="toolbar">
-        <span
-          className="brand"
-          style={{ cursor: 'pointer' }}
-          onClick={() => setShowHome(true)}
-          title="Inicio"
-        >
+        <span className="brand" style={{ cursor: 'pointer' }} onClick={() => setShowHome(true)} title="Inicio">
           ChamVa
         </span>
 
         <div className="menu-wrap">
-          <button
-            className={showFileMenu ? 'active' : ''}
-            onClick={() => setShowFileMenu((v) => !v)}
-            title="Archivo"
-          >
+          <button className={showFileMenu ? 'active' : ''} onClick={() => setShowFileMenu((v) => !v)} title="Archivo">
             ☰ {t('Archivo')}
           </button>
           {showFileMenu && (
@@ -902,98 +777,17 @@ export default function App() {
         </div>
 
         <div className="menu-wrap">
-          <button
-            className={showSizeMenu ? 'active' : ''}
-            onClick={() => setShowSizeMenu((v) => !v)}
-            title="Tamaño del lienzo"
-          >
+          <button className={showSizeMenu ? 'active' : ''} onClick={() => setShowSizeMenu((v) => !v)} title="Tamaño del lienzo">
             📐 {doc.width}×{doc.height}
           </button>
           {showSizeMenu && (
-            <div className="dropdown size-menu">
-              <label className="dl-row">
-                Tamaño
-                <select
-                  value={
-                    CANVAS_PRESETS.some(
-                      (p) => p.width === doc.width && p.height === doc.height,
-                    )
-                      ? `${doc.width}x${doc.height}`
-                      : 'custom'
-                  }
-                  onChange={(e) => {
-                    const p = CANVAS_PRESETS.find(
-                      (x) => `${x.width}x${x.height}` === e.target.value,
-                    );
-                    if (p) {
-                      setCanvasSize(p.width, p.height);
-                      setCustomW(String(p.width));
-                      setCustomH(String(p.height));
-                    }
-                  }}
-                >
-                  {CANVAS_PRESETS.map((p) => (
-                    <option key={p.label} value={`${p.width}x${p.height}`}>
-                      {p.label}
-                    </option>
-                  ))}
-                  <option value="custom">Personalizado…</option>
-                </select>
-              </label>
-              <label className="dl-row">
-                Medida
-                <span className="custom-size">
-                  <input
-                    type="number"
-                    value={customW}
-                    onChange={(e) => setCustomW(e.target.value)}
-                  />
-                  ×
-                  <input
-                    type="number"
-                    value={customH}
-                    onChange={(e) => setCustomH(e.target.value)}
-                  />
-                </span>
-              </label>
-              <button
-                className="primary dl-go"
-                onClick={() => {
-                  applyCustomSize();
-                  setShowSizeMenu(false);
-                }}
-              >
-                Aplicar
-              </button>
-
-              <div className="dl-row" style={{ marginTop: 4 }}>
-                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                  Magic Resize (copia en otro tamaño)
-                </span>
-              </div>
-              {CANVAS_PRESETS.map((p) => (
-                <button
-                  key={'mr' + p.label}
-                  className="dropdown-item"
-                  onClick={() => {
-                    addResizedPage(p.width, p.height);
-                    setShowSizeMenu(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text)',
-                    textAlign: 'left',
-                    padding: '6px 8px',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    fontSize: 12,
-                  }}
-                >
-                  ✨ {p.label}
-                </button>
-              ))}
-            </div>
+            <SizeMenu
+              customW={customW}
+              customH={customH}
+              setCustomW={setCustomW}
+              setCustomH={setCustomH}
+              onClose={() => setShowSizeMenu(false)}
+            />
           )}
         </div>
 
@@ -1006,35 +800,23 @@ export default function App() {
           </button>
         </div>
 
-        <button
-          className="cut-bg"
-          onClick={onQuickRemoveBg}
-          disabled={bgBusy}
-          title="Quitar el fondo de la imagen y dejarlo transparente"
-        >
+        <button className="cut-bg" onClick={onQuickRemoveBg} disabled={bgBusy} title="Quitar el fondo de la imagen y dejarlo transparente">
           {bgBusy ? `✂ ${bgMsg || '…'}` : `✂ ${t('Quitar fondo')}`}
         </button>
-
-        <button
-          onClick={onPrepareOffline}
-          disabled={!!offlineMsg && !offlineMsg.startsWith('✓') && !offlineMsg.startsWith('✕')}
-          title="Descarga los modelos de IA para usarlos sin internet"
-        >
+        <button onClick={onPrepareOffline} disabled={offlineBusy} title="Descarga los modelos de IA para usarlos sin internet">
           {offlineMsg || `⬇ ${t('Preparar offline')}`}
         </button>
-
         <button onClick={playAnimations} title="Previsualizar animaciones">
           ▶ {t('Animar')}
         </button>
-
         <button onClick={() => setShowPresent(true)} title="Modo presentación">
           ▶ {t('Presentar')}
         </button>
-
         <button onClick={() => setShowVideo(true)} title="Editor de video y audio">
           🎬 {t('Video')}
         </button>
 
+        {/* Inputs ocultos: siempre montados para que los botones del riel funcionen */}
         <input
           ref={fileRef}
           type="file"
@@ -1056,13 +838,27 @@ export default function App() {
             e.target.value = '';
           }}
         />
+        <input
+          ref={fontFileRef}
+          type="file"
+          accept=".ttf,.otf,.woff,.woff2,font/*"
+          hidden
+          onChange={(e) => {
+            onUploadFont(e.target.files);
+            e.target.value = '';
+          }}
+        />
 
         <span className="spacer" />
 
         <div className="download-wrap">
           <button
             className="cut-bg"
-            onClick={() => setShowDownload((v) => !v)}
+            onClick={() => {
+              // Lienzo transparente + JPG recordado → proponer PNG.
+              if (!showDownload && format === 'jpeg' && doc.background.type === 'transparent') setFormat('png');
+              setShowDownload((v) => !v);
+            }}
             disabled={busy}
           >
             {busy ? (
@@ -1074,99 +870,24 @@ export default function App() {
             )}
           </button>
           {showDownload && (
-            <div className="download-menu">
-              <label className="dl-row">
-                {t('Formato')}
-                <select
-                  value={format}
-                  onChange={(e) => setFormat(e.target.value as ExportFormat)}
-                >
-                  <option value="png">PNG (transparente)</option>
-                  <option value="jpeg">JPG</option>
-                  <option value="webp">WebP</option>
-                  <option value="avif">AVIF</option>
-                  <option value="svg">SVG (vector)</option>
-                  <option value="ico">ICO (icono)</option>
-                  <option value="pdf">PDF</option>
-                  <option value="gif">GIF (páginas)</option>
-                  <option value="anim">GIF (animación)</option>
-                  <option value="anim-mp4">MP4 (animación)</option>
-                </select>
-              </label>
-
-              {(format === 'png' ||
-                format === 'jpeg' ||
-                format === 'webp' ||
-                format === 'avif') && (
-                <>
-                  <label className="dl-row">
-                    {t('Tamaño')}
-                    <select
-                      value={scale}
-                      onChange={(e) => setScale(Number(e.target.value))}
-                    >
-                      <option value={1}>@1x</option>
-                      <option value={2}>@2x</option>
-                      <option value={3}>@3x</option>
-                    </select>
-                  </label>
-                  {format !== 'png' && (
-                    <label className="dl-row">
-                      {t('Calidad')}
-                      <input
-                        type="range"
-                        min={0.1}
-                        max={1}
-                        step={0.01}
-                        value={quality}
-                        onChange={(e) => setQuality(Number(e.target.value))}
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-
-              {format !== 'gif' &&
-                format !== 'anim' &&
-                format !== 'anim-mp4' &&
-                format !== 'ico' && (
-                <label className="dl-row">
-                  {t('Páginas')}
-                  <select
-                    value={scope}
-                    onChange={(e) => setScope(e.target.value as 'page' | 'all')}
-                  >
-                    <option value="page">{t('Esta página')}</option>
-                    <option value="all">{t('Todas')} ({pages.length})</option>
-                  </select>
-                </label>
-              )}
-              {format === 'gif' && (
-                <p className="dl-hint">
-                  El GIF anima todas las páginas ({pages.length}).
-                </p>
-              )}
-              {format === 'anim' && (
-                <p className="dl-hint">
-                  GIF con las animaciones de entrada de esta página.
-                </p>
-              )}
-
-              <button className="primary dl-go" onClick={onDownload}>
-                ⬇ {t('Descargar')} {format.toUpperCase()}
-              </button>
-              <button className="dl-go" onClick={onCopyToClipboard}>
-                📋 {t('Copiar al portapapeles')}
-              </button>
-            </div>
+            <DownloadMenu
+              format={format}
+              setFormat={setFormat}
+              scale={scale}
+              setScale={setScale}
+              quality={quality}
+              setQuality={setQuality}
+              scope={scope}
+              setScope={setScope}
+              pageCount={pages.length}
+              transparentCanvas={doc.background.type === 'transparent'}
+              onDownload={onDownload}
+              onCopy={onCopyToClipboard}
+            />
           )}
         </div>
 
-        <button
-          className="settings-btn"
-          onClick={() => setShowSettings(true)}
-          title="Ajustes, licencia y versión"
-        >
+        <button className="settings-btn" onClick={() => setShowSettings(true)} title="Ajustes, licencia y versión">
           ⚙ {t('Ajustes')}
         </button>
       </header>
@@ -1184,7 +905,6 @@ export default function App() {
           }
           if (e.dataTransfer.files.length) {
             const files = Array.from(e.dataTransfer.files);
-            // Proyectos .chamva / .json soltados sobre la ventana → abrir.
             const project = files.find((f) => /\.(chamva|json)$/i.test(f.name));
             if (project) {
               onOpenProject([project]);
@@ -1195,408 +915,29 @@ export default function App() {
           }
         }}
         onContextMenu={(e) => {
-          // Menú contextual propio cuando hay una capa seleccionada.
           if (!selected || showHome || showVideo) return;
           e.preventDefault();
           setCtxMenu({ x: e.clientX, y: e.clientY });
         }}
       >
-        <nav className="rail">
-          {([
-            { id: 'subir', icon: 'upload', label: 'Subir' },
-            { id: 'texto', icon: 'text', label: 'Texto' },
-            { id: 'elementos', icon: 'shapes', label: 'Elementos' },
-            { id: 'fondo', icon: 'palette', label: 'Fondo' },
-            { id: 'plantillas', icon: 'templates', label: 'Plantillas' },
-            { id: 'capas', icon: 'layers', label: 'Capas' },
-            { id: 'marca', icon: 'star', label: 'Marca' },
-          ] as const).map((tab) => (
-            <button
-              key={tab.id}
-              className={activeTab === tab.id ? 'active' : ''}
-              onClick={() => setActiveTab(activeTab === tab.id ? null : tab.id)}
-            >
-              <span className="rail-ico">
-                <Icon name={tab.icon} size={22} />
-              </span>
-              <span className="rail-lbl">{t(tab.label)}</span>
-            </button>
-          ))}
-        </nav>
-
-        {activeTab && (
-          <div className="rail-panel">
-            {activeTab === 'subir' && (
-              <>
-                <div className="rail-head">
-                  <h3>{t('Subir')}</h3>
-                  <button className="cp-x" onClick={() => setActiveTab(null)}>
-                    ✕
-                  </button>
-                </div>
-                <button className="rail-big" onClick={() => fileRef.current?.click()}>
-                  📁 {t('Subir imagen')}
-                </button>
-                <button
-                  className="rail-big"
-                  onClick={() => fontFileRef.current?.click()}
-                >
-                  🔤 {t('Subir fuente')}
-                </button>
-                <p className="rail-hint">
-                  Tus imágenes quedan aquí. Haz clic o arrástralas al lienzo.
-                </p>
-                {uploads.length > 0 && (
-                  <div className="uploads-grid">
-                    {uploads.map((u) => (
-                      <div
-                        key={u.id}
-                        className="upload-thumb"
-                        draggable
-                        onDragStart={() => (dragUploadId.current = u.id)}
-                        onClick={() => addImageLayer(u)}
-                        title="Clic o arrastra al lienzo"
-                      >
-                        <img src={u.src} alt={u.name} />
-                        <button
-                          className="upload-del"
-                          title="Quitar de la galería"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeUpload(u.id);
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {activeTab === 'texto' && (
-              <>
-                <div className="rail-head">
-                  <h3>{t('Texto')}</h3>
-                  <button className="cp-x" onClick={() => setActiveTab(null)}>
-                    ✕
-                  </button>
-                </div>
-                <button className="rail-big" onClick={() => addTextLayer()}>
-                  ＋ {t('Caja de texto')}
-                </button>
-                {TEXT_PRESETS.map((p) => (
-                  <button
-                    key={p.label}
-                    className="rail-item"
-                    style={{ fontWeight: p.bold ? 500 : 400 }}
-                    onClick={() =>
-                      addTextLayer({
-                        text: p.text,
-                        fontSize: p.fontSize,
-                        bold: p.bold,
-                      })
-                    }
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </>
-            )}
-
-            {activeTab === 'elementos' && (
-              <>
-                <div className="rail-head">
-                  <h3>{t('Elementos')}</h3>
-                  <button className="cp-x" onClick={() => setActiveTab(null)}>
-                    ✕
-                  </button>
-                </div>
-                <div className="rail-shapes">
-                  {SHAPE_OPTIONS.map((s) => (
-                    <button
-                      key={s.kind}
-                      onClick={() => addShapeLayer(s.kind)}
-                      title={s.label}
-                    >
-                      {s.icon}
-                    </button>
-                  ))}
-                </div>
-
-                <h4 className="rail-sub">{t('Buscar iconos')}</h4>
-                <div className="font-row">
-                  <input
-                    type="text"
-                    placeholder='Ej: flecha, corazón…'
-                    value={iconQuery}
-                    onChange={(e) => setIconQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && doIconSearch()}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      background: 'var(--panel-2)',
-                      color: 'var(--text)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 6,
-                      padding: '7px 9px',
-                      fontSize: 13,
-                    }}
-                  />
-                  <button className="font-upload" onClick={doIconSearch}>
-                    🔍
-                  </button>
-                </div>
-                {iconBusy && <p className="rail-hint">Buscando…</p>}
-                <div className="icon-grid">
-                  {iconResults.map((name) => (
-                    <button
-                      key={name}
-                      className="icon-cell"
-                      title={name}
-                      onClick={() => addIcon(name)}
-                    >
-                      <img src={iconPreviewUrl(name, 40)} alt={name} />
-                    </button>
-                  ))}
-                </div>
-
-                <h4 className="rail-sub">{t('Código QR')}</h4>
-                <div className="font-row">
-                  <input
-                    type="text"
-                    placeholder="URL o texto"
-                    value={qrText}
-                    onChange={(e) => setQrText(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addQR()}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      background: 'var(--panel-2)',
-                      color: 'var(--text)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 6,
-                      padding: '7px 9px',
-                      fontSize: 13,
-                    }}
-                  />
-                  <button className="font-upload" onClick={addQR}>
-                    ▦
-                  </button>
-                </div>
-              </>
-            )}
-
-            {activeTab === 'fondo' && (
-              <ColorPanel embedded onClose={() => setActiveTab(null)} />
-            )}
-
-            {activeTab === 'plantillas' && (
-              <>
-                <div className="rail-head">
-                  <h3>{t('Plantillas')}</h3>
-                  <button className="cp-x" onClick={() => setActiveTab(null)}>
-                    ✕
-                  </button>
-                </div>
-                <button className="rail-big" onClick={onSaveTemplate}>
-                  💾 {t('Guardar diseño actual')}
-                </button>
-                <div className="row">
-                  <button onClick={onExportTemplates} title="Guarda tus plantillas en un archivo para compartir">
-                    ⬇ {t('Exportar plantillas')}
-                  </button>
-                  <button onClick={() => templatesFileRef.current?.click()}>
-                    ⬆ {t('Importar plantillas')}
-                  </button>
-                </div>
-                <input
-                  ref={templatesFileRef}
-                  type="file"
-                  accept=".json,application/json"
-                  hidden
-                  onChange={(e) => {
-                    onImportTemplates(e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-
-                <h4 className="rail-sub">{t('Prediseñadas')}</h4>
-                <div className="uploads-grid">
-                  {PRESET_TEMPLATES.map((t) => (
-                    <TemplateThumb
-                      key={t.id}
-                      doc={t}
-                      label={t.name}
-                      onClick={() => {
-                        applyTemplate(t);
-                        setCustomW(String(t.width));
-                        setCustomH(String(t.height));
-                      }}
-                    />
-                  ))}
-                </div>
-
-                <h4 className="rail-sub">{t('Mis plantillas')}</h4>
-                {templates.length === 0 && (
-                  <p className="rail-hint">
-                    Guarda un diseño y reutilízalo cuando quieras.
-                  </p>
-                )}
-                <div className="uploads-grid">
-                  {templates.map((t) => (
-                    <div
-                      key={t.id}
-                      className="upload-thumb"
-                      onClick={() => applyTemplate(t.doc)}
-                      title={`Aplicar "${t.name}"`}
-                    >
-                      <img src={t.thumb} alt={t.name} />
-                      <button
-                        className="upload-del"
-                        title="Quitar plantilla"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeTemplate(t.id);
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {activeTab === 'capas' && (
-              <>
-                <div className="rail-head">
-                  <h3>{t('Capas')}</h3>
-                  <button className="cp-x" onClick={() => setActiveTab(null)}>
-                    ✕
-                  </button>
-                </div>
-                {doc.layers.length === 0 && (
-                  <p className="rail-hint">{t('Aún no hay capas.')}</p>
-                )}
-                <ul className="layers">
-                  {[...doc.layers].reverse().map((l) => (
-                    <li
-                      key={l.id}
-                      className={l.id === selectedId ? 'sel' : ''}
-                      draggable
-                      onDragStart={() => (dragId.current = l.id)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => handleLayerDrop(l.id)}
-                      onClick={() => selectLayer(l.id)}
-                    >
-                      <span className="grip" title="Arrastra para reordenar">
-                        ⠿
-                      </span>
-                      <span className="ico">
-                        {l.type === 'image'
-                          ? '🖼'
-                          : l.type === 'text'
-                            ? '🅣'
-                            : '◻'}
-                      </span>
-                      <span className="name">
-                        {l.type === 'text' ? l.text || 'Texto' : l.name}
-                      </span>
-                      <button
-                        className="mini"
-                        title={l.locked ? 'Desbloquear' : 'Bloquear'}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateLayer(l.id, { locked: !l.locked });
-                        }}
-                      >
-                        {l.locked ? '🔒' : '🔓'}
-                      </button>
-                      <button
-                        className="mini"
-                        title={l.visible ? 'Ocultar' : 'Mostrar'}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateLayer(l.id, { visible: !l.visible });
-                        }}
-                      >
-                        {l.visible ? '👁' : '🚫'}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {activeTab === 'marca' && (
-              <>
-                <div className="rail-head">
-                  <h3>{t('Kit de Marca')}</h3>
-                  <button className="cp-x" onClick={() => setActiveTab(null)}>
-                    ✕
-                  </button>
-                </div>
-                <p className="rail-hint">
-                  Guarda colores desde el panel <b>Fondo</b> (+ Añadir). Aquí los
-                  reutilizas como fondo.
-                </p>
-                {brandColors.length > 0 && (
-                  <>
-                    <h4 className="rail-sub">{t('Mis colores')}</h4>
-                    <div className="rail-swatches">
-                      {brandColors.map((c) => (
-                        <button
-                          key={c}
-                          style={{ background: c }}
-                          title={c}
-                          onClick={() =>
-                            setBackground({ type: 'solid', color: c })
-                          }
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                {recentColors.length > 0 && (
-                  <>
-                    <h4 className="rail-sub">{t('Recientes')}</h4>
-                    <div className="rail-swatches">
-                      {recentColors.map((c) => (
-                        <button
-                          key={c}
-                          style={{ background: c }}
-                          title={c}
-                          onClick={() =>
-                            setBackground({ type: 'solid', color: c })
-                          }
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        <RailPanels
+          fileRef={fileRef}
+          fontFileRef={fontFileRef}
+          dragUploadId={dragUploadId}
+          onSaveTemplate={onSaveTemplate}
+          onExportTemplates={onExportTemplates}
+          onImportTemplates={onImportTemplates}
+          onApplyTemplate={onApplyTemplate}
+        />
 
         {showFilters && selected && selected.type === 'image' && (
-          <FiltersPanel
-            layer={selected}
-            onClose={() => setShowFilters(false)}
-          />
+          <FiltersPanel layer={selected} onClose={() => setShowFilters(false)} />
         )}
 
         {cropMode && (
           <div className="crop-bar">
             <span>Ajusta el recuadro y aplica</span>
-            <select
-              value={cropAspect ?? ''}
-              onChange={(e) =>
-                setCropAspect(e.target.value ? Number(e.target.value) : null)
-              }
-            >
+            <select value={cropAspect ?? ''} onChange={(e) => setCropAspect(e.target.value ? Number(e.target.value) : null)}>
               <option value="">Libre</option>
               <option value={1}>1:1</option>
               <option value={4 / 3}>4:3</option>
@@ -1615,1438 +956,110 @@ export default function App() {
 
         <EditorCanvas />
 
-        <aside className="panel">
-          {!selected && (
-            <p className="empty">
-              Selecciona un elemento para editarlo, o usa el panel de la
-              izquierda para añadir.
-            </p>
-          )}
-          {selected && (
-            <section className="props">
-              <h3>{t('Propiedades')}</h3>
-
-              {selectedIds.length > 1 && (
-                <>
-                  <p className="rail-sub">{selectedIds.length} seleccionados</p>
-                  <div className="align-grid">
-                    <button onClick={() => alignSelected('left')} title="Izquierda">⬅</button>
-                    <button onClick={() => alignSelected('centerH')} title="Centro H">⬌</button>
-                    <button onClick={() => alignSelected('right')} title="Derecha">➡</button>
-                    <button onClick={() => alignSelected('top')} title="Arriba">⬆</button>
-                    <button onClick={() => alignSelected('centerV')} title="Centro V">⬍</button>
-                    <button onClick={() => alignSelected('bottom')} title="Abajo">⬇</button>
-                  </div>
-                  {selectedIds.length >= 3 && (
-                    <div className="row">
-                      <button onClick={() => distributeSelected('h')}>
-                        Distribuir H
-                      </button>
-                      <button onClick={() => distributeSelected('v')}>
-                        Distribuir V
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {selected.type === 'image' && (
-                <>
-                  <div className="bg-quality">
-                    <button
-                      className="magic full"
-                      onClick={onRemoveBackground}
-                      disabled={bgBusy}
-                    >
-                      {bgBusy ? '✂ …' : '✂ Quitar fondo (IA)'}
-                    </button>
-                    <select
-                      value={bgQuality}
-                      disabled={bgBusy}
-                      onChange={(e) =>
-                        setBgQuality(e.target.value as BgQuality)
-                      }
-                      title="Calidad del recorte"
-                    >
-                      <option value="maxima">Máxima (tipo Canva)</option>
-                      <option value="alta">Alta</option>
-                      <option value="rapido">Rápido</option>
-                    </select>
-                  </div>
-                  {bgBusy && (
-                    <p className="bgmsg">
-                      {bgMsg}{' '}
-                      <button className="mini" onClick={cancelAI}>
-                        ✕ {t('Cancelar')}
-                      </button>
-                    </p>
-                  )}
-
-                  <div className="row">
-                    <button
-                      onClick={() =>
-                        updateLayer(selected.id, { flipX: !selected.flipX })
-                      }
-                    >
-                      ↔ Voltear H
-                    </button>
-                    <button
-                      onClick={() =>
-                        updateLayer(selected.id, { flipY: !selected.flipY })
-                      }
-                    >
-                      ↕ Voltear V
-                    </button>
-                  </div>
-
-                  <button
-                    className="full"
-                    onClick={beginCrop}
-                    disabled={cropMode}
-                  >
-                    ⛶ Recortar
-                  </button>
-
-                  <button
-                    className="magic full"
-                    onClick={() => setShowMask(true)}
-                  >
-                    🪄 Borrador / Pincel
-                  </button>
-
-                  <button
-                    className="magic full"
-                    onClick={onUpscale}
-                    disabled={upBusy}
-                  >
-                    {upBusy ? '🔍 …' : '🔍 Optimizar (HD ×2)'}
-                  </button>
-                  {upBusy && (
-                    <p className="bgmsg">
-                      {upMsg}{' '}
-                      <button className="mini" onClick={cancelAI}>
-                        ✕ {t('Cancelar')}
-                      </button>
-                    </p>
-                  )}
-
-                  <div className="align-grid">
-                    <button onClick={() => alignLayer(selected.id, 'left')} title="Izquierda">⬅</button>
-                    <button onClick={() => alignLayer(selected.id, 'centerH')} title="Centro H">⬌</button>
-                    <button onClick={() => alignLayer(selected.id, 'right')} title="Derecha">➡</button>
-                    <button onClick={() => alignLayer(selected.id, 'top')} title="Arriba">⬆</button>
-                    <button onClick={() => alignLayer(selected.id, 'centerV')} title="Centro V">⬍</button>
-                    <button onClick={() => alignLayer(selected.id, 'bottom')} title="Abajo">⬇</button>
-                  </div>
-                </>
-              )}
-
-              {selected.type === 'text' && (
-                <>
-                  <label className="prop">
-                    Texto
-                    <textarea
-                      ref={textEditRef}
-                      className="text-edit"
-                      rows={2}
-                      value={selected.text}
-                      onFocus={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, { text: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label className="prop">
-                    Fuente
-                    <div className="font-row">
-                      <select
-                        value={selected.fontFamily}
-                        onChange={(e) =>
-                          updateLayer(selected.id, {
-                            fontFamily: e.target.value,
-                          })
-                        }
-                      >
-                        {customFonts.length > 0 && (
-                          <optgroup label="Mis fuentes">
-                            {customFonts.map((f) => (
-                              <option key={f} value={f}>
-                                {f}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                        <optgroup label="Fuentes">
-                          {FONT_FAMILIES.map((f) => (
-                            <option key={f} value={f} style={{ fontFamily: f }}>
-                              {f}
-                            </option>
-                          ))}
-                        </optgroup>
-                      </select>
-                      <button
-                        className="font-upload"
-                        title="Cargar fuente propia (.ttf/.otf/.woff)"
-                        onClick={() => fontFileRef.current?.click()}
-                      >
-                        ⬆
-                      </button>
-                      <input
-                        ref={fontFileRef}
-                        type="file"
-                        accept=".ttf,.otf,.woff,.woff2,font/*"
-                        hidden
-                        onChange={(e) => {
-                          onUploadFont(e.target.files, selected.id);
-                          e.target.value = '';
-                        }}
-                      />
-                    </div>
-                  </label>
-                  <div className="row text-row">
-                    <input
-                      type="number"
-                      min={6}
-                      value={Math.round(selected.fontSize)}
-                      onFocus={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          fontSize: Math.max(6, Number(e.target.value) || 6),
-                        })
-                      }
-                      title="Tamaño"
-                    />
-                    <input
-                      type="color"
-                      value={selected.fill}
-                      onChange={(e) =>
-                        updateLayer(selected.id, { fill: e.target.value })
-                      }
-                      title="Color"
-                    />
-                    <button
-                      className={selected.bold ? 'active' : ''}
-                      onClick={() =>
-                        updateLayer(selected.id, { bold: !selected.bold })
-                      }
-                      title="Negrita"
-                    >
-                      <b>B</b>
-                    </button>
-                    <button
-                      className={selected.italic ? 'active' : ''}
-                      onClick={() =>
-                        updateLayer(selected.id, { italic: !selected.italic })
-                      }
-                      title="Cursiva"
-                    >
-                      <i>I</i>
-                    </button>
-                  </div>
-                  <div className="row">
-                    {(['left', 'center', 'right'] as const).map((a) => (
-                      <button
-                        key={a}
-                        className={selected.align === a ? 'active' : ''}
-                        onClick={() => updateLayer(selected.id, { align: a })}
-                      >
-                        {a === 'left' ? '⬅' : a === 'center' ? '⬌' : '➡'}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="row">
-                    {(
-                      [
-                        ['none', 'Aa'],
-                        ['upper', 'AA'],
-                        ['lower', 'aa'],
-                        ['caps', 'Ab'],
-                      ] as const
-                    ).map(([mode, lbl]) => (
-                      <button
-                        key={mode}
-                        className={selected.textTransform === mode ? 'active' : ''}
-                        onClick={() =>
-                          updateLayer(selected.id, { textTransform: mode })
-                        }
-                        title={
-                          mode === 'none'
-                            ? 'Normal'
-                            : mode === 'upper'
-                              ? 'MAYÚSCULAS'
-                              : mode === 'lower'
-                                ? 'minúsculas'
-                                : 'Capitalizar'
-                        }
-                      >
-                        {lbl}
-                      </button>
-                    ))}
-                  </div>
-
-                  <label className="prop">
-                    Espaciado: {Math.round(selected.letterSpacing)}
-                    <input
-                      type="range"
-                      min={-5}
-                      max={40}
-                      step={1}
-                      value={selected.letterSpacing}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          letterSpacing: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="prop">
-                    Interlineado: {(selected.lineHeight ?? 1).toFixed(2)}
-                    <input
-                      type="range"
-                      min={0.8}
-                      max={2.5}
-                      step={0.05}
-                      value={selected.lineHeight ?? 1}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          lineHeight: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="prop">
-                    Curvar: {Math.round(selected.curve ?? 0)}°
-                    <input
-                      type="range"
-                      min={-180}
-                      max={180}
-                      step={5}
-                      value={selected.curve ?? 0}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          curve: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-
-                  <div className="row">
-                    <button
-                      onClick={() =>
-                        updateLayer(selected.id, {
-                          shadow: true,
-                          shadowColor: selected.fill,
-                          shadowBlur: Math.round(selected.fontSize * 0.5),
-                          shadowX: 0,
-                          shadowY: 0,
-                        })
-                      }
-                      title="Resplandor de neón"
-                    >
-                      ✨ Neón
-                    </button>
-                    <button
-                      onClick={() =>
-                        updateLayer(selected.id, { shadow: false })
-                      }
-                    >
-                      Sin efecto
-                    </button>
-                  </div>
-
-                  <label className="prop">
-                    Lista
-                    <select
-                      value={selected.listStyle ?? 'none'}
-                      onChange={(e) =>
-                        updateLayer(selected.id, {
-                          listStyle: e.target.value as
-                            | 'none'
-                            | 'bullet'
-                            | 'number',
-                        })
-                      }
-                    >
-                      <option value="none">Sin lista</option>
-                      <option value="bullet">• Viñetas</option>
-                      <option value="number">1. Numerada</option>
-                    </select>
-                  </label>
-                  <label className="prop">
-                    Efecto de texto
-                    <select
-                      value={selected.textEffect ?? 'none'}
-                      onChange={(e) =>
-                        updateLayer(selected.id, {
-                          textEffect: e.target.value as
-                            | 'none'
-                            | 'echo'
-                            | 'background',
-                          effectColor:
-                            selected.effectColor ??
-                            (e.target.value === 'background'
-                              ? '#000000'
-                              : selected.fill),
-                        })
-                      }
-                    >
-                      <option value="none">Ninguno</option>
-                      <option value="echo">Eco</option>
-                      <option value="background">Fondo</option>
-                    </select>
-                  </label>
-                  {selected.textEffect && selected.textEffect !== 'none' && (
-                    <div className="row text-row">
-                      <span style={{ fontSize: 13, flex: 1 }}>
-                        Color del efecto
-                      </span>
-                      <input
-                        type="color"
-                        value={selected.effectColor ?? '#000000'}
-                        onChange={(e) =>
-                          updateLayer(selected.id, {
-                            effectColor: e.target.value,
-                          })
-                        }
-                        title="Color del eco / fondo"
-                      />
-                    </div>
-                  )}
-
-                  <div className="row text-row">
-                    <span style={{ fontSize: 13, flex: 1 }}>Contorno</span>
-                    <input
-                      type="color"
-                      value={selected.strokeColor}
-                      onChange={(e) =>
-                        updateLayer(selected.id, { strokeColor: e.target.value })
-                      }
-                      title="Color del contorno"
-                    />
-                  </div>
-                  <label className="prop">
-                    Grosor contorno: {Math.round(selected.strokeWidth)}
-                    <input
-                      type="range"
-                      min={0}
-                      max={20}
-                      step={1}
-                      value={selected.strokeWidth}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          strokeWidth: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-
-                  <div className="row text-row">
-                    <button
-                      className={selected.shadow ? 'active' : ''}
-                      style={{ flex: 1 }}
-                      onClick={() =>
-                        updateLayer(selected.id, { shadow: !selected.shadow })
-                      }
-                    >
-                      Sombra {selected.shadow ? '✓' : ''}
-                    </button>
-                    <input
-                      type="color"
-                      value={selected.shadowColor}
-                      onChange={(e) =>
-                        updateLayer(selected.id, { shadowColor: e.target.value })
-                      }
-                      title="Color de la sombra"
-                    />
-                  </div>
-                  {selected.shadow && (
-                    <label className="prop">
-                      Desenfoque sombra: {Math.round(selected.shadowBlur)}
-                      <input
-                        type="range"
-                        min={0}
-                        max={40}
-                        step={1}
-                        value={selected.shadowBlur}
-                        onPointerDown={checkpoint}
-                        onChange={(e) =>
-                          updateLayerLive(selected.id, {
-                            shadowBlur: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-
-              {selected.type === 'shape' && (
-                <>
-                  <div className="row text-row">
-                    <label className="shape-color">
-                      Relleno
-                      <input
-                        type="color"
-                        value={selected.fill}
-                        onChange={(e) =>
-                          updateLayer(selected.id, { fill: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label className="shape-color">
-                      Borde
-                      <input
-                        type="color"
-                        value={selected.stroke}
-                        onChange={(e) =>
-                          updateLayer(selected.id, { stroke: e.target.value })
-                        }
-                      />
-                    </label>
-                  </div>
-                  <label className="prop">
-                    Grosor del borde: {Math.round(selected.strokeWidth)}
-                    <input
-                      type="range"
-                      min={0}
-                      max={40}
-                      step={1}
-                      value={selected.strokeWidth}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          strokeWidth: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  {selected.shape === 'rect' && (
-                    <label className="prop">
-                      Esquinas: {Math.round(selected.cornerRadius)}
-                      <input
-                        type="range"
-                        min={0}
-                        max={Math.round(
-                          Math.min(selected.width, selected.height) / 2,
-                        )}
-                        step={1}
-                        value={selected.cornerRadius}
-                        onPointerDown={checkpoint}
-                        onChange={(e) =>
-                          updateLayerLive(selected.id, {
-                            cornerRadius: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-
-              <label className="prop">
-                {t('Rotación')}:{' '}
-                {Math.round(((selected.rotation % 360) + 360) % 360)}°
-                <input
-                  type="range"
-                  min={0}
-                  max={360}
-                  step={1}
-                  value={((Math.round(selected.rotation) % 360) + 360) % 360}
-                  onPointerDown={checkpoint}
-                  onChange={(e) =>
-                    setLayerRotation(selected.id, Number(e.target.value), true)
-                  }
-                />
-              </label>
-              <div className="row">
-                <button
-                  onClick={() =>
-                    setLayerRotation(selected.id, selected.rotation - 90)
-                  }
-                  title="Girar 90° a la izquierda"
-                >
-                  ⟲ 90°
-                </button>
-                <button
-                  onClick={() =>
-                    setLayerRotation(selected.id, selected.rotation + 90)
-                  }
-                  title="Girar 90° a la derecha"
-                >
-                  ⟳ 90°
-                </button>
-              </div>
-
-              <label className="prop">
-                {t('Opacidad')}
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={selected.opacity}
-                  onPointerDown={checkpoint}
-                  onChange={(e) =>
-                    updateLayerLive(selected.id, {
-                      opacity: Number(e.target.value),
-                    })
-                  }
-                />
-              </label>
-
-              <label className="prop">
-                Mezcla
-                <select
-                  value={selected.blendMode}
-                  onChange={(e) =>
-                    updateLayer(selected.id, {
-                      blendMode: e.target.value as (typeof BLEND_MODES)[number],
-                    })
-                  }
-                >
-                  {BLEND_MODES.map((m) => (
-                    <option key={m} value={m}>
-                      {m === 'normal'
-                        ? 'Normal'
-                        : m === 'multiply'
-                          ? 'Multiplicar'
-                          : m === 'screen'
-                            ? 'Trama'
-                            : m === 'overlay'
-                              ? 'Superponer'
-                              : m === 'darken'
-                                ? 'Oscurecer'
-                                : 'Aclarar'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="prop">
-                Entrada
-                <select
-                  value={selected.anim ?? 'none'}
-                  onChange={(e) =>
-                    updateLayer(selected.id, { anim: e.target.value })
-                  }
-                >
-                  {ANIMATIONS.map((an) => (
-                    <option key={an.id} value={an.id}>
-                      {an.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="prop">
-                Salida
-                <select
-                  value={selected.animOut ?? 'none'}
-                  onChange={(e) =>
-                    updateLayer(selected.id, { animOut: e.target.value })
-                  }
-                >
-                  {ANIMATIONS.map((an) => (
-                    <option key={an.id} value={an.id}>
-                      {an.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {((selected.anim ?? 'none') !== 'none' ||
-                (selected.animOut ?? 'none') !== 'none') && (
-                <label className="prop">
-                  Duración: {(selected.animDuration ?? 0.6).toFixed(1)}s
-                  <input
-                    type="range"
-                    min={0.2}
-                    max={3}
-                    step={0.1}
-                    value={selected.animDuration ?? 0.6}
-                    onPointerDown={checkpoint}
-                    onChange={(e) =>
-                      updateLayerLive(selected.id, {
-                        animDuration: Number(e.target.value),
-                      })
-                    }
-                  />
-                </label>
-              )}
-
-              {(selected.type === 'image' || selected.type === 'shape') && (
-                <>
-                  <div className="row text-row">
-                    <button
-                      className={selected.shadow ? 'active' : ''}
-                      style={{ flex: 1 }}
-                      onClick={() =>
-                        updateLayer(selected.id, { shadow: !selected.shadow })
-                      }
-                    >
-                      Sombra {selected.shadow ? '✓' : ''}
-                    </button>
-                    <input
-                      type="color"
-                      value={selected.shadowColor}
-                      onChange={(e) =>
-                        updateLayer(selected.id, { shadowColor: e.target.value })
-                      }
-                      title="Color de la sombra"
-                    />
-                  </div>
-                  {selected.shadow && (
-                    <label className="prop">
-                      Desenfoque: {Math.round(selected.shadowBlur)}
-                      <input
-                        type="range"
-                        min={0}
-                        max={60}
-                        step={1}
-                        value={selected.shadowBlur}
-                        onPointerDown={checkpoint}
-                        onChange={(e) =>
-                          updateLayerLive(selected.id, {
-                            shadowBlur: Number(e.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-
-              {selected.type === 'image' && (
-                <>
-                  <label className="prop">
-                    Brillo
-                    <input
-                      type="range"
-                      min={0}
-                      max={2}
-                      step={0.01}
-                      value={selected.adjust?.brightness ?? 1}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          adjust: {
-                            ...(selected.adjust ?? DEFAULT_ADJUST),
-                            brightness: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="prop">
-                    Contraste
-                    <input
-                      type="range"
-                      min={0}
-                      max={2}
-                      step={0.01}
-                      value={selected.adjust?.contrast ?? 1}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          adjust: {
-                            ...(selected.adjust ?? DEFAULT_ADJUST),
-                            contrast: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="prop">
-                    Saturación
-                    <input
-                      type="range"
-                      min={0}
-                      max={2}
-                      step={0.01}
-                      value={selected.adjust?.saturate ?? 1}
-                      onPointerDown={checkpoint}
-                      onChange={(e) =>
-                        updateLayerLive(selected.id, {
-                          adjust: {
-                            ...(selected.adjust ?? DEFAULT_ADJUST),
-                            saturate: Number(e.target.value),
-                          },
-                        })
-                      }
-                    />
-                  </label>
-
-                  <button
-                    className="magic full"
-                    onClick={() => setShowFilters(true)}
-                  >
-                    🎨 Filtros y Duotono
-                  </button>
-
-                  <label className="prop">
-                    Recortar a forma
-                    <select
-                      value={selected.maskShape ?? ''}
-                      onChange={(e) =>
-                        updateLayer(selected.id, {
-                          maskShape: (e.target.value || undefined) as
-                            | typeof selected.maskShape,
-                        })
-                      }
-                    >
-                      <option value="">Ninguna</option>
-                      <option value="ellipse">Círculo</option>
-                      <option value="rect">Rectángulo</option>
-                      <option value="triangle">Triángulo</option>
-                      <option value="star">Estrella</option>
-                    </select>
-                  </label>
-
-                  {selected.iconName && (
-                    <label className="prop">
-                      Color del icono
-                      <input
-                        type="color"
-                        onChange={async (e) => {
-                          const color = e.target.value;
-                          const name = selected.iconName!;
-                          try {
-                            const img = await fetchIconAsImage(name, 300, color);
-                            updateLayer(selected.id, { src: img.src });
-                          } catch (err) {
-                            console.error(err);
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-              <div className="row">
-                <button onClick={() => moveLayer(selected.id, 'up')}>
-                  ⬆ Subir
-                </button>
-                <button onClick={() => moveLayer(selected.id, 'down')}>
-                  ⬇ Bajar
-                </button>
-              </div>
-              <div className="row">
-                <button
-                  onClick={() =>
-                    updateLayer(selected.id, { locked: !selected.locked })
-                  }
-                >
-                  {selected.locked ? '🔓 Desbloquear' : '🔒 Bloquear'}
-                </button>
-                <button onClick={() => duplicateLayer(selected.id)}>
-                  ⧉ Duplicar
-                </button>
-              </div>
-              <button className="full" onClick={onExportLayer}>
-                ⬇ Exportar esta capa (PNG)
-              </button>
-              <button
-                className="danger full"
-                onClick={() => removeLayer(selected.id)}
-              >
-                🗑 Borrar capa
-              </button>
-            </section>
-          )}
-        </aside>
+        <PropertiesPanel
+          bgBusy={bgBusy}
+          bgMsg={bgMsg}
+          bgQuality={bgQuality}
+          chooseBgEngine={chooseBgEngine}
+          bgEdges={bgEdges}
+          setBgEdges={setBgEdges}
+          onRemoveBackground={onRemoveBackground}
+          upBusy={upBusy}
+          upMsg={upMsg}
+          onUpscale={onUpscale}
+          onOpenMask={openMaskForSelected}
+          onShowFilters={() => setShowFilters(true)}
+          onExportLayer={onExportLayer}
+          textEditRef={textEditRef}
+          fontFileRef={fontFileRef}
+        />
       </div>
 
-      {/* Menú contextual (clic derecho) */}
-      {ctxMenu && selected && (
-        <div
-          className="ctx-menu"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {selected.type === 'text' && (
-            <button
-              onClick={() => {
-                requestTextEdit(selected.id);
-                setCtxMenu(null);
-              }}
-            >
-              ✎ {t('Editar texto')}
-            </button>
-          )}
-          <button
-            onClick={() => {
-              duplicateLayer(selected.id);
-              setCtxMenu(null);
-            }}
-          >
-            ⧉ {t('Duplicar')}
-          </button>
-          <button
-            onClick={() => {
-              setLayerRotation(selected.id, selected.rotation + 90);
-              setCtxMenu(null);
-            }}
-          >
-            ⟳ {t('Girar 90°')}
-          </button>
-          <button
-            onClick={() => {
-              const topFirst = doc.layers.map((l) => l.id).reverse();
-              const rest = topFirst.filter((x) => x !== selected.id);
-              reorderLayers([selected.id, ...rest].reverse());
-              setCtxMenu(null);
-            }}
-          >
-            ⬆ {t('Traer al frente')}
-          </button>
-          <button
-            onClick={() => {
-              const bottomFirst = doc.layers.map((l) => l.id);
-              const rest = bottomFirst.filter((x) => x !== selected.id);
-              reorderLayers([selected.id, ...rest]);
-              setCtxMenu(null);
-            }}
-          >
-            ⬇ {t('Enviar atrás')}
-          </button>
-          <button
-            onClick={() => {
-              updateLayer(selected.id, { locked: !selected.locked });
-              setCtxMenu(null);
-            }}
-          >
-            {selected.locked ? `🔓 ${t('Desbloquear')}` : `🔒 ${t('Bloquear')}`}
-          </button>
-          <button
-            onClick={() => {
-              updateLayer(selected.id, { visible: !selected.visible });
-              setCtxMenu(null);
-            }}
-          >
-            {selected.visible ? `🚫 ${t('Ocultar')}` : `👁 ${t('Mostrar')}`}
-          </button>
-          <button
-            className="danger"
-            onClick={() => {
-              removeLayer(selected.id);
-              setCtxMenu(null);
-            }}
-          >
-            🗑 {t('Borrar')}
-          </button>
-        </div>
+      {ctxMenu && selected && <ContextMenu selected={selected} pos={ctxMenu} onClose={() => setCtxMenu(null)} />}
+
+      {selRect && selected && !cropMode && !maskSession && (
+        <FloatToolbar
+          selected={selected}
+          rect={selRect}
+          bgBusy={bgBusy}
+          onRemoveBackground={onRemoveBackground}
+          onShowFilters={() => setShowFilters(true)}
+        />
       )}
 
-      {/* Barra flotante contextual sobre la selección */}
-      {selRect && selected && !cropMode && !showMask && (
-        <div
-          className="float-toolbar"
-          style={{
-            left: selRect.left + selRect.width / 2,
-            top: Math.max(8, selRect.top - 48),
-          }}
-        >
-          {selected.type === 'image' && (
-            <>
-              <button onClick={onRemoveBackground} disabled={bgBusy} title="Quitar fondo">
-                ✂
-              </button>
-              <button onClick={() => setShowFilters(true)} title="Filtros">
-                🎨
-              </button>
-              <button onClick={beginCrop} title="Recortar">
-                ⛶
-              </button>
-              <button
-                onClick={() => updateLayer(selected.id, { flipX: !selected.flipX })}
-                title="Voltear"
-              >
-                ↔
-              </button>
-            </>
-          )}
-          {selected.type === 'text' && (
-            <button onClick={() => requestTextEdit(selected.id)} title="Editar texto">
-              ✎
-            </button>
-          )}
-          <button
-            onClick={() => setLayerRotation(selected.id, selected.rotation + 90)}
-            title="Girar 90° (o arrastra la manija sobre la selección)"
-          >
-            ⟳
-          </button>
-          <button onClick={() => duplicateLayer(selected.id)} title="Duplicar">
-            ⧉
-          </button>
-          <button onClick={() => moveLayer(selected.id, 'up')} title="Subir">
-            ⬆
-          </button>
-          <button onClick={() => moveLayer(selected.id, 'down')} title="Bajar">
-            ⬇
-          </button>
-          <button
-            className="danger"
-            onClick={() => removeLayer(selected.id)}
-            title="Borrar"
-          >
-            🗑
-          </button>
-        </div>
+      <PageBar onShowShortcuts={() => setShowShortcuts(true)} />
+
+      {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
+
+      {maskSession && (
+        <MaskEditor layer={maskSession.layer} onApply={maskSession.onApply} onCancel={() => setMaskSession(null)} />
       )}
 
-      {/* Barra de páginas */}
-      <footer className="page-bar">
-        {pages.map((p, i) => (
-          <button
-            key={p.id}
-            className={`page-tab ${i === pageIndex ? 'sel' : ''} ${
-              dragPage !== null && dragPage !== i ? 'drop-target' : ''
-            }`}
-            onClick={() => switchPage(i)}
-            title={`Página ${i + 1} (arrastra para reordenar)`}
-            draggable
-            onDragStart={() => setDragPage(i)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => {
-              if (dragPage !== null) reorderPages(dragPage, i);
-              setDragPage(null);
-            }}
-            onDragEnd={() => setDragPage(null)}
-          >
-            <PageThumb doc={i === pageIndex ? doc : p} />
-            <span className="page-num">{i + 1}</span>
-            {pages.length > 1 && (
-              <span
-                className="page-del"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deletePage(i);
-                }}
-              >
-                ✕
-              </span>
-            )}
-          </button>
-        ))}
-        <button className="page-add" onClick={addPage}>
-          + {t('Agregar página')}
-        </button>
-        <button
-          className="page-add"
-          onClick={duplicatePage}
-          title="Duplica la página actual con todas sus capas"
-        >
-          ⧉ {t('Duplicar página')}
-        </button>
-
-        <span className="spacer" />
-
-        <div className="zoom-controls">
-          <button onClick={() => setZoom(zoom * 0.9)} title="Alejar">
-            −
-          </button>
-          <button
-            className="zoom-pct"
-            onClick={() => setZoom(1)}
-            title="Ajustar"
-          >
-            {Math.round(viewScale * 100)}%
-          </button>
-          <button onClick={() => setZoom(zoom * 1.1)} title="Acercar">
-            ＋
-          </button>
-        </div>
-      </footer>
-
-      {showMask && selected && selected.type === 'image' && (
-        <MaskEditor
-          layer={selected}
-          onApply={(dataUrl) => {
-            updateLayer(selected.id, { src: dataUrl });
-            setShowMask(false);
+      {bgPreview && (
+        <BgPreview
+          original={bgPreview.target.src}
+          result={bgPreview.result}
+          edges={bgEdges}
+          busy={bgBusy}
+          engineLabel={BG_ENGINES.find((en) => en.id === bgQuality)?.label}
+          onEdgesChange={(m) => {
+            setBgEdges(m);
+            doRemoveBg(bgPreview.target, m);
           }}
-          onCancel={() => setShowMask(false)}
+          onUse={useBgResult}
+          onRefine={refineBgResult}
+          onCancel={() => setBgPreview(null)}
         />
       )}
 
       {showVideo && <VideoEditor onClose={() => setShowVideo(false)} />}
 
       {showPresent && (
-        <Presentation
-          pages={pages.map((p, i) => (i === pageIndex ? doc : p))}
-          start={pageIndex}
-          onClose={() => setShowPresent(false)}
-        />
+        <Presentation pages={pages.map((p, i) => (i === pageIndex ? doc : p))} start={pageIndex} onClose={() => setShowPresent(false)} />
       )}
 
       {showHome && (
-        <div className="home-overlay">
-          <div className="home-brand">ChamVa</div>
-          <p className="home-sub">{t('¿Qué quieres editar hoy?')}</p>
-          <div className="home-cards">
-            <button className="home-card" onClick={startNewDesign}>
-              <span className="home-ico">
-                <Icon name="image" size={48} />
-              </span>
-              <span className="home-title">{t('Nuevo diseño')}</span>
-              <span className="home-desc">
-                {t('Diseños, fotos, texto, formas, quitar fondo…')}
-              </span>
-            </button>
-            <button
-              className="home-card"
-              onClick={() => {
-                setShowVideo(false);
-                setShowHome(false);
-              }}
-            >
-              <span className="home-ico">
-                <Icon name="layers" size={48} />
-              </span>
-              <span className="home-title">{t('Editar imágenes')}</span>
-              <span className="home-desc">
-                {t('Diseños, fotos, texto, formas, quitar fondo…')}
-              </span>
-            </button>
-            <button
-              className="home-card"
-              onClick={() => {
-                setShowHome(false);
-                setShowVideo(true);
-              }}
-            >
-              <span className="home-ico">
-                <Icon name="video" size={48} />
-              </span>
-              <span className="home-title">{t('Editar video')}</span>
-              <span className="home-desc">
-                {t('Recortar, audio, efectos de voz, exportar MP4…')}
-              </span>
-            </button>
-          </div>
-
-          {designs.length > 0 && (
-            <>
-              <p className="home-sub" style={{ marginTop: 28 }}>
-                {t('Diseños recientes')}
-              </p>
-              <div className="home-designs">
-                {designs.map((d) => (
-                  <div
-                    key={d.id}
-                    className="home-design"
-                    onClick={() => openDesign(d)}
-                    title={`${d.name} — ${new Date(d.updatedAt).toLocaleString()}`}
-                  >
-                    <img src={d.thumb} alt={d.name} />
-                    <span className="home-design-name">{d.name}</span>
-                    <button
-                      className="upload-del"
-                      title="Quitar de recientes"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeDesign(d.id).then(setDesigns);
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="home-foot">
-            {license && <span className="supporter-badge sm">★ Donante</span>}
-            <button
-              className="link-btn"
-              onClick={() => setShowSettings(true)}
-            >
-              ⚙ {t('Ajustes y licencia')}
-            </button>
-            <span className="home-version">v{APP_VERSION}</span>
-          </div>
-        </div>
+        <HomeScreen
+          designs={designs}
+          hasLicense={!!license}
+          onNewDesign={() => {
+            newDesign();
+            setShowHome(false);
+          }}
+          onEditImages={() => {
+            setShowVideo(false);
+            setShowHome(false);
+          }}
+          onEditVideo={() => {
+            setShowHome(false);
+            setShowVideo(true);
+          }}
+          onOpenDesign={openDesign}
+          onRemoveDesign={(id) => removeDesign(id).then(setDesigns)}
+          onSettings={() => setShowSettings(true)}
+        />
       )}
 
       {showDonate && !license && (
-        <div className="donate-overlay" onClick={() => setShowDonate(false)}>
-          <div className="donate-card" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="donate-close"
-              onClick={() => setShowDonate(false)}
-            >
-              ✕
-            </button>
-            <h3>¡Tu archivo se descargó! 💛</h3>
-            <p>
-              ChamVa es gratis y sin marcas de agua. Si te ayuda, apóyame con una
-              donación o consigue una licencia de apoyo (1 año).
-            </p>
-            <div className="support-links">
-              <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
-                💳 Donar (PayPal)
-              </a>
-              <a href={AUTHOR.github} target="_blank" rel="noreferrer">
-                🐙 GitHub
-              </a>
-              <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
-                💼 LinkedIn
-              </a>
-            </div>
-            <button className="link-btn" onClick={requestLicense}>
-              🔑 Solicitar clave de licencia (1 año)
-            </button>
-          </div>
-        </div>
+        <DonateDialog onClose={() => setShowDonate(false)} onRequestLicense={() => setShowRequest(true)} />
       )}
 
       {showSettings && (
-        <div className="donate-overlay" onClick={() => setShowSettings(false)}>
-          <div
-            className="settings-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="donate-close"
-              onClick={() => setShowSettings(false)}
-            >
-              ✕
-            </button>
-            <h3>Ajustes y licencia</h3>
-
-            <div className="settings-section">
-              <span className="settings-label">{t('Aplicación')}</span>
-              <div className="settings-row">
-                <span>ChamVa</span>
-                <span className="settings-val">
-                  {t('versión')} {APP_VERSION}
-                </span>
-              </div>
-              <div className="settings-row">
-                <span>{t('Autor')}</span>
-                <span className="settings-val">{AUTHOR.name}</span>
-              </div>
-              <div className="settings-row">
-                <span>{t('Idioma')}</span>
-                <select
-                  value={lang}
-                  onChange={(e) => setLang(e.target.value as 'es' | 'en')}
-                >
-                  <option value="es">Español</option>
-                  <option value="en">English</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <span className="settings-label">
-                {t('Modelos de IA sin internet')}
-              </span>
-              <p className="support-desc">
-                Descarga los modelos una vez y quitar fondo / optimizar
-                funcionarán sin conexión para siempre.
-              </p>
-              <button
-                className="link-btn"
-                onClick={onPrepareOffline}
-                disabled={
-                  !!offlineMsg &&
-                  !offlineMsg.startsWith('✓') &&
-                  !offlineMsg.startsWith('✕')
-                }
-              >
-                ⬇ {offlineMsg || t('Descargar todos los modelos')}
-              </button>
-            </div>
-
-            {backups.length > 0 && (
-              <div className="settings-section">
-                <span className="settings-label">
-                  {t('Copias de seguridad')}
-                </span>
-                <ul className="backup-list">
-                  {backups.map((b) => (
-                    <li key={b.ts}>
-                      <span>
-                        {new Date(b.ts).toLocaleTimeString()} ·{' '}
-                        {b.pages.length} pág.
-                      </span>
-                      <button
-                        className="link-btn"
-                        onClick={() => {
-                          loadPages(b.pages, b.pageIndex);
-                          setShowSettings(false);
-                          setShowHome(false);
-                          toast('Copia restaurada', 'success');
-                        }}
-                      >
-                        ↩ {t('Restaurar')}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="settings-section">
-              <span className="settings-label">Licencia</span>
-              {license ? (
-                <>
-                  <div className="supporter-badge">★ Donante</div>
-                  <p className="supporter-name">¡Gracias, {license.name}! 💛</p>
-                  <p className="support-desc">
-                    Licencia válida hasta{' '}
-                    {new Date(license.exp * 1000).toLocaleDateString()}.
-                  </p>
-                  <button
-                    className="link-btn dim"
-                    onClick={() => {
-                      clearLicense();
-                      setLicense(null);
-                    }}
-                  >
-                    Quitar licencia
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="support-desc">
-                    Gratis y sin restricciones. Con una licencia de apoyo
-                    desaparecen los avisos de donación durante 1 año.
-                  </p>
-                  <div className="license-activate">
-                    <input
-                      type="text"
-                      placeholder="Pega tu clave de licencia…"
-                      value={licenseInput}
-                      onChange={(e) => setLicenseInput(e.target.value)}
-                    />
-                    <button onClick={onActivateLicense}>Activar</button>
-                  </div>
-                  {licenseMsg && <p className="license-msg">{licenseMsg}</p>}
-                  <button className="link-btn" onClick={requestLicense}>
-                    🔑 Solicitar clave de licencia (1 año)
-                  </button>
-                </>
-              )}
-            </div>
-
-            {!license && (
-              <div className="settings-section">
-                <span className="settings-label">Apoya el proyecto</span>
-                <div className="support-links">
-                  <a href={AUTHOR.paypal} target="_blank" rel="noreferrer">
-                    💳 Donar (PayPal)
-                  </a>
-                  <a href={AUTHOR.github} target="_blank" rel="noreferrer">
-                    🐙 GitHub
-                  </a>
-                  <a href={AUTHOR.linkedin} target="_blank" rel="noreferrer">
-                    💼 LinkedIn
-                  </a>
-                </div>
-              </div>
-            )}
-
-            <div className="settings-section">
-              <span className="settings-label">
-                🏅 Muro de donantes ({donorWall.length})
-              </span>
-              {donorWall.length === 0 ? (
-                <p className="support-desc">
-                  Aún no hay donantes. ¡Sé el primero en apoyar! 💛
-                </p>
-              ) : (
-                <ul className="donor-wall">
-                  {donorWall.map((d, i) => (
-                    <li key={i} className={d.isYou ? 'you' : ''}>
-                      <span className="donor-name">
-                        {d.name} {d.isYou && <em>(tú)</em>}
-                      </span>
-                      <span className="donor-type">
-                        {DONOR_TYPE_LABEL[d.type]}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <p className="author-credit">
-              © {new Date().getFullYear()} {AUTHOR.name}
-            </p>
-          </div>
-        </div>
+        <SettingsDialog
+          onClose={() => setShowSettings(false)}
+          license={license}
+          setLicense={setLicense}
+          onRequestLicense={() => setShowRequest(true)}
+          updateMsg={updateMsg}
+          onCheckUpdate={manualCheckUpdate}
+          offlineMsg={offlineMsg}
+          onPrepareOffline={onPrepareOffline}
+          backups={backups}
+          onRestoreBackup={restoreBackup}
+        />
       )}
 
-      {showRequest && (
-        <div className="donate-overlay" onClick={() => setShowRequest(false)}>
-          <div className="settings-card" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="donate-close"
-              onClick={() => setShowRequest(false)}
-            >
-              ✕
-            </button>
-            <h3>Solicitar clave de licencia (1 año)</h3>
-            <p className="support-desc">
-              Dona por PayPal y envíanos tus datos. Te responderemos con tu clave
-              a {AUTHOR.email}.
-            </p>
-
-            <label className="req-field">
-              Nombre completo / Institución / Empresa
-              <input
-                type="text"
-                value={reqName}
-                onChange={(e) => setReqName(e.target.value)}
-                placeholder="Tu nombre o el de tu organización"
-              />
-            </label>
-
-            <label className="req-field">
-              Tipo
-              <select
-                value={reqType}
-                onChange={(e) => setReqType(e.target.value as DonorType)}
-              >
-                <option value="natural">Persona natural</option>
-                <option value="institucion">Institución</option>
-                <option value="empresa">Empresa</option>
-              </select>
-            </label>
-
-            <label className="req-field">
-              Tu correo
-              <input
-                type="email"
-                value={reqEmail}
-                onChange={(e) => setReqEmail(e.target.value)}
-                placeholder="para enviarte la clave"
-              />
-            </label>
-
-            <label className="req-field">
-              Mensaje (opcional)
-              <textarea
-                value={reqMsg}
-                onChange={(e) => setReqMsg(e.target.value)}
-                rows={2}
-                placeholder="¿Quieres aparecer en el muro de donantes? ¿Algún comentario?"
-              />
-            </label>
-
-            <button className="primary req-send" onClick={submitRequest}>
-              💳 Donar y enviar solicitud
-            </button>
-          </div>
-        </div>
-      )}
+      {showRequest && <RequestLicenseDialog onClose={() => setShowRequest(false)} />}
 
       <Toaster />
     </div>

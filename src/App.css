@@ -2302,3 +2302,250 @@ button.mini {
     padding: 10px 8px;
   }
 }
+
+/* ===== Vista previa del recorte (quitar fondo) ===== */
+.bgp-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: min(92vw, 860px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.bgp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.bgp-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.bgp-head button,
+.bgp-foot button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.bgp-head button.active {
+  border-color: var(--accent);
+}
+.bgp-foot button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.bgp-stage {
+  position: relative;
+  flex: 1;
+  min-height: 240px;
+  max-height: 62vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  overflow: hidden;
+  background-image: linear-gradient(45deg, #999 25%, transparent 25%, transparent 75%, #999 75%),
+    linear-gradient(45deg, #999 25%, #ccc 25%, #ccc 75%, #999 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 12px 12px;
+}
+.bgp-stage.dark {
+  background: #111;
+}
+.bgp-stage img {
+  max-width: 100%;
+  max-height: 62vh;
+  object-fit: contain;
+}
+.bgp-busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 32px;
+}
+.bgp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bgp-foot .spacer {
+  flex: 1;
+}
+
+/* ===== Banner de actualización ===== */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: linear-gradient(90deg, #2f3550, #3a2f55);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.update-banner .spacer {
+  flex: 1;
+}
+.update-banner button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.update-banner button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.update-progress {
+  width: 160px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.update-progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+/* ===== Editor de máscara: zoom ===== */
+.mask-stage.zoomed {
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.mask-stage.zoomed .mask-canvas {
+  max-width: none;
+  max-height: none;
+}
+.mask-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mask-zoom button {
+  min-width: 30px;
+}
+
+/* ===== Tamaños personalizados ===== */
+.custom-sizes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.custom-sizes li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+}
+.custom-sizes li span {
+  flex: 1;
+  cursor: pointer;
+}
+.custom-sizes ul {
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== ErrorBoundary ===== */
+.crash-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  padding: 24px;
+}
+.crash-card {
+  max-width: 560px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.crash-card h2 {
+  margin: 0;
+}
+.crash-details {
+  background: #16161b;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
+}
+.crash-card .row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.crash-card button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.crash-card button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ===== Panel de atajos ===== */
+.shortcut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shortcut-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.shortcut-list kbd {
+  min-width: 150px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: var(--text);
+}

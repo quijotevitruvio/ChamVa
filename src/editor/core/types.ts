@@ -132,7 +132,7 @@ export const FONT_FAMILIES = [
   'Courier New',
   'Impact',
   'Comic Sans MS',
-  // Google Fonts (cargadas en index.html; requieren internet la 1ª vez)
+  // Fuentes libres (OFL) empaquetadas con la app vía @fontsource (src/fonts.css)
   'Montserrat',
   'Poppins',
   'Roboto',

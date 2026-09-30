@@ -17,6 +17,12 @@ import {
 } from '../core/types';
 import { loadStoredFonts } from '../core/fonts';
 import { idbGet, idbSet } from '../../io/idb';
+import {
+  dehydrateTemplates,
+  dehydrateUploads,
+  rehydrateTemplates,
+  rehydrateUploads,
+} from '../../io/assets';
 
 // Subidos y plantillas se guardan en IndexedDB (idb.ts), hidratados al iniciar.
 
@@ -214,7 +220,7 @@ export const useEditor = create<EditorState>((set) => ({
   future: [],
   brandColors: loadColors(LS_BRAND),
   recentColors: loadColors(LS_RECENT),
-  customFonts: loadStoredFonts(),
+  customFonts: [], // se rellena en hydrate() (las fuentes viven en IndexedDB)
   uploads: [],
   templates: [],
   cropMode: false,
@@ -268,36 +274,42 @@ export const useEditor = create<EditorState>((set) => ({
     ),
 
   hydrate: async () => {
-    const uploads = (await idbGet<UploadedImage[]>('uploads')) ?? [];
-    const templates = (await idbGet<SavedTemplate[]>('templates')) ?? [];
-    set({ uploads, templates });
+    // Las imágenes se guardan por referencia (io/assets.ts): rehidratar.
+    const uploads = await rehydrateUploads(
+      (await idbGet<UploadedImage[]>('uploads')) ?? [],
+    );
+    const templates = await rehydrateTemplates(
+      (await idbGet<SavedTemplate[]>('templates')) ?? [],
+    );
+    const customFonts = await loadStoredFonts();
+    set({ uploads, templates, customFonts });
   },
 
   addUpload: (img) =>
     set((s) => {
       const uploads = [img, ...s.uploads].slice(0, 40);
-      idbSet('uploads', uploads);
+      dehydrateUploads(uploads).then((d) => idbSet('uploads', d));
       return { uploads };
     }),
 
   removeUpload: (id) =>
     set((s) => {
       const uploads = s.uploads.filter((u) => u.id !== id);
-      idbSet('uploads', uploads);
+      dehydrateUploads(uploads).then((d) => idbSet('uploads', d));
       return { uploads };
     }),
 
   addTemplate: (t) =>
     set((s) => {
       const templates = [t, ...s.templates].slice(0, 30);
-      idbSet('templates', templates);
+      dehydrateTemplates(templates).then((d) => idbSet('templates', d));
       return { templates };
     }),
 
   removeTemplate: (id) =>
     set((s) => {
       const templates = s.templates.filter((t) => t.id !== id);
-      idbSet('templates', templates);
+      dehydrateTemplates(templates).then((d) => idbSet('templates', d));
       return { templates };
     }),
 

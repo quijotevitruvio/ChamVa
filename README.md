@@ -11,7 +11,8 @@ sin nube, sin marcas de agua.
 - **Pantalla de inicio** para elegir entre editar imágenes o video.
 - Subir imágenes (quedan en la galería para reutilizar), crear lienzos de distintos tamaños y **redimensionar**
   (Magic Resize).
-- **Quitar fondo** inteligente con varios motores locales (@imgly/background-removal y RMBG-1.4 vía transformers.js),
+- **Quitar fondo** inteligente con varios motores locales (MODNet, BiRefNet-lite y RMBG-1.4 vía transformers.js),
+  con vista previa antes/después, modos de borde (foto / logo) y descontaminación de color para eliminar el halo,
   más **borrador mágico** (pincel para borrar/restaurar) e inpaint con OpenCV.
 - **Upscale** ×2 (Swin2SR), filtros y duotono, ajustes (brillo/contraste/saturación), recorte con **relación de
   aspecto** fija, recorte a forma (máscara), volteo, sombras, modos de fusión, opacidad y transparencia en todos los
@@ -38,7 +39,8 @@ sin nube, sin marcas de agua.
 - **Tauri 2** (Rust) para empaquetar Windows (.exe/.msi) y Android (APK).
 - **React 19 + TypeScript + Vite 7**, estado con **Zustand**.
 - **Konva / react-konva** para el lienzo; render y exportación comparten funciones puras sobre el documento.
-- IA local: **@huggingface/transformers** (ONNX Runtime) y **@imgly/background-removal**.
+- IA local: **@huggingface/transformers** (ONNX Runtime, en Web Worker) y **@techstark/opencv-js** (empaquetado).
+- **Auto-actualizador** en la app instalada de escritorio: avisa, descarga e instala la nueva versión.
 - Otros: ffmpeg.wasm, jsPDF, gifenc, qrcode, OpenCV.js, Iconify.
 
 ## Requisitos de desarrollo
@@ -106,5 +108,15 @@ pnpm license "Nombre del cliente" 12   # 12 = meses de validez
 Copia la clave que imprime y entrégasela al cliente; él la pega en «Activar» dentro de la app. La app solo lleva la
 **clave pública** (`src/branding.ts`), así que cualquiera puede verificar pero solo tú puedes emitir.
 
+## Pruebas
+```bash
+pnpm test        # Vitest: licencias, refinado de bordes, parseo de proyectos, i18n
+```
+
 ## Licencia (código)
-Proyecto personal de uso libre. Sin garantías.
+**MIT** — ver [LICENSE](LICENSE). Uso libre, incluido comercial, sin garantías.
+
+Los modelos de IA se descargan bajo demanda y tienen licencia propia: **MODNet**
+(Apache-2.0, motor por defecto), **BiRefNet-lite** (MIT, requiere WebGPU) y
+**Swin2SR** (Apache-2.0). **RMBG-1.4** se ofrece como opción marcada **solo para
+uso no comercial** y nunca se usa por defecto.

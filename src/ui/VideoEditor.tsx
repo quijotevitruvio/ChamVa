@@ -6,6 +6,8 @@ import {
 } from 'react';
 import { webmToMp4 } from '../io/ffmpegConvert';
 import { downloadBlob } from '../io/export';
+import { canRenderMp4, renderMp4 } from '../io/videoRender';
+import { idbGet, idbSet, idbDelete } from '../io/idb';
 import { toast } from './toast';
 import { t } from '../i18n';
 
@@ -25,6 +27,7 @@ interface Clip {
   fadeIn: number; // s de fundido de entrada (desde negro)
   fadeOut: number; // s de fundido de salida (a negro)
   thumb?: string; // miniatura (primer fotograma) para clips de video
+  blob?: Blob; // archivo original: permite guardar/recuperar el proyecto
 }
 
 // Filtros de voz / limpieza / efectos (Web Audio).
@@ -69,6 +72,7 @@ interface Overlay {
   yf: number; // centro Y (0..1)
   start: number; // s (aparece)
   end: number; // s (desaparece)
+  blob?: Blob; // imagen original (persistencia)
 }
 
 const uid = () =>
@@ -289,8 +293,13 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     eqHigh.frequency.value = 6000;
     eqHigh.Q.value = 1;
     const comp = ac.createDynamicsCompressor();
-    comp.threshold.value = 0; // 0 = sin normalizar (se ajusta al activar)
-    comp.ratio.value = 1;
+    comp.threshold.value = normalize ? -24 : 0; // 0 = sin normalizar
+    comp.ratio.value = normalize ? 4 : 1;
+    comp.knee.value = normalize ? 30 : 0;
+    // EQ recuperada de un proyecto guardado
+    eqLow.gain.value = eq.low;
+    eqMid.gain.value = eq.mid;
+    eqHigh.gain.value = eq.high;
 
     mix.connect(eqLow);
     eqLow.connect(eqMid);
@@ -483,6 +492,78 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persistencia del proyecto de video (clips, capas, EQ) en IndexedDB: antes
+  // se perdía todo al cerrar el editor. Los archivos van como Blob.
+  const VIDEO_KEY = 'videoProject';
+  const restored = useRef(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await idbGet<{
+          clips: Clip[];
+          overlays: Overlay[];
+          eq: { low: number; mid: number; high: number };
+          normalize: boolean;
+        }>(VIDEO_KEY);
+        if (saved && (saved.clips?.length || saved.overlays?.length)) {
+          const restoredClips = (saved.clips ?? [])
+            .filter((c) => c.blob)
+            .map((c) => ({ ...c, url: URL.createObjectURL(c.blob!) }));
+          const restoredOverlays: Overlay[] = [];
+          for (const o of saved.overlays ?? []) {
+            if (o.kind === 'image' && o.blob) {
+              const src = URL.createObjectURL(o.blob);
+              const img = new window.Image();
+              img.src = src;
+              await new Promise((r) => {
+                img.onload = r;
+                img.onerror = r;
+              });
+              restoredOverlays.push({ ...o, src, img });
+            } else restoredOverlays.push(o);
+          }
+          setClips(restoredClips);
+          setOverlays(restoredOverlays);
+          if (saved.eq) setEqState(saved.eq);
+          if (saved.normalize) setNormState(true);
+          restoredClips.forEach((c) => {
+            if (c.type === 'audio')
+              getWaveform(c.url).then(
+                (p) => p.length && setWaveforms((w) => ({ ...w, [c.id]: p })),
+              );
+          });
+          if (restoredClips.length) toast('Proyecto de video recuperado', 'info');
+        }
+      } finally {
+        restored.current = true;
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!restored.current) return;
+    const id = setTimeout(() => {
+      idbSet(VIDEO_KEY, {
+        clips: clips.map((c) => ({ ...c, url: '' })),
+        overlays: overlays.map((o) => ({ ...o, img: undefined, src: undefined })),
+        eq,
+        normalize,
+      });
+    }, 2000);
+    return () => clearTimeout(id);
+  }, [clips, overlays, eq, normalize]);
+
+  const newVideoProject = () => {
+    clips.forEach((c) => URL.revokeObjectURL(c.url));
+    setClips([]);
+    setOverlays([]);
+    setSelectedId(null);
+    setSelOverlay(null);
+    setWaveforms({});
+    idbDelete(VIDEO_KEY);
+  };
+
   const onImport = async (files: FileList | null, type: ClipType) => {
     if (!files) return;
     for (const file of Array.from(files)) {
@@ -501,6 +582,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         speed: 1,
         fadeIn: 0,
         fadeOut: 0,
+        blob: file,
       };
       setClips((prev) => [...prev, clip]);
       if (type === 'video') {
@@ -586,6 +668,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           speed: 1,
           fadeIn: 0,
           fadeOut: 0,
+          blob,
         };
         setClips((prev) => [...prev, recClip]);
         getWaveform(url).then(
@@ -658,6 +741,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       yf: 0.5,
       start: 0,
       end: 9999,
+      blob: file,
     };
     setOverlays((p) => [...p, o]);
     setSelOverlay(o.id);
@@ -845,9 +929,42 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     if (videoClips.length === 0) return;
     setExporting(true);
     try {
-      const webm = await recordWebM();
-      const mp4 = await webmToMp4(webm);
-      download(mp4, 'chamva-video.mp4');
+      if (canRenderMp4()) {
+        // Render determinista fotograma a fotograma (WebCodecs), sin
+        // depender del reloj ni perder fotogramas.
+        setExportProgress(0);
+        const toRender = (c: Clip) => {
+          const fx = EFFECTS.find((e) => e.id === c.effect) ?? EFFECTS[0];
+          return {
+            url: c.url,
+            inP: c.inP,
+            outP: c.outP,
+            speed: c.speed ?? 1,
+            fadeIn: c.fadeIn,
+            fadeOut: c.fadeOut,
+            volume: c.volume,
+            hp: fx.hp,
+            lp: fx.lp,
+            echo: fx.echo,
+          };
+        };
+        const mp4 = await renderMp4({
+          width: Math.round((exportRes * 16) / 9),
+          height: exportRes,
+          fps: exportFps,
+          videoClips: videoClips.map(toRender),
+          audioClips: audioClips.map(toRender),
+          overlays,
+          eq,
+          normalize,
+          onProgress: (r) => setExportProgress(r),
+        });
+        download(mp4, 'chamva-video.mp4');
+      } else {
+        const webm = await recordWebM();
+        const mp4 = await webmToMp4(webm);
+        download(mp4, 'chamva-video.mp4');
+      }
     } catch (e) {
       console.error(e);
       toast('No se pudo convertir a MP4: ' + (e as Error).message, 'error');
@@ -862,6 +979,13 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       <div className="video-toolbar">
         <button onClick={onClose}>← {t('Volver al diseño')}</button>
         <span className="mask-title">🎬 {t('Editor de video')}</span>
+        <button
+          onClick={newVideoProject}
+          disabled={clips.length === 0 && overlays.length === 0}
+          title="Vaciar el proyecto de video"
+        >
+          🗑 {t('Nuevo')}
+        </button>
         <button onClick={() => videoFileRef.current?.click()}>🎬 {t('Subir video')}</button>
         <button onClick={() => audioFileRef.current?.click()}>🎵 {t('Subir audio')}</button>
         <button
