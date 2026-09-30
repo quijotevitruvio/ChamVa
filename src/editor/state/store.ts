@@ -8,8 +8,6 @@ import {
   type ImageLayer,
   type Layer,
   type TextLayer,
-  canvasFont,
-  transformText,
   type ShapeKind,
   type ShapeLayer,
   type UploadedImage,
@@ -23,6 +21,47 @@ import {
   rehydrateTemplates,
   rehydrateUploads,
 } from '../../io/assets';
+import {
+  applySpanStyle,
+  remapSpans,
+  stripSpanKey,
+  type SpanStyle,
+} from '../core/richText';
+import { measureStyledText } from '../core/styledText';
+
+// Fuentes de marca (nombres de familia) — pocas cadenas, van en localStorage.
+const LS_BRAND_FONTS = 'chamva.brandFonts';
+function loadBrandFonts(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(LS_BRAND_FONTS) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+function loadImageEl(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+    img.src = src;
+  });
+}
+
+// Aplica un parche a una capa. Si cambia el texto de una capa de texto sin
+// traer spans nuevos, reubica los tramos con estilo (negrita por palabra…).
+function patchLayer(l: Layer, patch: Partial<Layer>): Layer {
+  const p = patch as Partial<TextLayer>;
+  if (l.type === 'text' && typeof p.text === 'string' && !('spans' in p)) {
+    return { ...l, ...patch, spans: remapSpans(l.spans, l.text, p.text) } as Layer;
+  }
+  return { ...l, ...patch } as Layer;
+}
+
+// Lote de cambios con UN solo paso de deshacer (arrastrar o transformar un
+// grupo actualiza varias capas). Se cierra solo tras 15 s por seguridad.
+let batching = false;
+let batchTimer: ReturnType<typeof setTimeout> | undefined;
 
 // Subidos y plantillas se guardan en IndexedDB (idb.ts), hidratados al iniciar.
 
@@ -59,10 +98,9 @@ function layerBox(l: Layer): { x: number; y: number; w: number; h: number } {
     return { x: l.x, y: l.y, w: l.naturalWidth * l.scaleX, h: l.naturalHeight * l.scaleY };
   if (l.type === 'shape')
     return { x: l.x, y: l.y, w: l.width * l.scaleX, h: l.height * l.scaleY };
-  measureCtx.font = canvasFont(l);
-  const lines = transformText(l.text, l.textTransform).split('\n');
-  const w = Math.max(0, ...lines.map((s) => measureCtx.measureText(s).width)) * l.scaleX;
-  return { x: l.x, y: l.y, w, h: lines.length * l.fontSize * l.scaleY };
+  // Misma medida que el dibujo real (estilo por palabra, fondo, interlineado).
+  const m = measureStyledText(measureCtx, l);
+  return { x: l.x, y: l.y, w: m.width * l.scaleX, h: m.height * l.scaleY };
 }
 
 function emptyDoc(): Doc {
@@ -113,6 +151,10 @@ interface EditorState {
   viewScale: number; // escala aplicada real (para mostrar %)
   pages: Doc[];
   pageIndex: number;
+  brandLogos: UploadedImage[];
+  brandFonts: string[];
+  editingTextId: string | null; // texto que se está editando sobre el lienzo
+  textSel: { id: string; start: number; end: number } | null; // selección dentro del texto
 
   // documento / lienzo
   setCanvasSize: (width: number, height: number) => void;
@@ -123,16 +165,19 @@ interface EditorState {
   // páginas
   addPage: () => void;
   duplicatePage: () => void;
-  newDesign: () => void;
+  newDesign: (size?: { width: number; height: number; name?: string }) => void;
   addResizedPage: (width: number, height: number) => void;
   switchPage: (i: number) => void;
   deletePage: (i: number) => void;
   reorderPages: (from: number, to: number) => void;
   loadPages: (pages: Doc[], index: number) => void;
 
-  // colores
+  // kit de marca
   addBrandColor: (color: string) => void;
   removeBrandColor: (color: string) => void;
+  addBrandLogo: (img: UploadedImage) => void;
+  removeBrandLogo: (id: string) => void;
+  toggleBrandFont: (family: string) => void;
 
   // fuentes propias
   addCustomFont: (family: string) => void;
@@ -168,7 +213,33 @@ interface EditorState {
   // esquina). live=true no guarda historial (para el arrastre del slider).
   setLayerRotation: (id: string, deg: number, live?: boolean) => void;
   checkpoint: () => void; // guarda un punto de deshacer antes de una edición en vivo
-  addProcessedLayer: (sourceId: string, newSrc: string, name: string) => void;
+  beginBatch: () => void; // varias actualizaciones = un solo paso de deshacer
+  endBatch: () => void;
+  // keepSource: no ocultar la original (p. ej. "desenfocar fondo").
+  addProcessedLayer: (
+    sourceId: string,
+    newSrc: string,
+    name: string,
+    opts?: { keepSource?: boolean },
+  ) => void;
+  // grupos
+  groupSelected: () => void;
+  ungroupSelected: () => void;
+  // marcos
+  addFrame: (kind: ShapeKind) => void;
+  fillFrame: (
+    frameId: string,
+    img: { src: string; naturalWidth: number; naturalHeight: number; name?: string },
+  ) => Promise<void>;
+  // texto
+  setEditingText: (id: string | null) => void;
+  setTextSel: (sel: { id: string; start: number; end: number } | null) => void;
+  styleTextRange: (id: string, start: number, end: number, patch: SpanStyle) => void;
+  // Cambia el estilo de TODO el texto (y lo quita de las palabras sueltas).
+  setTextStyleAll: (
+    id: string,
+    patch: { bold?: boolean; italic?: boolean; underline?: boolean; fill?: string },
+  ) => void;
   replaceLayerImage: (
     id: string,
     img: { src: string; naturalWidth: number; naturalHeight: number; x: number; y: number },
@@ -203,6 +274,8 @@ interface EditorState {
 // Helper: aplica un cambio al documento registrándolo en el historial.
 function commit(s: EditorState, newDoc: Doc): Partial<EditorState> {
   if (newDoc === s.doc) return {};
+  // Dentro de un lote el punto de deshacer ya se guardó en beginBatch.
+  if (batching) return { doc: newDoc };
   return {
     doc: newDoc,
     past: [...s.past, s.doc].slice(-HISTORY_LIMIT),
@@ -212,7 +285,7 @@ function commit(s: EditorState, newDoc: Doc): Partial<EditorState> {
 
 const FIRST_DOC = emptyDoc();
 
-export const useEditor = create<EditorState>((set) => ({
+export const useEditor = create<EditorState>((set, get) => ({
   doc: FIRST_DOC,
   selectedId: null,
   selectedIds: [],
@@ -221,6 +294,10 @@ export const useEditor = create<EditorState>((set) => ({
   brandColors: loadColors(LS_BRAND),
   recentColors: loadColors(LS_RECENT),
   customFonts: [], // se rellena en hydrate() (las fuentes viven en IndexedDB)
+  brandLogos: [],
+  brandFonts: loadBrandFonts(),
+  editingTextId: null,
+  textSel: null,
   uploads: [],
   templates: [],
   cropMode: false,
@@ -266,6 +343,33 @@ export const useEditor = create<EditorState>((set) => ({
       return { brandColors: brand };
     }),
 
+  addBrandLogo: (img) =>
+    set((s) => {
+      const brandLogos = [img, ...s.brandLogos].slice(0, 24);
+      dehydrateUploads(brandLogos).then((d) => idbSet('brandLogos', d));
+      return { brandLogos };
+    }),
+
+  removeBrandLogo: (id) =>
+    set((s) => {
+      const brandLogos = s.brandLogos.filter((l) => l.id !== id);
+      dehydrateUploads(brandLogos).then((d) => idbSet('brandLogos', d));
+      return { brandLogos };
+    }),
+
+  toggleBrandFont: (family) =>
+    set((s) => {
+      const brandFonts = s.brandFonts.includes(family)
+        ? s.brandFonts.filter((f) => f !== family)
+        : [...s.brandFonts, family];
+      try {
+        localStorage.setItem(LS_BRAND_FONTS, JSON.stringify(brandFonts));
+      } catch {
+        /* noop */
+      }
+      return { brandFonts };
+    }),
+
   addCustomFont: (family) =>
     set((s) =>
       s.customFonts.includes(family)
@@ -281,8 +385,11 @@ export const useEditor = create<EditorState>((set) => ({
     const templates = await rehydrateTemplates(
       (await idbGet<SavedTemplate[]>('templates')) ?? [],
     );
+    const brandLogos = await rehydrateUploads(
+      (await idbGet<UploadedImage[]>('brandLogos')) ?? [],
+    );
     const customFonts = await loadStoredFonts();
-    set({ uploads, templates, customFonts });
+    set({ uploads, templates, customFonts, brandLogos });
   },
 
   addUpload: (img) =>
@@ -369,8 +476,13 @@ export const useEditor = create<EditorState>((set) => ({
       };
     }),
 
-  newDesign: () => {
+  newDesign: (size) => {
     const blank = emptyDoc();
+    if (size) {
+      blank.width = size.width;
+      blank.height = size.height;
+      if (size.name) blank.name = size.name;
+    }
     set({
       doc: blank,
       pages: [blank],
@@ -611,9 +723,7 @@ export const useEditor = create<EditorState>((set) => ({
     set((s) =>
       commit(s, {
         ...s.doc,
-        layers: s.doc.layers.map((l) =>
-          l.id === id ? ({ ...l, ...patch } as Layer) : l,
-        ),
+        layers: s.doc.layers.map((l) => (l.id === id ? patchLayer(l, patch) : l)),
       }),
     ),
 
@@ -642,16 +752,27 @@ export const useEditor = create<EditorState>((set) => ({
     set((s) => ({
       doc: {
         ...s.doc,
-        layers: s.doc.layers.map((l) =>
-          l.id === id ? ({ ...l, ...patch } as Layer) : l,
-        ),
+        layers: s.doc.layers.map((l) => (l.id === id ? patchLayer(l, patch) : l)),
       },
     })),
 
   checkpoint: () =>
     set((s) => ({ past: [...s.past, s.doc].slice(-HISTORY_LIMIT), future: [] })),
 
-  addProcessedLayer: (sourceId, newSrc, name) =>
+  beginBatch: () => {
+    if (batching) return;
+    set((s) => ({ past: [...s.past, s.doc].slice(-HISTORY_LIMIT), future: [] }));
+    batching = true;
+    clearTimeout(batchTimer);
+    batchTimer = setTimeout(() => (batching = false), 15_000);
+  },
+
+  endBatch: () => {
+    batching = false;
+    clearTimeout(batchTimer);
+  },
+
+  addProcessedLayer: (sourceId, newSrc, name, opts) =>
     set((s) => {
       const src = s.doc.layers.find((l) => l.id === sourceId);
       if (!src || src.type !== 'image') return {};
@@ -669,13 +790,14 @@ export const useEditor = create<EditorState>((set) => ({
       };
       const idx = s.doc.layers.findIndex((l) => l.id === sourceId);
       // Ocultar la original (no destructivo) y poner la recortada encima.
-      const layers = s.doc.layers.map((l) =>
-        l.id === sourceId ? { ...l, visible: false } : l,
-      );
+      const layers = opts?.keepSource
+        ? [...s.doc.layers]
+        : s.doc.layers.map((l) => (l.id === sourceId ? { ...l, visible: false } : l));
       layers.splice(idx + 1, 0, layer);
       return {
         ...commit(s, { ...s.doc, layers }),
         selectedId: layer.id,
+        selectedIds: [layer.id],
       };
     }),
 
@@ -716,16 +838,16 @@ export const useEditor = create<EditorState>((set) => ({
     set((s) => {
       const l = s.doc.layers.find((x) => x.id === id);
       if (!l) return {};
-      const copy = { ...l, id: uid(), x: l.x + 24, y: l.y + 24 } as Layer;
+      const copy = { ...l, id: uid(), x: l.x + 24, y: l.y + 24, groupId: undefined } as Layer;
       const idx = s.doc.layers.findIndex((x) => x.id === id);
       const layers = [...s.doc.layers];
       layers.splice(idx + 1, 0, copy);
-      return { ...commit(s, { ...s.doc, layers }), selectedId: copy.id };
+      return { ...commit(s, { ...s.doc, layers }), selectedId: copy.id, selectedIds: [copy.id] };
     }),
 
   pasteLayer: (layer) =>
     set((s) => {
-      const copy = { ...layer, id: uid(), x: layer.x + 24, y: layer.y + 24 } as Layer;
+      const copy = { ...layer, id: uid(), x: layer.x + 24, y: layer.y + 24, groupId: undefined } as Layer;
       return {
         ...commit(s, { ...s.doc, layers: [...s.doc.layers, copy] }),
         selectedId: copy.id,
@@ -733,19 +855,202 @@ export const useEditor = create<EditorState>((set) => ({
     }),
 
   selectLayer: (id) =>
-    set({ selectedId: id, selectedIds: id ? [id] : [] }),
+    set({ selectedId: id, selectedIds: id ? [id] : [], textSel: null }),
 
+  // Clic en el lienzo. Un grupo se selecciona entero; si la capa ya forma
+  // parte de una selección múltiple se conserva (para poder arrastrar todo).
+  // Para entrar a un elemento del grupo: doble clic (selectLayer).
   clickSelect: (id, additive) =>
     set((s) => {
-      if (!additive) return { selectedId: id, selectedIds: [id] };
-      const has = s.selectedIds.includes(id);
+      const l = s.doc.layers.find((x) => x.id === id);
+      const members = l?.groupId
+        ? s.doc.layers.filter((x) => x.groupId === l.groupId).map((x) => x.id)
+        : [id];
+      if (!additive) {
+        if (s.selectedIds.length > 1 && s.selectedIds.includes(id))
+          return { selectedId: id };
+        return { selectedId: id, selectedIds: members, textSel: null };
+      }
+      const has = members.every((m) => s.selectedIds.includes(m));
       const selectedIds = has
-        ? s.selectedIds.filter((x) => x !== id)
-        : [...s.selectedIds, id];
+        ? s.selectedIds.filter((x) => !members.includes(x))
+        : [...new Set([...s.selectedIds, ...members])];
       return {
         selectedIds,
-        selectedId: selectedIds[selectedIds.length - 1] ?? null,
+        selectedId: has ? (selectedIds[selectedIds.length - 1] ?? null) : id,
+        textSel: null,
       };
+    }),
+
+  groupSelected: () =>
+    set((s) => {
+      if (s.selectedIds.length < 2) return {};
+      const gid = uid();
+      return commit(s, {
+        ...s.doc,
+        layers: s.doc.layers.map((l) =>
+          s.selectedIds.includes(l.id) ? ({ ...l, groupId: gid } as Layer) : l,
+        ),
+      });
+    }),
+
+  ungroupSelected: () =>
+    set((s) => {
+      const gids = new Set(
+        s.doc.layers
+          .filter((l) => s.selectedIds.includes(l.id) && l.groupId)
+          .map((l) => l.groupId),
+      );
+      if (!gids.size) return {};
+      return commit(s, {
+        ...s.doc,
+        layers: s.doc.layers.map((l) =>
+          l.groupId && gids.has(l.groupId) ? ({ ...l, groupId: undefined } as Layer) : l,
+        ),
+      });
+    }),
+
+  addFrame: (kind) =>
+    set((s) => {
+      const size = Math.round(Math.min(s.doc.width, s.doc.height) * 0.45);
+      const layer: ShapeLayer = {
+        id: uid(),
+        type: 'shape',
+        frame: true,
+        name: 'Marco',
+        shape: kind,
+        width: size,
+        height: size,
+        fill: '#d7dce3',
+        stroke: '#9aa3b0',
+        strokeWidth: 0,
+        cornerRadius: 0,
+        x: (s.doc.width - size) / 2,
+        y: (s.doc.height - size) / 2,
+        scaleX: 1,
+        scaleY: 1,
+        rotation: 0,
+        opacity: 1,
+        blendMode: 'normal',
+        visible: true,
+        locked: false,
+        ...NO_SHADOW,
+      };
+      return {
+        ...commit(s, { ...s.doc, layers: [...s.doc.layers, layer] }),
+        selectedId: layer.id,
+        selectedIds: [layer.id],
+      };
+    }),
+
+  // Pone una foto dentro de un marco: recorta la imagen "cubriendo" el marco
+  // (sin deformar, centrada) y la sustituye por una capa de imagen recortada
+  // a la forma del marco, en la misma posición, giro y orden.
+  fillFrame: async (frameId, img) => {
+    const f = get().doc.layers.find((l) => l.id === frameId);
+    if (!f || f.type !== 'shape') return;
+    const fw = f.width * f.scaleX;
+    const fh = f.height * f.scaleY;
+    const image = await loadImageEl(img.src);
+    const nw = image.naturalWidth || img.naturalWidth;
+    const nh = image.naturalHeight || img.naturalHeight;
+    const cover = Math.max(fw / nw, fh / nh);
+    const cw = Math.max(1, Math.round(fw / cover));
+    const ch = Math.max(1, Math.round(fh / cover));
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    canvas
+      .getContext('2d')!
+      .drawImage(image, (nw - cw) / 2, (nh - ch) / 2, cw, ch, 0, 0, cw, ch);
+    const png = img.src.startsWith('data:image/png');
+    const src = canvas.toDataURL(png ? 'image/png' : 'image/jpeg', 0.92);
+    set((s) => {
+      const idx = s.doc.layers.findIndex((l) => l.id === frameId);
+      if (idx < 0) return {};
+      const layer: ImageLayer = {
+        id: uid(),
+        type: 'image',
+        name: img.name ?? 'Foto en marco',
+        groupId: f.groupId,
+        src,
+        naturalWidth: cw,
+        naturalHeight: ch,
+        x: f.x,
+        y: f.y,
+        scaleX: fw / cw,
+        scaleY: fh / ch,
+        rotation: f.rotation,
+        opacity: f.opacity,
+        blendMode: f.blendMode,
+        visible: true,
+        locked: false,
+        adjust: { ...DEFAULT_ADJUST },
+        filter: 'none',
+        flipX: false,
+        flipY: false,
+        maskShape: f.shape,
+        shadow: f.shadow,
+        shadowColor: f.shadowColor,
+        shadowBlur: f.shadowBlur,
+        shadowX: f.shadowX,
+        shadowY: f.shadowY,
+      };
+      const layers = [...s.doc.layers];
+      layers.splice(idx, 1, layer);
+      return {
+        ...commit(s, { ...s.doc, layers }),
+        selectedId: layer.id,
+        selectedIds: [layer.id],
+      };
+    });
+  },
+
+  setEditingText: (id) => set({ editingTextId: id }),
+
+  setTextSel: (sel) => set({ textSel: sel && sel.end > sel.start ? sel : null }),
+
+  styleTextRange: (id, start, end, patch) =>
+    set((s) => {
+      const l = s.doc.layers.find((x) => x.id === id);
+      if (!l || l.type !== 'text' || end <= start) return {};
+      const spans = applySpanStyle(l, start, end, patch);
+      return commit(s, {
+        ...s.doc,
+        layers: s.doc.layers.map((x) =>
+          x.id === id ? ({ ...x, spans: spans.length ? spans : undefined } as Layer) : x,
+        ),
+      });
+    }),
+
+  setTextStyleAll: (id, patch) =>
+    set((s) => {
+      const l = s.doc.layers.find((x) => x.id === id);
+      if (!l || l.type !== 'text') return {};
+      let spans = l.spans;
+      const next: Partial<TextLayer> = {};
+      if (patch.bold !== undefined) {
+        next.bold = patch.bold;
+        spans = stripSpanKey(spans, 'bold');
+      }
+      if (patch.italic !== undefined) {
+        next.italic = patch.italic;
+        spans = stripSpanKey(spans, 'italic');
+      }
+      if (patch.underline !== undefined) {
+        next.underline = patch.underline;
+        spans = stripSpanKey(spans, 'underline');
+      }
+      if (patch.fill !== undefined) {
+        next.fill = patch.fill;
+        spans = stripSpanKey(spans, 'color');
+      }
+      return commit(s, {
+        ...s.doc,
+        layers: s.doc.layers.map((x) =>
+          x.id === id ? ({ ...x, ...next, spans } as Layer) : x,
+        ),
+      });
     }),
 
   removeSelected: () =>
@@ -767,7 +1072,11 @@ export const useEditor = create<EditorState>((set) => ({
     }),
 
   requestTextEdit: (id) =>
-    set((s) => ({ selectedId: id, textEditNonce: s.textEditNonce + 1 })),
+    set((s) => ({
+      selectedId: id,
+      selectedIds: [id],
+      textEditNonce: s.textEditNonce + 1,
+    })),
 
   playAnimations: () =>
     set((s) => ({ animPlayNonce: s.animPlayNonce + 1 })),

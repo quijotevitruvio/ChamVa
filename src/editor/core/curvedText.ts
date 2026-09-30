@@ -1,8 +1,31 @@
-import { canvasFont, transformText, type TextLayer } from './types';
+import type { TextLayer } from './types';
+import { runFont, styledLines, type ResolvedStyle } from './richText';
 
 export interface CurvedMetrics {
   width: number;
   height: number;
+}
+
+interface CurvedChar {
+  c: string;
+  st: ResolvedStyle;
+}
+
+// Primera línea del texto como caracteres con su estilo (el texto curvo usa
+// una sola línea y sin prefijos de lista).
+function curvedChars(layer: TextLayer): CurvedChar[] {
+  const line = styledLines(layer, { list: false })[0] ?? [];
+  const out: CurvedChar[] = [];
+  for (const run of line) for (const c of [...run.text]) out.push({ c, st: run });
+  return out;
+}
+
+function charWidths(ctx: CanvasRenderingContext2D, layer: TextLayer, chars: CurvedChar[]) {
+  const ls = layer.letterSpacing || 0;
+  return chars.map(({ c, st }) => {
+    ctx.font = runFont(layer, st);
+    return ctx.measureText(c).width + ls;
+  });
 }
 
 // Mide el ancho/alto aproximado del texto curvo (para la caja del nodo).
@@ -10,11 +33,7 @@ export function measureCurved(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
 ): CurvedMetrics {
-  ctx.font = canvasFont(layer);
-  const line = transformText(layer.text, layer.textTransform).split('\n')[0] || '';
-  const ls = layer.letterSpacing || 0;
-  let total = 0;
-  for (const c of [...line]) total += ctx.measureText(c).width + ls;
+  const total = charWidths(ctx, layer, curvedChars(layer)).reduce((a, b) => a + b, 0);
   const arc = (Math.abs(layer.curve ?? 0) * Math.PI) / 180;
   const fs = layer.fontSize;
   if (arc < 0.01) return { width: Math.max(1, total), height: fs * 1.4 };
@@ -34,32 +53,30 @@ export function drawCurvedText(
   layer: TextLayer,
   width: number,
 ) {
-  ctx.font = canvasFont(layer);
-  ctx.fillStyle = layer.fill;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const line = transformText(layer.text, layer.textTransform).split('\n')[0] || '';
-  const chars = [...line];
-  const ls = layer.letterSpacing || 0;
-  const widths = chars.map((c) => ctx.measureText(c).width + ls);
+  const chars = curvedChars(layer);
+  const widths = charWidths(ctx, layer, chars);
   const total = widths.reduce((a, b) => a + b, 0) || 1;
   const fs = layer.fontSize;
   const curveDeg = layer.curve ?? 0;
-  const drawChar = (c: string, x: number, y: number) => {
+  const drawChar = (ch: CurvedChar, x: number, y: number) => {
+    ctx.font = runFont(layer, ch.st);
+    ctx.fillStyle = ch.st.color;
     if (layer.strokeWidth > 0) {
       ctx.strokeStyle = layer.strokeColor;
       ctx.lineWidth = layer.strokeWidth;
       ctx.lineJoin = 'round';
-      ctx.strokeText(c, x, y);
+      ctx.strokeText(ch.c, x, y);
     }
-    ctx.fillText(c, x, y);
+    ctx.fillText(ch.c, x, y);
   };
 
   const arc = (Math.abs(curveDeg) * Math.PI) / 180;
   if (arc < 0.01) {
     let x = (width - total) / 2;
-    chars.forEach((c, i) => {
-      drawChar(c, x + widths[i] / 2, fs * 0.7);
+    chars.forEach((ch, i) => {
+      drawChar(ch, x + widths[i] / 2, fs * 0.7);
       x += widths[i];
     });
     return;

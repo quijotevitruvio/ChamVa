@@ -1,3 +1,5 @@
+import type { TextSpan } from './richText';
+
 // Modelo de datos del "documento" de ChamVa.
 // El diseño NO se guarda como imagen, sino como este JSON de capas.
 // Render y exportación son funciones que reciben este Doc y producen píxeles/vectores.
@@ -12,6 +14,8 @@ export type BlendMode =
 
 export interface LayerBase {
   id: string;
+  groupId?: string; // capas con el mismo groupId se seleccionan y mueven juntas
+  frame?: boolean; // forma que actúa como "marco": se le suelta una foto encima
   name: string;
   x: number;
   y: number;
@@ -94,6 +98,8 @@ export interface TextLayer extends LayerBase {
   textEffect?: 'none' | 'echo' | 'background'; // efecto de texto (eco / fondo)
   effectColor?: string; // color del eco o del fondo
   listStyle?: 'none' | 'bullet' | 'number'; // lista: viñetas / numerada
+  underline?: boolean; // subrayado de todo el texto
+  spans?: TextSpan[]; // estilo por palabra: solo lo que difiere de la base (richText.ts)
 }
 
 // Texto tal cual se dibuja: aplica transformación de caja y prefijos de lista.

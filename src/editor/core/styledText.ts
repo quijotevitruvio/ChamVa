@@ -1,6 +1,8 @@
-// Dibujo de texto RECTO con efectos (eco / fondo), compartido por el editor
-// (Konva, vía KonvaShape) y la exportación (Canvas 2D) para paridad pixel a pixel.
-import { canvasFont, displayText, type TextLayer } from './types';
+// Dibujo de texto RECTO con efectos (eco / fondo) y estilo por palabra,
+// compartido por el editor (Konva, vía KonvaShape) y la exportación (Canvas 2D)
+// para paridad pixel a pixel.
+import type { TextLayer } from './types';
+import { runFont, styledLines, type StyledRun } from './richText';
 
 const BG_PAD = 0.3; // padding del fondo, relativo a fontSize
 const BG_RADIUS = 0.2; // radio de esquina del fondo, relativo a fontSize
@@ -8,7 +10,8 @@ const ECHO_STEPS = 4;
 const ECHO_STEP = 0.06; // desplazamiento por copia, relativo a fontSize
 
 interface Metrics {
-  lines: string[];
+  lines: StyledRun[][];
+  runWidths: number[][];
   widths: number[];
   boxW: number;
   textH: number;
@@ -21,16 +24,22 @@ export function measureStyledText(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
 ): Metrics {
-  ctx.font = canvasFont(layer);
   (ctx as any).letterSpacing = `${layer.letterSpacing || 0}px`;
-  const lines = displayText(layer).split('\n');
-  const widths = lines.map((l) => ctx.measureText(l).width);
+  const lines = styledLines(layer);
+  const runWidths = lines.map((line) =>
+    line.map((run) => {
+      ctx.font = runFont(layer, run);
+      return ctx.measureText(run.text).width;
+    }),
+  );
+  const widths = runWidths.map((ws) => ws.reduce((a, b) => a + b, 0));
   const boxW = Math.max(0, ...widths);
   const lh = layer.lineHeight ?? 1;
   const textH = lines.length * layer.fontSize * lh;
   const pad = layer.textEffect === 'background' ? layer.fontSize * BG_PAD : 0;
   return {
     lines,
+    runWidths,
     widths,
     boxW,
     textH,
@@ -65,7 +74,7 @@ function roundRect(
 
 // Dibuja el texto en el origen actual del ctx (el llamador ya aplicó
 // translate/rotate/scale/alpha). Soporta multilínea, alineación, espaciado,
-// contorno, sombra y efectos eco/fondo.
+// contorno, sombra, subrayado, estilo por palabra y efectos eco/fondo.
 export function drawStyledText(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
@@ -75,7 +84,6 @@ export function drawStyledText(
   const lh = layer.lineHeight ?? 1;
   const effect = layer.textEffect ?? 'none';
 
-  ctx.font = canvasFont(layer);
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
   (ctx as any).letterSpacing = `${layer.letterSpacing || 0}px`;
@@ -101,6 +109,7 @@ export function drawStyledText(
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
   };
+  const underlineThickness = Math.max(1, fontSize / 15);
 
   m.lines.forEach((line, i) => {
     let lx = m.pad;
@@ -117,27 +126,42 @@ export function drawStyledText(
         const off = s * fontSize * ECHO_STEP;
         ctx.save();
         ctx.globalAlpha = 0.45 * (1 - s / (ECHO_STEPS + 1));
-        ctx.fillText(line, lx + off, y + off);
+        let x = lx;
+        line.forEach((run, r) => {
+          ctx.font = runFont(layer, run);
+          ctx.fillText(run.text, x + off, y + off);
+          x += m.runWidths[i][r];
+        });
         ctx.restore();
       }
     }
 
-    if (layer.strokeWidth > 0) {
-      if (layer.shadow) setShadow();
-      else clearShadow();
-      ctx.strokeStyle = layer.strokeColor;
-      ctx.lineWidth = layer.strokeWidth;
-      ctx.lineJoin = 'round';
-      ctx.strokeText(line, lx, y);
-      clearShadow();
-      ctx.fillStyle = layer.fill;
-      ctx.fillText(line, lx, y);
-    } else {
-      if (layer.shadow) setShadow();
-      else clearShadow();
-      ctx.fillStyle = layer.fill;
-      ctx.fillText(line, lx, y);
-      clearShadow();
-    }
+    let x = lx;
+    line.forEach((run, r) => {
+      const w = m.runWidths[i][r];
+      ctx.font = runFont(layer, run);
+      if (layer.strokeWidth > 0) {
+        if (layer.shadow) setShadow();
+        else clearShadow();
+        ctx.strokeStyle = layer.strokeColor;
+        ctx.lineWidth = layer.strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(run.text, x, y);
+        clearShadow();
+        ctx.fillStyle = run.color;
+        ctx.fillText(run.text, x, y);
+      } else {
+        if (layer.shadow) setShadow();
+        else clearShadow();
+        ctx.fillStyle = run.color;
+        ctx.fillText(run.text, x, y);
+        clearShadow();
+      }
+      if (run.underline && run.text.trim()) {
+        ctx.fillStyle = run.color;
+        ctx.fillRect(x, y + fontSize * 0.95, w, underlineThickness);
+      }
+      x += w;
+    });
   });
 }

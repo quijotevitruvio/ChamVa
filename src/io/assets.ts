@@ -149,7 +149,7 @@ function collectRefs(value: unknown, into: Set<string>) {
 
 export async function gcAssets(): Promise<number> {
   const live = new Set<string>();
-  for (const key of ['autosave', 'autosave.history', 'designs', 'uploads', 'templates']) {
+  for (const key of ['autosave', 'autosave.history', 'designs', 'uploads', 'templates', 'brandLogos']) {
     collectRefs(await idbGet(key), live);
   }
   const keys = await idbKeys(PREFIX);
