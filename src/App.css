@@ -2388,17 +2388,40 @@ button.mini {
 }
 
 /* ===== Banner de actualización ===== */
+/* Globo flotante: por encima del inicio (z 120) y de los diálogos. */
 .update-banner {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 300;
+  max-width: min(420px, calc(100vw - 32px));
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  background: linear-gradient(90deg, #2f3550, #3a2f55);
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #2f3550, #3a2f55);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   font-size: 13px;
+  animation: update-pop 0.35s ease-out;
+}
+@keyframes update-pop {
+  from {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+  }
 }
 .update-banner .spacer {
   flex: 1;
+}
+@media (max-width: 768px) {
+  .update-banner {
+    left: 16px;
+    right: 16px;
+    bottom: 76px;
+  }
 }
 .update-banner button {
   background: var(--panel-2);
