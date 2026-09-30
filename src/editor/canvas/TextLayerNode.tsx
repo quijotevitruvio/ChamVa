@@ -4,11 +4,13 @@ import type Konva from 'konva';
 import { konvaFontStyle, displayText, type TextLayer } from '../core/types';
 import { drawCurvedText, measureCurved } from '../core/curvedText';
 import { drawStyledText, measureStyledText } from '../core/styledText';
+import { hasSpans } from '../core/richText';
 import { useEditor } from '../state/store';
 
 interface Props {
   layer: TextLayer;
   registerRef: (id: string, node: Konva.Node | null) => void;
+  onDragEndLayer?: (id: string, node: Konva.Node) => void;
 }
 
 const measureCtx = document.createElement('canvas').getContext('2d')!;
@@ -17,18 +19,22 @@ export function TextLayerNode({ layer, registerRef }: Props) {
   const clickSelect = useEditor((s) => s.clickSelect);
   const updateLayer = useEditor((s) => s.updateLayer);
   const requestTextEdit = useEditor((s) => s.requestTextEdit);
+  const editing = useEditor((s) => s.editingTextId === layer.id);
 
   const curved = !!layer.curve && layer.curve !== 0;
-  const hasEffect = !!layer.textEffect && layer.textEffect !== 'none';
+  // El dibujo propio (KonvaShape) cubre efectos, subrayado y estilo por palabra;
+  // el Konva.Text nativo queda para el caso simple (más rápido).
+  const custom =
+    (!!layer.textEffect && layer.textEffect !== 'none') || hasSpans(layer) || !!layer.underline;
   const metrics = useMemo(
     () => measureCurved(measureCtx, layer),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layer.text, layer.fontFamily, layer.fontSize, layer.curve, layer.bold, layer.italic, layer.letterSpacing, layer.textTransform],
+    [layer.text, layer.fontFamily, layer.fontSize, layer.curve, layer.bold, layer.italic, layer.letterSpacing, layer.textTransform, layer.spans],
   );
   const styledMetrics = useMemo(
     () => measureStyledText(measureCtx, layer),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layer.text, layer.fontFamily, layer.fontSize, layer.bold, layer.italic, layer.letterSpacing, layer.textTransform, layer.lineHeight, layer.textEffect, layer.listStyle],
+    [layer.text, layer.fontFamily, layer.fontSize, layer.bold, layer.italic, layer.letterSpacing, layer.textTransform, layer.lineHeight, layer.textEffect, layer.listStyle, layer.spans],
   );
 
   if (!layer.visible) return null;
@@ -40,15 +46,16 @@ export function TextLayerNode({ layer, registerRef }: Props) {
     scaleX: layer.scaleX,
     scaleY: layer.scaleY,
     rotation: layer.rotation,
-    opacity: layer.opacity,
-    draggable: !layer.locked,
+    // Mientras se edita encima del lienzo, el editor HTML ocupa su lugar.
+    opacity: editing ? 0 : layer.opacity,
+    draggable: !layer.locked && !editing,
     globalCompositeOperation:
       layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>
       clickSelect(layer.id, e.evt.shiftKey),
     onTap: () => clickSelect(layer.id, false),
-    onDblClick: () => requestTextEdit(layer.id),
-    onDblTap: () => requestTextEdit(layer.id),
+    onDblClick: () => !layer.locked && requestTextEdit(layer.id),
+    onDblTap: () => !layer.locked && requestTextEdit(layer.id),
     onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) =>
       updateLayer(layer.id, { x: e.target.x(), y: e.target.y() }),
     onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {
@@ -82,7 +89,7 @@ export function TextLayerNode({ layer, registerRef }: Props) {
     );
   }
 
-  if (hasEffect) {
+  if (custom) {
     return (
       <KonvaShape
         {...common}

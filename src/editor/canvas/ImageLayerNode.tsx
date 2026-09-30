@@ -18,6 +18,7 @@ interface Props {
 export function ImageLayerNode({ layer, registerRef }: Props) {
   const image = useImage(layer.src);
   const clickSelect = useEditor((s) => s.clickSelect);
+  const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
 
   // Imagen con filtros/volteo aplicados (se recalcula solo si cambian esos campos).
@@ -58,6 +59,9 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>
       clickSelect(layer.id, e.evt.shiftKey),
     onTap: () => clickSelect(layer.id, false),
+    // Doble clic: entrar a un elemento suelto de un grupo.
+    onDblClick: () => selectLayer(layer.id),
+    onDblTap: () => selectLayer(layer.id),
     onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) =>
       updateLayer(layer.id, { x: e.target.x(), y: e.target.y() }),
     onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {
