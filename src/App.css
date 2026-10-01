@@ -1085,28 +1085,6 @@ ul.layers .name {
   font-size: 12px;
 }
 
-.support-links {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.support-links a {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text);
-  text-decoration: none;
-  font-size: 13px;
-}
-
-.support-links a:hover {
-  border-color: var(--accent);
-}
-
 .link-btn {
   background: none;
   border: none;
@@ -3177,90 +3155,6 @@ button.mini {
 .donate-card.wide {
   max-width: 560px;
 }
-.support-links .nequi-btn {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
-}
-.support-links .nequi-btn:hover {
-  background: var(--border);
-}
-.goal-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 10px 0 14px;
-  padding: 10px 12px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  font-size: 12.5px;
-  text-align: left;
-}
-.goal-num {
-  opacity: 0.75;
-}
-.goal-track {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--border);
-  overflow: hidden;
-}
-.goal-track > div {
-  height: 100%;
-  background: var(--accent);
-}
-.license-plans {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px;
-  margin: 6px 0 12px;
-}
-.license-plan {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-  padding: 12px 10px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  text-align: center;
-}
-.license-plan.featured {
-  border-color: var(--accent);
-}
-.plan-label {
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.plan-price {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--accent);
-}
-.plan-note {
-  font-size: 11px;
-  opacity: 0.75;
-}
-.license-plan button {
-  margin-top: auto;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-.license-plan button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
 .req-check {
   display: flex;
   gap: 8px;
@@ -3268,43 +3162,6 @@ button.mini {
   font-size: 13px;
   margin: 4px 0 10px;
 }
-.pay-steps .support-links {
-  justify-content: flex-start;
-}
-.author-card {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-.author-card img,
-.author-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex: none;
-}
-.author-avatar {
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 700;
-  font-size: 18px;
-}
-.author-card .support-desc {
-  margin: 4px 0 6px;
-}
-.author-links {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 12.5px;
-}
-.author-links a {
-  color: var(--accent);
-}
-
 /* ===== Acabado plano (2026): transiciones mínimas y hover sutil ===== */
 button,
 select,

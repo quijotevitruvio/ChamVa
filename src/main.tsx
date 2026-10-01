@@ -5,6 +5,7 @@ import { ErrorBoundary } from './ui/ErrorBoundary';
 // Fuentes empaquetadas (OFL): funcionan sin internet. Solo latín, 400 y 700.
 import './fonts.css';
 import './view.css';
+import './support.css';
 import { applyTheme } from './theme';
 
 applyTheme();

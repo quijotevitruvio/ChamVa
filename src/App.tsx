@@ -188,7 +188,7 @@ export default function App() {
     const days = first ? Math.floor((Date.now() - first) / 86_400_000) : 0;
     if (days < 7) return;
     const id = setTimeout(async () => {
-      if (!(await getStoredLicense())) maybeNag(`Llevas ${days} días usando ChamVa 💛`);
+      if (!(await getStoredLicense())) maybeNag(`Llevas ${days} días usando ChamVa`);
     }, 8000);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,7 +724,7 @@ export default function App() {
       setBusy(false);
       // La descarga nunca se bloquea. Sin licencia, el aviso de apoyo sale
       // como máximo una vez al día.
-      if (!license) maybeNag('¡Tu archivo se descargó! 💛');
+      if (!license) maybeNag('Tu archivo se descargó');
     }
   };
 

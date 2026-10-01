@@ -26,18 +26,22 @@ const copyNequi = async () => {
 };
 
 const SupportLinks = () => (
-  <div className="support-links">
-    <a href={SUPPORT.sponsors} onClick={externalClick}>
-      💜 GitHub Sponsors
+  <div className="pay-grid">
+    <a className="pay-btn" href={SUPPORT.sponsors} onClick={externalClick}>
+      <b>GitHub Sponsors</b>
+      <span>Aporte único o mensual</span>
     </a>
-    <button type="button" className="nequi-btn" onClick={copyNequi} title="Copiar número">
-      📱 Nequi {SUPPORT.nequi}
+    <button type="button" className="pay-btn" onClick={copyNequi} title="Copiar número">
+      <b>Nequi</b>
+      <span>{SUPPORT.nequi} · copiar</span>
     </button>
-    <a href={AUTHOR.paypal} onClick={externalClick}>
-      ☕ {t('Invítame un café')} (PayPal)
+    <a className="pay-btn" href={AUTHOR.paypal} onClick={externalClick}>
+      <b>PayPal</b>
+      <span>{t('Invítame un café')}</span>
     </a>
-    <a href={AUTHOR.repo} onClick={externalClick}>
-      ⭐ {t('Dale una estrella en GitHub')}
+    <a className="pay-btn" href={AUTHOR.repo} onClick={externalClick}>
+      <b>GitHub</b>
+      <span>{t('Dale una estrella en GitHub')}</span>
     </a>
   </div>
 );
@@ -45,15 +49,16 @@ const SupportLinks = () => (
 const cop = (n: number) => '$' + n.toLocaleString('es-CO') + ' COP';
 
 const GoalBar = () => (
-  <div className="goal-bar">
-    <span className="goal-label">🎯 Meta: {GOAL.label}</span>
+  <div className="goal-box">
+    <span className="goal-title">Meta</span>
+    <span className="goal-text">{GOAL.label}</span>
     {GOAL.raised > 0 ? (
       <>
         <div className="goal-track">
           <div style={{ width: `${Math.min(100, (GOAL.raised / GOAL.target) * 100)}%` }} />
         </div>
         <span className="goal-num">
-          Llevamos {cop(GOAL.raised)} de {cop(GOAL.target)}
+          {cop(GOAL.raised)} de {cop(GOAL.target)}
         </span>
       </>
     ) : (
@@ -63,15 +68,18 @@ const GoalBar = () => (
 );
 
 const LicensePlans = ({ onRequest }: { onRequest: (plan: LicenseType) => void }) => (
-  <div className="license-plans">
+  <div className="plan-list">
     {LICENSE_PLANS.map((p) => (
-      <div key={p.type} className={`license-plan${p.type === 'permanente' ? ' featured' : ''}`}>
-        <span className="plan-label">{p.label}</span>
+      <div key={p.type} className={`plan-row${p.type === 'permanente' ? ' featured' : ''}`}>
+        <div className="plan-info">
+          <span className="plan-title">
+            {p.label}
+            {p.type === 'permanente' && <i className="plan-tag">Recomendada</i>}
+          </span>
+          {'note' in p && <span className="plan-note">{p.note}</span>}
+        </div>
         <span className="plan-price">{p.price}</span>
-        {'note' in p && <span className="plan-note">{p.note}</span>}
-        <button className={p.type === 'permanente' ? 'primary' : ''} onClick={() => onRequest(p.type)}>
-          {p.type === 'educativa' ? 'Solicitar' : 'Comprar'}
-        </button>
+        <button onClick={() => onRequest(p.type)}>{p.type === 'educativa' ? 'Solicitar' : 'Comprar'}</button>
       </div>
     ))}
   </div>
@@ -92,11 +100,11 @@ export const AuthorCard = () => {
       ) : (
         <span className="author-avatar">{initials}</span>
       )}
-      <div>
+      <div className="author-body">
         <strong>{AUTHOR.name}</strong>
-        <p className="support-desc">
-          Programador en Medellín. Hago ChamVa solo y gratis para que cualquiera pueda diseñar sin
-          pagar ni depender de internet.
+        <p>
+          Programador en Medellín. Hago ChamVa solo y gratis para que cualquiera pueda diseñar sin pagar ni
+          depender de internet.
         </p>
         <div className="author-links">
           <a href={AUTHOR.github} onClick={externalClick}>
@@ -259,7 +267,7 @@ export function SettingsDialog({
           {license ? (
             <>
               <div className="supporter-badge">★ Donante</div>
-              <p className="supporter-name">¡Gracias, {license.name}! 💛</p>
+              <p className="supporter-name">Gracias, {license.name}.</p>
               <p className="support-desc">
                 {LICENSE_TYPE_LABEL[license.type]} ·{' '}
                 {isPermanent(license)
@@ -306,9 +314,9 @@ export function SettingsDialog({
         )}
 
         <div className="settings-section">
-          <span className="settings-label">🏅 Muro de donantes ({donorWall.length})</span>
+          <span className="settings-label">Muro de donantes ({donorWall.length})</span>
           {donorWall.length === 0 ? (
-            <p className="support-desc">Aún no hay donantes. ¡Sé el primero en apoyar! 💛</p>
+            <p className="support-desc">Aún no hay donantes. Sé el primero en apoyar.</p>
           ) : (
             <ul className="donor-wall">
               {donorWall.map((d, i) => (
@@ -341,7 +349,7 @@ export function SettingsDialog({
 export function DonateDialog({
   onClose,
   onRequestLicense,
-  title = '¡Listo! 💛',
+  title = 'Gracias por usar ChamVa',
 }: {
   onClose: () => void;
   onRequestLicense: (plan: LicenseType) => void;
@@ -485,7 +493,7 @@ export function RequestLicenseDialog({
         </label>
 
         <button className="primary req-send" onClick={submit}>
-          ✉ {isFree ? 'Preparar carta formal por correo' : 'Enviar solicitud por correo'}
+          {isFree ? 'Preparar carta formal por correo' : 'Enviar solicitud por correo'}
         </button>
       </div>
     </div>

@@ -154,7 +154,7 @@ La licencia **quita los recordatorios de apoyo** (como en WinRAR) y te pone en e
 | Institución educativa, permanente | $150.000 COP, o **GRATIS** |
 
 **Colegios e instituciones educativas:** la licencia es gratuita si la institución la solicita formalmente por correo a
-**andres@librosmedellin.com** justificando su uso educativo.
+**quijotevitruvio@gmail.com** justificando su uso educativo.
 
 ## Sobre el autor
 
