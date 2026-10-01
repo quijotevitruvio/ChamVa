@@ -16,6 +16,10 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const zoom = useEditor((s) => s.zoom);
   const setZoom = useEditor((s) => s.setZoom);
   const viewScale = useEditor((s) => s.viewScale);
+  const showRulers = useEditor((s) => s.showRulers);
+  const showGrid = useEditor((s) => s.showGrid);
+  const toggleRulers = useEditor((s) => s.toggleRulers);
+  const toggleGrid = useEditor((s) => s.toggleGrid);
   const [dragPage, setDragPage] = useState<number | null>(null);
 
   return (
@@ -60,6 +64,25 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
       </button>
 
       <span className="spacer" />
+
+      <div className="view-toggles">
+        <button
+          className={`view-toggle${showRulers ? ' on' : ''}`}
+          onClick={toggleRulers}
+          aria-pressed={showRulers}
+          title="Mostrar u ocultar las reglas (en píxeles)"
+        >
+          {t('Reglas')}
+        </button>
+        <button
+          className={`view-toggle${showGrid ? ' on' : ''}`}
+          onClick={toggleGrid}
+          aria-pressed={showGrid}
+          title="Mostrar u ocultar la cuadrícula"
+        >
+          {t('Cuadrícula')}
+        </button>
+      </div>
 
       <div className="zoom-controls">
         <button onClick={() => setZoom(zoom * 0.9)} title="Alejar">

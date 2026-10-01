@@ -1,3 +1,5 @@
+import { FillControl } from './GradientEditor';
+import { toHex6 } from '../editor/core/gradients';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useEditor } from '../editor/state/store';
 import { FONT_FAMILIES, SHAPE_OPTIONS, type Layer, type TextLayer } from '../editor/core/types';
@@ -647,23 +649,29 @@ export function PropertiesPanel(p: Props) {
                 <p className="rail-hint">También puedes arrastrar una foto encima del marco.</p>
               </>
             )}
+            <span className="rail-label">Relleno</span>
+            <FillControl
+              fill={selected.fill}
+              gradient={selected.fillGradient}
+              onChange={(patch) => updateLayer(selected.id, patch)}
+            />
             <div className="row text-row">
-              <label className="shape-color">
-                Relleno
-                <input
-                  type="color"
-                  value={selected.fill}
-                  onChange={(e) => updateLayer(selected.id, { fill: e.target.value })}
-                />
-              </label>
               <label className="shape-color">
                 Borde
                 <input
                   type="color"
-                  value={selected.stroke}
+                  value={toHex6(selected.stroke)}
                   onChange={(e) => updateLayer(selected.id, { stroke: e.target.value })}
                 />
               </label>
+              <button
+                className="no-border-btn"
+                disabled={selected.strokeWidth === 0}
+                onClick={() => updateLayer(selected.id, { strokeWidth: 0 })}
+                title="Quitar el borde"
+              >
+                Sin borde
+              </button>
             </div>
             {range('Grosor del borde', selected.strokeWidth, 0, 40, 1, (v) =>
               updateLayerLive(selected.id, { strokeWidth: v }),

@@ -1,4 +1,5 @@
 import type { Gradient } from './types';
+import { gradientCss } from './gradients';
 
 // Colores sólidos predeterminados (grises + colores vivos), estilo Canva.
 export const PRESET_SOLIDS: string[] = [
@@ -26,10 +27,7 @@ export const PRESET_GRADIENTS: Gradient[] = [
 
 // CSS para previsualizar un degradado en un botón.
 export function gradientToCss(g: Gradient): string {
-  const stops = g.stops
-    .map((s) => `${s.color} ${Math.round(s.offset * 100)}%`)
-    .join(', ');
-  return `linear-gradient(${g.angle + 90}deg, ${stops})`;
+  return gradientCss(g);
 }
 
 // Nombres de color CSS frecuentes (para la búsqueda por nombre).

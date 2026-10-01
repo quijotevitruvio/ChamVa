@@ -20,6 +20,13 @@ function hasPixelOps(a: ImageAdjust): boolean {
     n(a.vibrance) !== 0 ||
     n(a.posterize) > 0 ||
     n(a.sharpen) > 0 ||
+    n(a.clarity) > 0 ||
+    n(a.exposure) !== 0 ||
+    n(a.hue) !== 0 ||
+    n(a.grayscale) > 0 ||
+    n(a.sepia) > 0 ||
+    n(a.threshold) > 0 ||
+    a.invert === true ||
     n(a.pixelate) > 0 ||
     n(a.vignette) > 0 ||
     n(a.grain) > 0
@@ -46,6 +53,10 @@ export function needsProcessing(layer: ImageLayer): boolean {
 // Operaciones de píxel (puras, sobre arrays tipados; respetan el canal alfa)
 // ---------------------------------------------------------------------------
 
+function clampTo01(v: number) {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
 function clamp255(v: number) {
   return v < 0 ? 0 : v > 255 ? 255 : v;
 }
@@ -58,7 +69,21 @@ export function applyColorOps(img: PixelData, a: ImageAdjust) {
   const sh = n(a.shadows);
   const vib = n(a.vibrance);
   const post = n(a.posterize);
-  if (!temp && !tint && !hi && !sh && !vib && post <= 0) return;
+  const expo = n(a.exposure);
+  const hueDeg = n(a.hue);
+  const gray = clampTo01(n(a.grayscale) / 100);
+  const sep = clampTo01(n(a.sepia) / 100);
+  if (!temp && !tint && !hi && !sh && !vib && post <= 0 && !expo && !hueDeg && !gray && !sep) return;
+  const expoK = expo ? Math.pow(2, expo / 50) : 1; // ±100 = ±2 pasos de luz
+  // Matriz de rotación de tono (la misma que usa CSS hue-rotate).
+  const rad = (hueDeg * Math.PI) / 180;
+  const cs = Math.cos(rad);
+  const sn = Math.sin(rad);
+  const hm = [
+    0.213 + cs * 0.787 - sn * 0.213, 0.715 - cs * 0.715 - sn * 0.715, 0.072 - cs * 0.072 + sn * 0.928,
+    0.213 - cs * 0.213 + sn * 0.143, 0.715 + cs * 0.285 + sn * 0.140, 0.072 - cs * 0.072 - sn * 0.283,
+    0.213 - cs * 0.213 - sn * 0.787, 0.715 - cs * 0.715 + sn * 0.715, 0.072 + cs * 0.928 + sn * 0.072,
+  ];
   const d = img.data as Uint8ClampedArray;
   const levels = post > 0 ? Math.max(2, Math.round(32 - post * 30)) : 0;
   const step = levels ? 255 / (levels - 1) : 0;
@@ -67,6 +92,11 @@ export function applyColorOps(img: PixelData, a: ImageAdjust) {
     let r = d[i];
     let g = d[i + 1];
     let b = d[i + 2];
+    if (expo) {
+      r *= expoK;
+      g *= expoK;
+      b *= expoK;
+    }
     if (temp || tint) {
       r += temp * 40 + tint * 12;
       b += -temp * 40 + tint * 12;
@@ -89,6 +119,31 @@ export function applyColorOps(img: PixelData, a: ImageAdjust) {
       r = avg + (r - avg) * f;
       g = avg + (g - avg) * f;
       b = avg + (b - avg) * f;
+    }
+    if (hueDeg) {
+      const r0 = clamp255(r);
+      const g0 = clamp255(g);
+      const b0 = clamp255(b);
+      r = hm[0] * r0 + hm[1] * g0 + hm[2] * b0;
+      g = hm[3] * r0 + hm[4] * g0 + hm[5] * b0;
+      b = hm[6] * r0 + hm[7] * g0 + hm[8] * b0;
+    }
+    if (gray) {
+      const y = 0.299 * r + 0.587 * g + 0.114 * b;
+      r += (y - r) * gray;
+      g += (y - g) * gray;
+      b += (y - b) * gray;
+    }
+    if (sep) {
+      const r0 = clamp255(r);
+      const g0 = clamp255(g);
+      const b0 = clamp255(b);
+      const sr = 0.393 * r0 + 0.769 * g0 + 0.189 * b0;
+      const sg = 0.349 * r0 + 0.686 * g0 + 0.168 * b0;
+      const sb = 0.272 * r0 + 0.534 * g0 + 0.131 * b0;
+      r = r0 + (sr - r0) * sep;
+      g = g0 + (sg - g0) * sep;
+      b = b0 + (sb - b0) * sep;
     }
     if (levels) {
       r = Math.round(clamp255(r) / step) * step;
@@ -180,6 +235,67 @@ export function applySharpen(img: PixelData, amount: number, scale = 1) {
     d[i] += delta;
     d[i + 1] += delta;
     d[i + 2] += delta;
+  }
+}
+
+// Claridad: contraste local (unsharp mask con radio grande sobre luminancia, más fuerte en tonos medios).
+export function applyClarity(img: PixelData, amount: number, scale = 1) {
+  if (amount <= 0) return;
+  const { width: w, height: h } = img;
+  const d = img.data as Uint8ClampedArray;
+  const N = w * h;
+  const r = Math.max(2, Math.round(15 * scale));
+  const ya = new Float32Array(N);
+  const aa = new Float32Array(N);
+  const lum = new Float32Array(N);
+  for (let p = 0, i = 0; p < N; p++, i += 4) {
+    const a = d[i + 3] / 255;
+    const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    lum[p] = y;
+    ya[p] = y * a;
+    aa[p] = a;
+  }
+  const tmp = new Float32Array(N);
+  const yb = new Float32Array(N);
+  const ab = new Float32Array(N);
+  boxBlur(ya, yb, tmp, w, h, r);
+  boxBlur(aa, ab, tmp, w, h, r);
+  const k = (Math.min(100, amount) / 100) * 1.2;
+  for (let p = 0, i = 0; p < N; p++, i += 4) {
+    if (d[i + 3] === 0 || ab[p] < 1e-4) continue;
+    const blurred = yb[p] / ab[p];
+    const t = lum[p] / 127.5 - 1;
+    const mid = 0.3 + 0.7 * (1 - t * t); // protege negros y blancos
+    const delta = (lum[p] - blurred) * k * mid;
+    d[i] += delta;
+    d[i + 1] += delta;
+    d[i + 2] += delta;
+  }
+}
+
+// Invertir (negativo) y umbral (blanco/negro puro). No tocan el alfa.
+export function applyInvertThreshold(img: PixelData, a: ImageAdjust) {
+  const inv = a.invert === true;
+  const th = n(a.threshold);
+  if (!inv && th <= 0) return;
+  const d = img.data as Uint8ClampedArray;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    let r = d[i];
+    let g = d[i + 1];
+    let b = d[i + 2];
+    if (inv) {
+      r = 255 - r;
+      g = 255 - g;
+      b = 255 - b;
+    }
+    if (th > 0) {
+      const v = 0.299 * r + 0.587 * g + 0.114 * b >= th ? 255 : 0;
+      r = g = b = v;
+    }
+    d[i] = r;
+    d[i + 1] = g;
+    d[i + 2] = b;
   }
 }
 
@@ -380,6 +496,8 @@ export function processImage(
     const data = ctx.getImageData(0, 0, w, h);
     applyColorOps(data, adj);
     applySharpen(data, n(adj.sharpen), scale);
+    applyClarity(data, n(adj.clarity), scale);
+    applyInvertThreshold(data, adj);
     applyPixelate(data, n(adj.pixelate) * scale);
     applyVignette(data, n(adj.vignette));
     applyGrain(data, n(adj.grain));
@@ -492,6 +610,26 @@ export const ADJUST_PRESETS: { id: string; label: string; adjust: Partial<ImageA
     id: 'sharp',
     label: 'Nítido',
     adjust: { sharpen: 0.7, contrast: 1.1, vibrance: 0.15 },
+  },
+  {
+    id: 'bw-pure',
+    label: 'Blanco y negro',
+    adjust: { grayscale: 100 },
+  },
+  {
+    id: 'sepia',
+    label: 'Sepia',
+    adjust: { sepia: 100, contrast: 1.05 },
+  },
+  {
+    id: 'negative',
+    label: 'Negativo',
+    adjust: { invert: true },
+  },
+  {
+    id: 'bw-contrast',
+    label: 'Alto contraste B/N',
+    adjust: { grayscale: 100, contrast: 1.6, clarity: 30 },
   },
   {
     id: 'poster',

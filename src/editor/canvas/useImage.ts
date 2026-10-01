@@ -20,9 +20,11 @@ export function useImage(src: string): HTMLImageElement | null {
   return image;
 }
 
-// Genera un patrón de tablero (checkerboard) para indicar transparencia.
-let checkerCache: HTMLImageElement | null = null;
-export function getCheckerboard(): HTMLImageElement {
+// Patrón de tablero (checkerboard) que indica transparencia. Es un <canvas>,
+// no una imagen: está listo al instante y Konva lo dibuja en el primer render
+// (con una <img> sin cargar el lienzo transparente se veía negro).
+let checkerCache: HTMLCanvasElement | null = null;
+export function getCheckerboard(): HTMLCanvasElement {
   if (checkerCache) return checkerCache;
   const size = 20;
   const c = document.createElement('canvas');
@@ -31,11 +33,9 @@ export function getCheckerboard(): HTMLImageElement {
   const ctx = c.getContext('2d')!;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, size * 2, size * 2);
-  ctx.fillStyle = '#cfcfcf';
+  ctx.fillStyle = '#d9d9d6';
   ctx.fillRect(0, 0, size, size);
   ctx.fillRect(size, size, size, size);
-  const img = new window.Image();
-  img.src = c.toDataURL();
-  checkerCache = img;
-  return img;
+  checkerCache = c;
+  return c;
 }

@@ -149,6 +149,8 @@ interface EditorState {
   selRect: { left: number; top: number; width: number } | null;
   zoom: number; // multiplicador de zoom del usuario (1 = ajustar)
   viewScale: number; // escala aplicada real (para mostrar %)
+  showRulers: boolean;
+  showGrid: boolean;
   pages: Doc[];
   pageIndex: number;
   brandLogos: UploadedImage[];
@@ -257,6 +259,8 @@ interface EditorState {
   setSelRect: (r: { left: number; top: number; width: number } | null) => void;
   setZoom: (z: number) => void;
   setViewScale: (s: number) => void;
+  toggleRulers: () => void;
+  toggleGrid: () => void;
   moveLayer: (id: string, dir: 'up' | 'down') => void;
   alignLayer: (id: string, kind: AlignKind) => void;
   alignSelected: (kind: AlignKind) => void;
@@ -287,6 +291,23 @@ function commit(s: EditorState, newDoc: Doc): Partial<EditorState> {
 
 const FIRST_DOC = emptyDoc();
 
+const VIEW_KEY = 'chamva.view';
+function loadView(): { rulers: boolean; grid: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
+    return { rulers: !!v.rulers, grid: !!v.grid };
+  } catch {
+    return { rulers: false, grid: false };
+  }
+}
+function saveView(v: { rulers: boolean; grid: boolean }) {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(v));
+  } catch {
+    /* sin almacenamiento: no se recuerda */
+  }
+}
+
 export const useEditor = create<EditorState>((set, get) => ({
   doc: FIRST_DOC,
   selectedId: null,
@@ -310,6 +331,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   selRect: null,
   zoom: 1,
   viewScale: 1,
+  showRulers: loadView().rulers,
+  showGrid: loadView().grid,
   pages: [FIRST_DOC],
   pageIndex: 0,
 
@@ -692,7 +715,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         shape: kind,
         width: w,
         height: h,
-        fill: '#6c8cff',
+        fill: '#737373',
         stroke: '#ffffff',
         strokeWidth: stroke ? 6 : 0,
         cornerRadius: kind === 'rect' ? 0 : 0,
@@ -1089,6 +1112,16 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setZoom: (z) => set({ zoom: Math.max(0.1, Math.min(5, z)) }),
   setViewScale: (s) => set({ viewScale: s }),
+  toggleRulers: () => {
+    const v = !get().showRulers;
+    set({ showRulers: v });
+    saveView({ rulers: v, grid: get().showGrid });
+  },
+  toggleGrid: () => {
+    const v = !get().showGrid;
+    set({ showGrid: v });
+    saveView({ rulers: get().showRulers, grid: v });
+  },
 
   moveLayer: (id, dir) =>
     set((s) => {

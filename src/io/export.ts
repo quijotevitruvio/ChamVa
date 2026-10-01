@@ -1,4 +1,5 @@
-import { gradientPoints, type Doc } from '../editor/core/types';
+import type { Doc } from '../editor/core/types';
+import { canvasGradient } from '../editor/core/gradients';
 import { needsProcessing, processImage } from '../editor/core/imageProcessing';
 import { isStrokeOnly, shapePath } from '../editor/core/shapes';
 import { layerAnimAt } from '../editor/core/animations';
@@ -56,11 +57,7 @@ export async function renderDocToCanvas(
     ctx.fillStyle = doc.background.color;
     ctx.fillRect(0, 0, doc.width, doc.height);
   } else if (doc.background.type === 'gradient') {
-    const g = doc.background.gradient;
-    const p = gradientPoints(g.angle, doc.width, doc.height);
-    const grad = ctx.createLinearGradient(p.x0, p.y0, p.x1, p.y1);
-    for (const s of g.stops) grad.addColorStop(s.offset, s.color);
-    ctx.fillStyle = grad;
+    ctx.fillStyle = canvasGradient(ctx, doc.background.gradient, doc.width, doc.height);
     ctx.fillRect(0, 0, doc.width, doc.height);
   }
 
@@ -134,7 +131,9 @@ export async function renderDocToCanvas(
       }
       shapePath(ctx, layer.shape, layer.width, layer.height, layer.cornerRadius);
       if (!isStrokeOnly(layer.shape)) {
-        ctx.fillStyle = layer.fill;
+        ctx.fillStyle = layer.fillGradient
+          ? canvasGradient(ctx, layer.fillGradient, layer.width, layer.height)
+          : layer.fill;
         ctx.fill();
       }
       ctx.shadowColor = 'transparent';

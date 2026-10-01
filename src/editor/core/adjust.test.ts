@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ADJUST_PRESETS,
+  applyClarity,
   applyColorOps,
+  applyInvertThreshold,
+  needsProcessing,
   applyGrain,
   applyOutline,
   applyPixelate,
@@ -10,7 +13,7 @@ import {
   autoEnhance,
 } from './imageProcessing';
 import { isStrokeOnly, shapeSvgPath } from './shapes';
-import { SHAPE_OPTIONS } from './types';
+import { DEFAULT_ADJUST, SHAPE_OPTIONS, type ImageAdjust, type ImageLayer } from './types';
 
 function solid(w: number, h: number, rgba: [number, number, number, number]) {
   const data = new Uint8ClampedArray(w * h * 4);
@@ -115,9 +118,123 @@ describe('operaciones de píxel', () => {
 });
 
 describe('presets', () => {
-  it('hay entre 6 y 8 con nombre', () => {
+  it('hay entre 6 y 14 con nombre', () => {
     expect(ADJUST_PRESETS.length).toBeGreaterThanOrEqual(6);
-    expect(ADJUST_PRESETS.length).toBeLessThanOrEqual(8);
+    expect(ADJUST_PRESETS.length).toBeLessThanOrEqual(14);
     for (const p of ADJUST_PRESETS) expect(p.label.length).toBeGreaterThan(0);
+  });
+});
+
+describe('ajustes nuevos', () => {
+  const base: ImageAdjust = { brightness: 1, contrast: 1, saturate: 1 };
+  const sample = () => {
+    const img = solid(4, 1, [0, 0, 0, 255]);
+    img.data.set([200, 50, 30, 255], 0);
+    img.data.set([10, 120, 240, 200], 4);
+    img.data.set([128, 128, 128, 255], 8);
+    img.data.set([77, 66, 55, 0], 12);
+    return img;
+  };
+
+  it('invertir dos veces es identidad y no toca el alfa', () => {
+    const img = sample();
+    const orig = Array.from(img.data);
+    applyInvertThreshold(img, { ...base, invert: true });
+    expect(img.data[0]).toBe(55);
+    expect(img.data[3]).toBe(255);
+    expect(img.data[7]).toBe(200);
+    applyInvertThreshold(img, { ...base, invert: true });
+    expect(Array.from(img.data)).toEqual(orig);
+  });
+
+  it('matiz 0 y neutro no cambian nada', () => {
+    const img = sample();
+    const orig = Array.from(img.data);
+    applyColorOps(img, { ...base, hue: 0, exposure: 0, grayscale: 0, sepia: 0 });
+    applyClarity(img, 0);
+    applyInvertThreshold(img, { ...base, invert: false, threshold: 0 });
+    expect(Array.from(img.data)).toEqual(orig);
+  });
+
+  it('matiz 180 cambia el tono y 360 vuelve al original', () => {
+    const a = sample();
+    applyColorOps(a, { ...base, hue: 180 });
+    expect(a.data[0]).not.toBe(200);
+    const b = sample();
+    applyColorOps(b, { ...base, hue: 360 });
+    expect(Math.abs(b.data[0] - 200)).toBeLessThanOrEqual(1);
+    expect(Math.abs(b.data[2] - 30)).toBeLessThanOrEqual(1);
+  });
+
+  it('blanco y negro al 100 da R=G=B', () => {
+    const img = sample();
+    applyColorOps(img, { ...base, grayscale: 100 });
+    for (let i = 0; i < 12; i += 4) {
+      expect(img.data[i]).toBe(img.data[i + 1]);
+      expect(img.data[i + 1]).toBe(img.data[i + 2]);
+    }
+  });
+
+  it('sepia da tono cálido (R > G > B) y exposición sube/baja la luz', () => {
+    const s = solid(2, 2, [100, 100, 100, 255]);
+    applyColorOps(s, { ...base, sepia: 100 });
+    expect(s.data[0]).toBeGreaterThan(s.data[1]);
+    expect(s.data[1]).toBeGreaterThan(s.data[2]);
+    const up = solid(2, 2, [100, 100, 100, 255]);
+    applyColorOps(up, { ...base, exposure: 50 });
+    expect(up.data[0]).toBe(200);
+    const down = solid(2, 2, [100, 100, 100, 255]);
+    applyColorOps(down, { ...base, exposure: -50 });
+    expect(down.data[0]).toBe(50);
+  });
+
+  it('umbral deja solo 0/255 y respeta el alfa', () => {
+    const img = sample();
+    applyInvertThreshold(img, { ...base, threshold: 100 });
+    for (let i = 0; i < 12; i += 4) {
+      for (let c = 0; c < 3; c++) expect([0, 255]).toContain(img.data[i + c]);
+    }
+    expect(img.data[3]).toBe(255);
+    expect(img.data[7]).toBe(200);
+    expect(img.data[15]).toBe(0);
+    expect(img.data[12]).toBe(77); // píxel transparente intacto
+  });
+
+  it('claridad sube el contraste local y no rompe una imagen plana ni transparente', () => {
+    const flat = solid(16, 16, [120, 120, 120, 255]);
+    applyClarity(flat, 100);
+    expect(flat.data[0]).toBe(120);
+    const img = solid(16, 16, [100, 100, 100, 255]);
+    img.data.set([140, 140, 140, 255], (8 * 16 + 8) * 4);
+    applyClarity(img, 100);
+    expect(img.data[(8 * 16 + 8) * 4]).toBeGreaterThan(140);
+    const clear = solid(8, 8, [0, 0, 0, 0]);
+    applyClarity(clear, 100);
+    expect(Array.from(clear.data).every((v) => v === 0)).toBe(true);
+  });
+
+  it('un ImageAdjust viejo sin campos nuevos sigue funcionando', () => {
+    const old = { brightness: 1, contrast: 1, saturate: 1, temperature: 0.5 } as ImageAdjust;
+    const img = solid(2, 2, [100, 100, 100, 255]);
+    applyColorOps(img, old);
+    applyClarity(img, Number(old.clarity ?? 0));
+    applyInvertThreshold(img, old);
+    expect(img.data[0]).toBeGreaterThan(img.data[2]);
+  });
+
+  it('needsProcessing detecta los ajustes nuevos y los neutros no activan nada', () => {
+    const layer = (adjust?: ImageAdjust) => ({ adjust, filter: 'none', flipX: false, flipY: false }) as unknown as ImageLayer;
+    expect(needsProcessing(layer(DEFAULT_ADJUST))).toBe(false);
+    expect(needsProcessing(layer(base))).toBe(false);
+    for (const patch of [
+      { invert: true }, { hue: 10 }, { exposure: -5 }, { clarity: 10 },
+      { grayscale: 50 }, { sepia: 50 }, { threshold: 128 },
+    ])
+      expect(needsProcessing(layer({ ...base, ...patch })), JSON.stringify(patch)).toBe(true);
+  });
+
+  it('los presets nuevos existen', () => {
+    const ids = ADJUST_PRESETS.map((p) => p.id);
+    for (const id of ['bw-pure', 'sepia', 'negative', 'bw-contrast', 'sharp']) expect(ids).toContain(id);
   });
 });

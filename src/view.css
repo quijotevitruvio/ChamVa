@@ -1,0 +1,268 @@
+/* Reglas, cuadrícula e insignia de transparencia. Plano, solo grises. */
+.canvas-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+.canvas-wrap.with-rulers {
+  padding: 22px 0 0 22px;
+}
+.canvas-wrap > .canvas-area {
+  flex: 1;
+  min-width: 0;
+}
+.ruler-corner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  z-index: 3;
+}
+.ruler {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  pointer-events: none;
+}
+.ruler-top {
+  left: 22px;
+  top: 0;
+}
+.ruler-left {
+  left: 0;
+  top: 22px;
+}
+.transparent-badge {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  pointer-events: auto;
+  cursor: help;
+}
+.canvas-wrap.with-rulers .transparent-badge {
+  left: 34px;
+}
+.transparent-badge i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background:
+    conic-gradient(var(--checker-b, #d9d9d6) 25%, var(--checker-a, #fff) 0 50%, var(--checker-b, #d9d9d6) 0 75%, var(--checker-a, #fff) 0) 0 0 / 6px 6px;
+}
+.view-toggles {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 8px;
+}
+.view-toggle {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.view-toggle:hover {
+  background: var(--panel-2);
+}
+.view-toggle.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.page-bar .view-toggle.on,
+.page-bar .view-toggle.on:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.dl-hint.dl-warn,
+.dl-hint.dl-note {
+  opacity: 1;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+}
+
+/* Control segmentado, editor de degradados y relleno */
+.seg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 4px 0 8px;
+}
+.seg button {
+  flex: 1;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-right: 1px solid var(--border);
+  padding: 6px 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.seg button:last-child {
+  border-right: 0;
+}
+.seg button.on,
+.seg button.on:hover {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.ge {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ge-preview {
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ge label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ge label input[type='range'],
+.fill-solid label input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+.ge-val {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ge-quick {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+.ge-quick button,
+.ge-actions button,
+.no-border-btn {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ge-quick button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.ge-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ge-stop {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 22px;
+  grid-template-areas: 'c pos del' 'c opa del';
+  gap: 4px 8px;
+  align-items: center;
+}
+.ge-stop > input[type='color'] {
+  grid-area: c;
+}
+.ge-stop > label:nth-of-type(1) {
+  grid-area: pos;
+}
+.ge-stop > label:nth-of-type(2) {
+  grid-area: opa;
+}
+.ge-stop > .ge-del {
+  grid-area: del;
+}
+.ge-stop label span {
+  min-width: 34px;
+}
+.ge-stop label span,
+.fill-solid label span:first-child {
+  font-size: 10px;
+}
+.ge-stop input[type='color'],
+.fill-solid input[type='color'] {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+}
+.ge-del {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  cursor: pointer;
+}
+.ge-del:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.ge-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ge-presets {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+.ge-presets .cp-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+}
+.fill-control {
+  margin-bottom: 8px;
+}
+.fill-solid {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fill-solid label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.no-border-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cp-modes {
+  margin: 0 0 12px;
+}

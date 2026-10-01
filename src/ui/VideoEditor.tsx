@@ -1146,7 +1146,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                 fontSize: o.size * 0.55,
                 whiteSpace: 'nowrap',
                 cursor: 'pointer',
-                outline: selOverlay === o.id ? '1px dashed #6c8cff' : 'none',
+                outline: selOverlay === o.id ? '1px dashed #111111' : 'none',
               }}
             >
               {o.text}
@@ -1164,7 +1164,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                 transform: 'translate(-50%,-50%)',
                 width: `${o.size * 100}%`,
                 cursor: 'pointer',
-                outline: selOverlay === o.id ? '1px dashed #6c8cff' : 'none',
+                outline: selOverlay === o.id ? '1px dashed #111111' : 'none',
               }}
             />
           ),

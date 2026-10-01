@@ -8,16 +8,18 @@ import {
   Label,
   Tag,
   Text,
+  Shape,
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditor } from '../state/store';
-import { gradientPoints } from '../core/types';
+import { konvaGradientProps } from '../core/gradients';
 import { animTotalFor, layerAnimAt } from '../core/animations';
 import { getCheckerboard } from './useImage';
 import { ImageLayerNode } from './ImageLayerNode';
 import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
 import { InlineTextEditor } from './InlineTextEditor';
+import { Rulers } from './Rulers';
 import { loadImageFile } from '../../io/import';
 import type { Layer as DocLayer } from '../core/types';
 
@@ -58,6 +60,8 @@ export function EditorCanvas() {
   const zoom = useEditor((s) => s.zoom);
   const setZoom = useEditor((s) => s.setZoom);
   const setViewScale = useEditor((s) => s.setViewScale);
+  const showRulers = useEditor((s) => s.showRulers);
+  const showGrid = useEditor((s) => s.showGrid);
   const animPlayNonce = useEditor((s) => s.animPlayNonce);
   const textEditNonce = useEditor((s) => s.textEditNonce);
   const editingTextId = useEditor((s) => s.editingTextId);
@@ -462,7 +466,37 @@ export function EditorCanvas() {
     tr.getLayer()?.batchDraw();
   }, [cropMode, cropRect]);
 
+  // Cuadrícula: el paso más pequeño de la lista que deja ≥ 18 px en pantalla.
+  const gridStep = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find((g) => g * scale >= 18) ?? 1000;
+  const drawGrid = (major: boolean) => (ctx: Konva.Context, shape: Konva.Shape) => {
+    ctx.beginPath();
+    const every = major ? gridStep * 5 : gridStep;
+    for (let x = 0; x <= doc.width; x += every) {
+      if (!major && x % (gridStep * 5) === 0) continue;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, doc.height);
+    }
+    for (let y = 0; y <= doc.height; y += every) {
+      if (!major && y % (gridStep * 5) === 0) continue;
+      ctx.moveTo(0, y);
+      ctx.lineTo(doc.width, y);
+    }
+    ctx.strokeShape(shape);
+  };
+
   return (
+    <div className={`canvas-wrap${showRulers ? ' with-rulers' : ''}`}>
+      {showRulers && (
+        <Rulers areaRef={containerRef} stageRef={stageRef} scale={scale} docW={doc.width} docH={doc.height} />
+      )}
+      {doc.background.type === 'transparent' && (
+        <span
+          className="transparent-badge"
+          title="El cuadriculado gris y blanco significa transparente. No se exporta: tu imagen saldrá sin fondo."
+        >
+          <i /> Fondo transparente
+        </span>
+      )}
     <div
       className={`canvas-area ${spaceDown ? 'panning' : ''}`}
       ref={containerRef}
@@ -556,14 +590,14 @@ export function EditorCanvas() {
           setGuides({ vx: [], hy: [] });
           setDists([]);
         }}
-        style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.35)', margin: 'auto' }}
+        style={{ margin: 'auto', outline: '1px solid rgba(128,128,128,0.45)' }}
       >
         <Layer listening={false}>
           {/* Tablero de transparencia siempre de base (se ve a través del alfa) */}
           <Rect
             width={doc.width}
             height={doc.height}
-            fillPatternImage={checker}
+            fillPatternImage={checker as unknown as HTMLImageElement}
             fillPatternRepeat="repeat"
           />
           {doc.background.type === 'solid' && (
@@ -576,17 +610,11 @@ export function EditorCanvas() {
           {doc.background.type === 'gradient' &&
             (() => {
               const g = doc.background.gradient;
-              const p = gradientPoints(g.angle, doc.width, doc.height);
               return (
                 <Rect
                   width={doc.width}
                   height={doc.height}
-                  fillLinearGradientStartPoint={{ x: p.x0, y: p.y0 }}
-                  fillLinearGradientEndPoint={{ x: p.x1, y: p.y1 }}
-                  fillLinearGradientColorStops={g.stops.flatMap((s) => [
-                    s.offset,
-                    s.color,
-                  ])}
+                  {...konvaGradientProps(g, doc.width, doc.height)}
                 />
               );
             })()}
@@ -630,6 +658,12 @@ export function EditorCanvas() {
               // Los nodos reciben su transformend después: cerrar el lote luego.
               setTimeout(endBatch, 0);
             }}
+            borderStroke="#111111"
+            borderStrokeWidth={1}
+            anchorFill="#ffffff"
+            anchorStroke="#111111"
+            anchorStrokeWidth={1}
+            anchorCornerRadius={2}
             anchorSize={IS_COARSE ? 18 : 10}
             rotateAnchorOffset={IS_COARSE ? 40 : 24}
             rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
@@ -643,7 +677,8 @@ export function EditorCanvas() {
             <Line
               key={`v${i}`}
               points={[x, 0, x, doc.height]}
-              stroke="#ff3da6"
+              stroke="#808080"
+              dash={[4 / scale, 4 / scale]}
               strokeWidth={1 / scale}
               listening={false}
             />
@@ -652,7 +687,8 @@ export function EditorCanvas() {
             <Line
               key={`h${i}`}
               points={[0, y, doc.width, y]}
-              stroke="#ff3da6"
+              stroke="#808080"
+              dash={[4 / scale, 4 / scale]}
               strokeWidth={1 / scale}
               listening={false}
             />
@@ -662,7 +698,7 @@ export function EditorCanvas() {
             <Line
               key={`d${i}`}
               points={d.points}
-              stroke="#22c55e"
+              stroke="#808080"
               strokeWidth={1 / scale}
               dash={[4 / scale, 3 / scale]}
               listening={false}
@@ -679,12 +715,12 @@ export function EditorCanvas() {
               scaleY={1 / scale}
               listening={false}
             >
-              <Tag fill="#22c55e" cornerRadius={3} />
+              <Tag fill="#111111" cornerRadius={3} />
               <Text
                 text={d.label}
                 fontSize={11}
                 padding={2}
-                fill="#06210f"
+                fill="#ffffff"
               />
             </Label>
           ))}
@@ -697,8 +733,8 @@ export function EditorCanvas() {
                 y={cropRect.y}
                 width={cropRect.width}
                 height={cropRect.height}
-                fill="rgba(108,140,255,0.15)"
-                stroke="#6c8cff"
+                fill="rgba(128,128,128,0.18)"
+                stroke="#111111"
                 strokeWidth={2 / scale}
                 dash={[8 / scale, 6 / scale]}
                 draggable
@@ -738,6 +774,12 @@ export function EditorCanvas() {
             </>
           )}
         </Layer>
+        {showGrid && (
+          <Layer listening={false}>
+            <Shape sceneFunc={drawGrid(false)} stroke="rgba(128,128,128,0.35)" strokeWidth={1} strokeScaleEnabled={false} />
+            <Shape sceneFunc={drawGrid(true)} stroke="rgba(128,128,128,0.7)" strokeWidth={1} strokeScaleEnabled={false} />
+          </Layer>
+        )}
       </Stage>
 
       {editingTextId &&
@@ -763,6 +805,7 @@ export function EditorCanvas() {
             />
           );
         })()}
+    </div>
     </div>
   );
 }

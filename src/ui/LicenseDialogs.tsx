@@ -13,6 +13,7 @@ import { isTauri } from '../io/nativeSave';
 import type { Backup } from '../io/designs';
 import { t, useLang, setLang } from '../i18n';
 import { toast } from './toast';
+import { getTheme, setTheme, type Theme } from '../theme';
 import { externalClick, openExternal } from '../io/openExternal';
 
 const copyNequi = async () => {
@@ -141,6 +142,7 @@ export function SettingsDialog({
   onRestoreBackup,
 }: SettingsProps) {
   const lang = useLang();
+  const [theme, setThemeState] = useState<Theme>(getTheme());
   const [licenseInput, setLicenseInput] = useState('');
   const [licenseMsg, setLicenseMsg] = useState('');
 
@@ -196,6 +198,20 @@ export function SettingsDialog({
               <span className="settings-val">{updateMsg}</span>
             </div>
           )}
+          <div className="settings-row">
+            <span>{t('Tema')}</span>
+            <select
+              value={theme}
+              onChange={(e) => {
+                setThemeState(e.target.value as Theme);
+                setTheme(e.target.value as Theme);
+              }}
+            >
+              <option value="system">{t('Sistema')}</option>
+              <option value="light">{t('Claro')}</option>
+              <option value="dark">{t('Oscuro')}</option>
+            </select>
+          </div>
           <div className="settings-row">
             <span>{t('Idioma')}</span>
             <select value={lang} onChange={(e) => setLang(e.target.value as 'es' | 'en')}>

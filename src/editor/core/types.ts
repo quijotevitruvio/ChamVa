@@ -50,6 +50,13 @@ export interface ImageAdjust {
   posterize?: number; // 0..1 (0 = off)
   outline?: number; // 0..40 px (0 = off), contorno tipo sticker
   outlineColor?: string; // hex (def. #ffffff)
+  invert?: boolean; // negativo (false = off)
+  hue?: number; // -180..180 grados (0 = normal)
+  exposure?: number; // -100..100 (0 = normal; ±100 = ±2 stops)
+  clarity?: number; // 0..100 (0 = off), contraste local
+  grayscale?: number; // 0..100 (0 = color)
+  sepia?: number; // 0..100 (0 = off)
+  threshold?: number; // 0..255 (0 = off), blanco/negro puro
 }
 
 export const DEFAULT_ADJUST: ImageAdjust = {
@@ -69,6 +76,13 @@ export const DEFAULT_ADJUST: ImageAdjust = {
   posterize: 0,
   outline: 0,
   outlineColor: '#ffffff',
+  invert: false,
+  hue: 0,
+  exposure: 0,
+  clarity: 0,
+  grayscale: 0,
+  sepia: 0,
+  threshold: 0,
 };
 
 export interface LayerShadow {
@@ -244,6 +258,7 @@ export interface ShapeLayer extends LayerBase, LayerShadow {
   width: number;
   height: number;
   fill: string;
+  fillGradient?: Gradient; // si existe, sustituye a `fill`
   stroke: string;
   strokeWidth: number;
   cornerRadius: number;
@@ -282,8 +297,9 @@ export interface GradientStop {
 }
 
 export interface Gradient {
-  angle: number; // grados
+  angle: number; // grados (solo lineal)
   stops: GradientStop[];
+  kind?: 'linear' | 'radial'; // por defecto lineal
 }
 
 export type Background =

@@ -3,7 +3,7 @@ import { useEditor } from '../editor/state/store';
 import { DEFAULT_ADJUST, type ImageAdjust, type ImageLayer } from '../editor/core/types';
 import { ADJUST_PRESETS, autoEnhance } from '../editor/core/imageProcessing';
 
-type NumKey = Exclude<keyof ImageAdjust, 'outlineColor'>;
+type NumKey = Exclude<keyof ImageAdjust, 'outlineColor' | 'invert'>;
 
 interface SliderDef {
   key: NumKey;
@@ -18,6 +18,7 @@ const SECTIONS: { title: string; sliders: SliderDef[] }[] = [
   {
     title: 'Luz',
     sliders: [
+      { key: 'exposure', label: 'Exposición', min: -100, max: 100, step: 1, neutral: 0 },
       { key: 'brightness', label: 'Brillo', min: 0, max: 2, step: 0.01, neutral: 1 },
       { key: 'contrast', label: 'Contraste', min: 0, max: 2, step: 0.01, neutral: 1 },
       { key: 'highlights', label: 'Luces', min: -1, max: 1, step: 0.01, neutral: 0 },
@@ -27,6 +28,7 @@ const SECTIONS: { title: string; sliders: SliderDef[] }[] = [
   {
     title: 'Color',
     sliders: [
+      { key: 'hue', label: 'Matiz', min: -180, max: 180, step: 1, neutral: 0 },
       { key: 'saturate', label: 'Saturación', min: 0, max: 2, step: 0.01, neutral: 1 },
       { key: 'vibrance', label: 'Intensidad', min: -1, max: 1, step: 0.01, neutral: 0 },
       { key: 'temperature', label: 'Temperatura', min: -1, max: 1, step: 0.01, neutral: 0 },
@@ -37,6 +39,7 @@ const SECTIONS: { title: string; sliders: SliderDef[] }[] = [
     title: 'Detalle',
     sliders: [
       { key: 'sharpen', label: 'Nitidez', min: 0, max: 1, step: 0.01, neutral: 0 },
+      { key: 'clarity', label: 'Claridad', min: 0, max: 100, step: 1, neutral: 0 },
       { key: 'blur', label: 'Desenfoque', min: 0, max: 30, step: 0.5, neutral: 0 },
       { key: 'grain', label: 'Grano', min: 0, max: 1, step: 0.01, neutral: 0 },
     ],
@@ -44,6 +47,9 @@ const SECTIONS: { title: string; sliders: SliderDef[] }[] = [
   {
     title: 'Efectos',
     sliders: [
+      { key: 'grayscale', label: 'Blanco y negro', min: 0, max: 100, step: 1, neutral: 0 },
+      { key: 'sepia', label: 'Sepia', min: 0, max: 100, step: 1, neutral: 0 },
+      { key: 'threshold', label: 'Umbral (0 = apagado)', min: 0, max: 255, step: 1, neutral: 0 },
       { key: 'vignette', label: 'Viñeta', min: 0, max: 1, step: 0.01, neutral: 0 },
       { key: 'pixelate', label: 'Pixelado', min: 0, max: 50, step: 1, neutral: 0 },
       { key: 'posterize', label: 'Posterizar', min: 0, max: 1, step: 0.01, neutral: 0 },
@@ -146,6 +152,16 @@ export function AdjustPanel({ layer }: { layer: ImageLayer }) {
               </label>
             );
           })}
+          {sec.title === 'Efectos' && (
+            <label className="prop" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={adj.invert === true}
+                onChange={(e) => setFinal({ invert: e.target.checked })}
+              />
+              Invertir colores
+            </label>
+          )}
           {sec.title === 'Efectos' && (
             <label className="prop">
               Color del contorno

@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
 import { toast } from './toast';
 import { TRANSPARENT_BG, type Gradient } from '../editor/core/types';
+import { GradientEditor } from './GradientEditor';
+import { gradientFromColor } from '../editor/core/gradients';
 import {
   PRESET_SOLIDS,
   PRESET_GRADIENTS,
@@ -110,6 +112,44 @@ export function ColorPanel({
           ✕
         </button>
       </div>
+
+      <div className="seg cp-modes" role="group" aria-label="Tipo de fondo">
+        <button
+          className={bg.type === 'transparent' ? 'on' : ''}
+          onClick={() => setBackground(TRANSPARENT_BG)}
+          title="Sin fondo: el cuadriculado significa transparente"
+        >
+          Transparente
+        </button>
+        <button
+          className={bg.type === 'solid' ? 'on' : ''}
+          onClick={() =>
+            bg.type !== 'solid' &&
+            pickSolid(bg.type === 'gradient' ? toHex6(bg.gradient.stops[0].color) : '#ffffff')
+          }
+        >
+          Color
+        </button>
+        <button
+          className={bg.type === 'gradient' ? 'on' : ''}
+          onClick={() =>
+            bg.type !== 'gradient' &&
+            setBackground({
+              type: 'gradient',
+              gradient: gradientFromColor(bg.type === 'solid' ? toHex6(bg.color) : '#6e6e6a'),
+            })
+          }
+        >
+          Degradado
+        </button>
+      </div>
+
+      {bg.type === 'gradient' && (
+        <section className="cp-sec">
+          <h4>Degradado de fondo</h4>
+          <GradientEditor value={bg.gradient} onChange={(g) => setBackground({ type: 'gradient', gradient: g })} />
+        </section>
+      )}
 
       <div className="cp-search">
         <input

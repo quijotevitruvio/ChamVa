@@ -90,8 +90,14 @@ export function DownloadMenu({
       )}
       {format === 'gif' && <p className="dl-hint">El GIF anima todas las páginas ({pageCount}).</p>}
       {format === 'jpeg' && transparentCanvas && (
-        <p className="dl-hint" style={{ color: '#ffb84d', opacity: 1 }}>
+        <p className="dl-hint dl-warn">
           ⚠ {t('JPG no admite transparencia; usa PNG o WebP.')}
+        </p>
+      )}
+      {(format === 'png' || format === 'webp' || format === 'avif') && transparentCanvas && (
+        <p className="dl-hint dl-note">
+          ✓ Se descarga con fondo transparente. Si tu visor lo muestra negro o blanco, es normal: la
+          transparencia está en el archivo y se ve al ponerlo sobre otro fondo.
         </p>
       )}
       {format === 'anim' && <p className="dl-hint">GIF con las animaciones de entrada de esta página.</p>}

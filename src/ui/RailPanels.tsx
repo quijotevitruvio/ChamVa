@@ -86,7 +86,7 @@ export function RailPanels({
   const toggleBrandFont = useEditor((s) => s.toggleBrandFont);
   const customFonts = useEditor((s) => s.customFonts);
   const addFrame = useEditor((s) => s.addFrame);
-  const [newBrandColor, setNewBrandColor] = useState('#6c8cff');
+  const [newBrandColor, setNewBrandColor] = useState('#737373');
 
   // Un color de marca se aplica al elemento seleccionado; si no hay, al fondo.
   const applyBrandColor = (c: string) => {

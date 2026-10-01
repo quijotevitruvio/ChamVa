@@ -1,5 +1,5 @@
+import { svgGradientDef } from '../editor/core/gradients';
 import {
-  gradientPoints,
   type Doc,
   type ShapeLayer,
   type TextLayer,
@@ -40,8 +40,17 @@ function shadowStyle(l: {
     : '';
 }
 
+// Con relleno degradado se antepone su <defs> (id único por capa).
 function shapeSvg(l: ShapeLayer): string {
-  const fill = isStrokeOnly(l.shape) ? 'none' : l.fill;
+  if (l.fillGradient && !isStrokeOnly(l.shape)) {
+    const id = `sg-${l.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    return `<defs>${svgGradientDef(id, l.fillGradient, l.width, l.height)}</defs>${shapeSvgBody(l, `url(#${id})`)}`;
+  }
+  return shapeSvgBody(l);
+}
+
+function shapeSvgBody(l: ShapeLayer, fillOverride?: string): string {
+  const fill = fillOverride ?? (isStrokeOnly(l.shape) ? 'none' : l.fill);
   const strokeOn = l.strokeWidth > 0 || isStrokeOnly(l.shape);
   const sw = isStrokeOnly(l.shape) ? Math.max(2, l.strokeWidth) : l.strokeWidth;
   const stroke = strokeOn
@@ -142,12 +151,7 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
   if (doc.background.type === 'solid') {
     parts.push(`<rect width="${doc.width}" height="${doc.height}" fill="${doc.background.color}"/>`);
   } else if (doc.background.type === 'gradient') {
-    const g = doc.background.gradient;
-    const p = gradientPoints(g.angle, doc.width, doc.height);
-    const stops = g.stops
-      .map((s) => `<stop offset="${s.offset}" stop-color="${s.color}"/>`)
-      .join('');
-    defs = `<defs><linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="${p.x0}" y1="${p.y0}" x2="${p.x1}" y2="${p.y1}">${stops}</linearGradient></defs>`;
+    defs = `<defs>${svgGradientDef('bg', doc.background.gradient, doc.width, doc.height)}</defs>`;
     parts.push(`<rect width="${doc.width}" height="${doc.height}" fill="url(#bg)"/>`);
   }
 

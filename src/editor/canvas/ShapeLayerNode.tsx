@@ -1,4 +1,5 @@
 import { Shape as KonvaShape } from 'react-konva';
+import { konvaGradientProps } from '../core/gradients';
 import type Konva from 'konva';
 import type { ShapeLayer } from '../core/types';
 import { isStrokeOnly, shapePath } from '../core/shapes';
@@ -32,6 +33,7 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
       rotation={layer.rotation}
       opacity={layer.opacity}
       fill={strokeOnly ? undefined : layer.fill}
+      {...(layer.fillGradient && !strokeOnly ? konvaGradientProps(layer.fillGradient, layer.width, layer.height) : {})}
       stroke={layer.strokeWidth > 0 || strokeOnly ? layer.stroke : undefined}
       strokeWidth={strokeOnly ? Math.max(2, layer.strokeWidth) : layer.strokeWidth}
       shadowEnabled={layer.shadow}

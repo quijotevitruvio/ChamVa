@@ -67,6 +67,11 @@ Ve a la [última release](https://github.com/quijotevitruvio/ChamVa/releases/lat
   plantillas de fábrica y plantillas guardadas.
 - Multi-página con **miniaturas y reordenar**, **grupos** (Ctrl+G), multiselección con **alinear/distribuir**,
   snapping y **guías de distancia** en px, animaciones de entrada/salida y modo presentación.
+- **Reglas en píxeles y cuadrícula** que se activan y desactivan, **degradados lineales y radiales** editables
+  (colores, posición, opacidad, ángulo) para fondos y formas, con **«Transparente» siempre a mano**; el lienzo
+  transparente se ve cuadriculado y se avisa al descargar.
+- Ajustes extra: **invertir colores**, matiz, exposición, claridad, nitidez, blanco y negro, sepia y umbral.
+- Interfaz **plana y minimalista** (blancos, grises y negros) con tema **claro, oscuro o del sistema**.
 - Panel de propiedades en **secciones plegables** y **versión móvil** (riel abajo, propiedades como hoja inferior).
 - **Autoguardado** (IndexedDB) y recuperación al reabrir.
 - Exportar a **PNG, JPG, WebP, AVIF, SVG, PDF, GIF, GIF animado, MP4, ICO** y copiar al portapapeles.

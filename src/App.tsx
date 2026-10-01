@@ -519,6 +519,15 @@ export default function App() {
     if (!bgPreview) return;
     addProcessedLayer(bgPreview.target.id, bgPreview.result, `${bgPreview.target.name} sin fondo`);
     setBgPreview(null);
+    // Primera vez: explicar qué significa el cuadriculado.
+    try {
+      if (!localStorage.getItem('chamva.tipTransparent')) {
+        localStorage.setItem('chamva.tipTransparent', '1');
+        toast('Listo. El cuadriculado gris y blanco significa transparente: al descargar en PNG sale sin fondo.', 'success');
+      }
+    } catch {
+      /* sin almacenamiento: sin consejo */
+    }
   };
   const refineBgResult = () => {
     if (!bgPreview) return;
