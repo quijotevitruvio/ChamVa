@@ -11,7 +11,12 @@ import {
 } from '../license';
 import { isTauri } from '../io/nativeSave';
 import type { Backup } from '../io/designs';
-import { t, useLang, setLang } from '../i18n';
+import { t, useLang } from '../i18n';
+import { LangSetting } from './LangSetting';
+import { UiScaleSetting } from './UiScale';
+import { ShortcutsEditor } from './ShortcutsEditor';
+import { LocalBadge } from './LocalBadge';
+import { BackupSection } from './BackupSection';
 import { toast } from './toast';
 import { getTheme, setTheme, type Theme } from '../theme';
 import { externalClick, openExternal } from '../io/openExternal';
@@ -149,7 +154,8 @@ export function SettingsDialog({
   backups,
   onRestoreBackup,
 }: SettingsProps) {
-  const lang = useLang();
+  useLang();
+  const [showKeys, setShowKeys] = useState(false);
   const [theme, setThemeState] = useState<Theme>(getTheme());
   const [licenseInput, setLicenseInput] = useState('');
   const [licenseMsg, setLicenseMsg] = useState('');
@@ -218,14 +224,19 @@ export function SettingsDialog({
               <option value="system">{t('Sistema')}</option>
               <option value="light">{t('Claro')}</option>
               <option value="dark">{t('Oscuro')}</option>
+              <option value="contrast">{t('Alto contraste')}</option>
             </select>
           </div>
+          <UiScaleSetting />
+          <LangSetting />
           <div className="settings-row">
-            <span>{t('Idioma')}</span>
-            <select value={lang} onChange={(e) => setLang(e.target.value as 'es' | 'en')}>
-              <option value="es">Español</option>
-              <option value="en">English</option>
-            </select>
+            <button className="link-btn" onClick={() => setShowKeys((v) => !v)} aria-expanded={showKeys}>
+              ⌨ {t('Atajos')} {showKeys ? '▾' : '▸'}
+            </button>
+          </div>
+          {showKeys && <ShortcutsEditor />}
+          <div className="settings-row">
+            <LocalBadge full />
           </div>
         </div>
 
@@ -261,6 +272,8 @@ export function SettingsDialog({
             </ul>
           </div>
         )}
+
+        <BackupSection />
 
         <div className="settings-section">
           <span className="settings-label">Licencia</span>

@@ -118,9 +118,9 @@ describe('operaciones de píxel', () => {
 });
 
 describe('presets', () => {
-  it('hay entre 6 y 14 con nombre', () => {
+  it('hay entre 6 y 24 con nombre', () => {
     expect(ADJUST_PRESETS.length).toBeGreaterThanOrEqual(6);
-    expect(ADJUST_PRESETS.length).toBeLessThanOrEqual(14);
+    expect(ADJUST_PRESETS.length).toBeLessThanOrEqual(24);
     for (const p of ADJUST_PRESETS) expect(p.label.length).toBeGreaterThan(0);
   });
 });

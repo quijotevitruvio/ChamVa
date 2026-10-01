@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useEditor } from '../editor/state/store';
 import { CANVAS_PRESETS } from '../editor/core/types';
 import { toast } from './toast';
+import { MultiResizeDialog } from './MultiResizeDialog';
 import { t } from '../i18n';
 
 interface CustomSize {
@@ -35,6 +36,7 @@ export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: 
   const addResizedPage = useEditor((s) => s.addResizedPage);
   const [customSizes, setCustomSizes] = useState<CustomSize[]>(loadSizes);
   const [sizeName, setSizeName] = useState('');
+  const [showMulti, setShowMulti] = useState(false);
 
   const saveSizes = (list: CustomSize[]) => {
     setCustomSizes(list);
@@ -158,6 +160,18 @@ export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: 
             ))}
           </ul>
         </div>
+      )}
+
+      <button className="primary dl-go" onClick={() => setShowMulti(true)} title="Crea de una vez copias en varios formatos (post, historia, portada, miniatura…)">
+        ⧉ {t('Redimensionar a varios formatos…')}
+      </button>
+      {showMulti && (
+        <MultiResizeDialog
+          onClose={() => {
+            setShowMulti(false);
+            onClose();
+          }}
+        />
       )}
 
       <div className="dl-row" style={{ marginTop: 4 }}>

@@ -6,12 +6,15 @@
 // dan <textarea> y contenteditable). Todo aquí es puro: lo usan el editor, la
 // exportación raster, la SVG y los tests.
 import type { TextLayer } from './types';
+import { defaultFields, fieldAt, fractionAt, type FieldValues } from './textMacros';
 
 export interface SpanStyle {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
   color?: string;
+  // Superíndice / subíndice del tramo ('none' lo quita al aplicar un estilo).
+  script?: 'sup' | 'sub' | 'none';
 }
 
 export interface TextSpan extends SpanStyle {
@@ -24,14 +27,23 @@ export interface ResolvedStyle {
   italic: boolean;
   underline: boolean;
   color: string;
+  script?: 'sup' | 'sub'; // solo existe la clave cuando hay superíndice/subíndice
 }
 
 export interface StyledRun extends ResolvedStyle {
   text: string;
+  // Solo los rellena la maquetación avanzada (typography.ts):
+  dx?: number; // ajuste de kerning antes del tramo (px)
+  tab?: boolean; // el tramo es una tabulación
+  leader?: string; // carácter de relleno de la tabulación («.»)
 }
 
+// Tamaño y desplazamiento (relativos al tamaño de fuente) de sup/sub.
+export const SCRIPT_SCALE = 0.62;
+export const SCRIPT_DY = { sup: 0, sub: 0.38 } as const;
+
 type StyleKey = keyof SpanStyle;
-const KEYS: StyleKey[] = ['bold', 'italic', 'underline', 'color'];
+const KEYS: StyleKey[] = ['bold', 'italic', 'underline', 'color', 'script'];
 
 // '#FFF' → '#ffffff'; cualquier otra cosa se devuelve en minúsculas.
 export function normalizeHex(c: string): string {
@@ -66,13 +78,19 @@ export function resolveCharStyles(l: TextLayer): ResolvedStyle[] {
       if (sp.italic !== undefined) st.italic = sp.italic;
       if (sp.underline !== undefined) st.underline = sp.underline;
       if (sp.color !== undefined) st.color = normalizeHex(sp.color);
+      if (sp.script === 'sup' || sp.script === 'sub') st.script = sp.script;
+      else if (sp.script === 'none') delete st.script;
     }
   }
   return out;
 }
 
 const sameStyle = (a: ResolvedStyle, b: ResolvedStyle) =>
-  a.bold === b.bold && a.italic === b.italic && a.underline === b.underline && a.color === b.color;
+  a.bold === b.bold &&
+  a.italic === b.italic &&
+  a.underline === b.underline &&
+  a.color === b.color &&
+  a.script === b.script;
 
 // Convierte estilos por carácter en spans mínimos (solo diferencias con la base).
 export function compressCharStyles(chars: ResolvedStyle[], base: ResolvedStyle): TextSpan[] {
@@ -83,6 +101,7 @@ export function compressCharStyles(chars: ResolvedStyle[], base: ResolvedStyle):
     if (st.italic !== base.italic) d.italic = st.italic;
     if (st.underline !== base.underline) d.underline = st.underline;
     if (normalizeHex(st.color) !== base.color) d.color = normalizeHex(st.color);
+    if (st.script) d.script = st.script;
     return d;
   };
   const same = (a: SpanStyle, b: SpanStyle) => KEYS.every((k) => a[k] === b[k]);
@@ -113,6 +132,8 @@ export function applySpanStyle(l: TextLayer, start: number, end: number, patch: 
     if (patch.italic !== undefined) st.italic = patch.italic;
     if (patch.underline !== undefined) st.underline = patch.underline;
     if (patch.color !== undefined) st.color = normalizeHex(patch.color);
+    if (patch.script === 'sup' || patch.script === 'sub') st.script = patch.script;
+    else if (patch.script === 'none') delete st.script;
   }
   return compressCharStyles(chars, baseStyle(l));
 }
@@ -180,7 +201,14 @@ export function remapSpans(
 
 // Líneas listas para dibujar: aplica mayúsculas/minúsculas y prefijos de lista
 // y agrupa caracteres consecutivos con el mismo estilo en tramos.
-export function styledLines(l: TextLayer, opts: { list?: boolean } = {}): StyledRun[][] {
+export function styledLines(
+  l: TextLayer,
+  opts: { list?: boolean; fields?: Partial<FieldValues> } = {},
+): StyledRun[][] {
+  // Los campos ({{fecha}}…) y las fracciones solo se miran si hacen falta.
+  const wantFields = l.text.includes('{{');
+  const fieldVals = wantFields ? defaultFields(opts.fields) : null;
+  const wantFractions = !!l.fractions && l.text.includes('/');
   const chars = resolveCharStyles(l);
   const base = baseStyle(l);
   const mode = l.textTransform;
@@ -205,6 +233,22 @@ export function styledLines(l: TextLayer, opts: { list?: boolean } = {}): Styled
       if (listStyle !== 'none') push(prefixFor(lineNo), base);
       continue;
     }
+    if (fieldVals && c === '{') {
+      const f = fieldAt(l.text, i, fieldVals);
+      if (f) {
+        for (const ch of f.value) push(ch, chars[i]);
+        i += f.len - 1;
+        continue;
+      }
+    }
+    if (wantFractions) {
+      const f = fractionAt(l.text, i);
+      if (f) {
+        push(f.value, chars[i]);
+        i += f.len - 1;
+        continue;
+      }
+    }
     let shown = c;
     if (mode === 'upper') shown = c.toUpperCase();
     else if (mode === 'lower') shown = c.toLowerCase();
@@ -219,5 +263,22 @@ export function styledLines(l: TextLayer, opts: { list?: boolean } = {}): Styled
 
 // Fuente de Canvas 2D para un tramo.
 export function runFont(l: TextLayer, st: ResolvedStyle): string {
-  return `${st.italic ? 'italic ' : ''}${st.bold ? 'bold ' : ''}${l.fontSize}px ${l.fontFamily}`;
+  const size = st.script ? l.fontSize * SCRIPT_SCALE : l.fontSize;
+  return `${st.italic ? 'italic ' : ''}${st.bold ? 'bold ' : ''}${size}px ${l.fontFamily}`;
+}
+
+// Valor de `script` al pulsar «sup»/«sub» con [start,end) seleccionado: si TODO
+// el rango ya lo tiene se quita; si no, se pone.
+export function scriptTarget(
+  l: TextLayer,
+  start: number,
+  end: number,
+  which: 'sup' | 'sub',
+): 'sup' | 'sub' | 'none' {
+  const chars = resolveCharStyles(l);
+  const a = Math.max(0, Math.min(start, end));
+  const b = Math.min(l.text.length, Math.max(start, end));
+  if (b <= a) return 'none';
+  for (let i = a; i < b; i++) if (chars[i].script !== which) return which;
+  return 'none';
 }

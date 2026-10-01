@@ -1,13 +1,23 @@
+import { svgGrainDef, grainActive } from '../editor/core/grain';
+import { withRegisteredMaster } from '../editor/core/master';
 import { svgGradientDef } from '../editor/core/gradients';
+import { svgPatternDef } from '../editor/core/patterns';
 import {
   type Doc,
   type ShapeLayer,
   type TextLayer,
 } from '../editor/core/types';
 import { needsProcessing, processImage } from '../editor/core/imageProcessing';
+import { renderCastShadow, renderReflection } from '../editor/core/groundFx';
+import { preloadFxImages } from '../editor/core/imageEffects';
 import { isStrokeOnly, shapePath, shapeSvgPath } from '../editor/core/shapes';
 import { baseStyle, runFont, styledLines } from '../editor/core/richText';
 import { hasTextGradient, textGradientId } from '../editor/core/textGradient';
+import { usesTypography } from '../editor/core/typography';
+import { fieldsForDoc, type FieldValues } from '../editor/core/textMacros';
+import { textSvgAdvanced } from './exportSvgTypography';
+import { pagesForFields } from './docFields';
+import { textFxSvg } from './exportSvgTextFx';
 
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -43,19 +53,27 @@ function shadowStyle(l: {
 
 // Con relleno degradado se antepone su <defs> (id único por capa).
 function shapeSvg(l: ShapeLayer): string {
+  const sid = l.id.replace(/[^a-zA-Z0-9_-]/g, '');
+  let defs = '';
+  let fillRef: string | undefined;
+  let strokeRef: string | undefined;
   if (l.fillGradient && !isStrokeOnly(l.shape)) {
-    const id = `sg-${l.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
-    return `<defs>${svgGradientDef(id, l.fillGradient, l.width, l.height)}</defs>${shapeSvgBody(l, `url(#${id})`)}`;
+    defs += svgGradientDef(`sg-${sid}`, l.fillGradient, l.width, l.height);
+    fillRef = `url(#sg-${sid})`;
   }
-  return shapeSvgBody(l);
+  if (l.strokeGradient) {
+    defs += svgGradientDef(`sk-${sid}`, l.strokeGradient, l.width, l.height);
+    strokeRef = `url(#sk-${sid})`;
+  }
+  return (defs ? `<defs>${defs}</defs>` : '') + shapeSvgBody(l, fillRef, strokeRef);
 }
 
-function shapeSvgBody(l: ShapeLayer, fillOverride?: string): string {
+function shapeSvgBody(l: ShapeLayer, fillOverride?: string, strokeOverride?: string): string {
   const fill = fillOverride ?? (isStrokeOnly(l.shape) ? 'none' : l.fill);
   const strokeOn = l.strokeWidth > 0 || isStrokeOnly(l.shape);
   const sw = isStrokeOnly(l.shape) ? Math.max(2, l.strokeWidth) : l.strokeWidth;
   const stroke = strokeOn
-    ? ` stroke="${l.stroke}" stroke-width="${sw}"`
+    ? ` stroke="${strokeOverride ?? l.stroke}" stroke-width="${sw}"`
     : '';
   const w = l.width;
   const h = l.height;
@@ -93,7 +111,9 @@ function shapeSvgBody(l: ShapeLayer, fillOverride?: string): string {
 
 // Texto con estilo por palabra: cada línea es un <tspan x y> y cada tramo
 // con estilo propio un <tspan> anidado (peso, cursiva, color, subrayado).
-function textSvg(l: TextLayer, measure: CanvasRenderingContext2D): string {
+function textSvg(l: TextLayer, measure: CanvasRenderingContext2D, fields?: Partial<FieldValues>): string {
+  // Tipografía avanzada (caja, columnas, capitular, campos…): exportSvgTypography.ts.
+  if (usesTypography(l)) return textSvgAdvanced(l, measure, fields);
   (measure as any).letterSpacing = `${l.letterSpacing || 0}px`;
   const lines = styledLines(l);
   const base = baseStyle(l);
@@ -149,7 +169,9 @@ function textSvg(l: TextLayer, measure: CanvasRenderingContext2D): string {
 }
 
 export async function exportDocToSvg(doc: Doc): Promise<string> {
+  doc = withRegisteredMaster(doc); // capas de la página maestra detrás (solo lectura)
   const measure = document.createElement('canvas').getContext('2d')!;
+  const textFields = fieldsForDoc(doc, await pagesForFields());
   const parts: string[] = [];
 
   // Fondo
@@ -159,6 +181,14 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
   } else if (doc.background.type === 'gradient') {
     defs = `<defs>${svgGradientDef('bg', doc.background.gradient, doc.width, doc.height)}</defs>`;
     parts.push(`<rect width="${doc.width}" height="${doc.height}" fill="url(#bg)"/>`);
+  } else if (doc.background.type === 'pattern') {
+    defs = `<defs>${svgPatternDef('bg', doc.background.pattern)}</defs>`;
+    parts.push(`<rect width="${doc.width}" height="${doc.height}" fill="url(#bg)"/>`);
+  }
+  // Grano del fondo: baldosa raster embebida (el «suavizar» de degradados solo existe en imagen).
+  if (doc.background.type !== 'transparent' && grainActive(doc.background.grain)) {
+    defs += `<defs>${svgGrainDef('bg-grain', doc.background.grain)}</defs>`;
+    parts.push(`<rect width="${doc.width}" height="${doc.height}" fill="url(#bg-grain)"/>`);
   }
 
   for (const layer of doc.layers) {
@@ -166,9 +196,25 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
     const op = layer.opacity !== 1 ? ` opacity="${layer.opacity}"` : '';
     if (layer.type === 'image') {
       const img = await loadImg(layer.src);
+      await preloadFxImages(layer.adjust);
       let baked = needsProcessing(layer)
         ? processImage(img, layer).toDataURL('image/png')
         : layer.src;
+      // Reflejo y sombra proyectada: se hornean a PNG y van como <image> bajo la capa.
+      let fxSvg = '';
+      if (layer.castShadow || layer.reflection) {
+        const fxSrc = await loadImg(baked);
+        const nw = layer.naturalWidth;
+        const nh = layer.naturalHeight;
+        if (layer.castShadow) {
+          const sh = renderCastShadow(fxSrc, nw, nh, layer.maskShape, layer.castShadow);
+          fxSvg += `<image href="${sh.canvas.toDataURL('image/png')}" x="${sh.x}" y="${sh.y}" width="${sh.w}" height="${sh.h}" opacity="${layer.castShadow.opacity}"/>`;
+        }
+        if (layer.reflection) {
+          const rf = renderReflection(fxSrc, nw, nh, layer.maskShape, layer.reflection);
+          fxSvg += `<image href="${rf.canvas.toDataURL('image/png')}" x="0" y="${rf.y}" width="${nw}" height="${nh * Math.min(1, Math.max(0.05, layer.reflection.length))}"/>`;
+        }
+      }
       if (layer.maskShape) {
         const c = document.createElement('canvas');
         c.width = layer.naturalWidth;
@@ -180,14 +226,15 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
         baked = c.toDataURL('image/png');
       }
       parts.push(
-        `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}><image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/></g>`,
+        `<g transform="${transform(layer)}"${op}>${fxSvg}<g${shadowStyle(layer)}><image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/></g></g>`,
       );
     } else if (layer.type === 'shape') {
       parts.push(
         `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}>${shapeSvg(layer)}</g>`,
       );
     } else if (layer.type === 'text') {
-      parts.push(`<g transform="${transform(layer)}"${op}>${textSvg(layer, measure)}</g>`);
+      const fxText = await textFxSvg(layer, textFields); // efectos de texto (textFx.ts)
+      parts.push(`<g transform="${transform(layer)}"${op}>${fxText ?? textSvg(layer, measure, textFields)}</g>`);
     }
   }
 

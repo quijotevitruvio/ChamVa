@@ -1,18 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useEditor } from './editor/state/store';
 import { EditorCanvas, isTypingTarget } from './editor/canvas/EditorCanvas';
 import { TRANSPARENT_BG, type Doc, type ImageLayer, type Layer } from './editor/core/types';
 import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
+import { BatchShareHost, openBatchShare } from './ui/ExportQueuePanel';
+import { TextToolsHost, openFindReplace } from './ui/FindReplace';
 import { idbGet, idbSet, requestPersistentStorage, setStorageErrorHandler } from './io/idb';
 import { dehydrateDocs, rehydrateDocs, gcAssets } from './io/assets';
 import { getStoredLicense, type LicenseInfo, type LicenseType } from './license';
 import { loadImageFile } from './io/import';
 import { addFontFromFile } from './editor/core/fonts';
-import { exportDoc, downloadBlob, renderDocToCanvas, type ExportFormat } from './io/export';
-import { exportDocToSvg } from './io/exportSvg';
+import { exportDoc, downloadBlob, renderDocToCanvas } from './io/export';
 import { exportPagesToGif } from './io/exportGif';
 import { exportPagesToPdf } from './io/exportPdf';
+import { runImageExport, cancelExport } from './io/runExport';
+import { runInQueue } from './io/exportQueue';
 import { exportAnimatedGif } from './io/exportAnim';
 import { gifToMp4, prefetchFFmpeg } from './io/ffmpegConvert';
 import { exportIco } from './io/exportIco';
@@ -30,35 +33,38 @@ import { loadOpenCV } from './ai/inpaint';
 import { checkForUpdate, type UpdateInfo } from './updater';
 import { isTauri } from './io/nativeSave';
 import { t, useLang } from './i18n';
+import { actionForEvent, getShortcut, useShortcuts } from './editor/core/shortcuts';
+import { UiPrefs, getFocusMode, setFocusMode, toggleFocusMode } from './ui/UiScale';
+import { TipLayer } from './ui/Tip';
 import {
   loadDesigns,
   upsertDesign,
-  removeDesign,
   loadBackups,
   pushBackup,
   type SavedDesign,
   type Backup,
 } from './io/designs';
 import { needsProcessing, processImage } from './editor/core/imageProcessing';
+import { preloadFxImages } from './editor/core/imageEffects';
 import { FiltersPanel } from './ui/FiltersPanel';
-import { MaskEditor } from './ui/MaskEditor';
-import { VideoEditor } from './ui/VideoEditor';
-import { Presentation } from './ui/Presentation';
-import { BgPreview } from './ui/BgPreview';
 import { PropertiesPanel } from './ui/PropertiesPanel';
 import { RailPanels } from './ui/RailPanels';
-import { SettingsDialog, DonateDialog, RequestLicenseDialog } from './ui/LicenseDialogs';
 import { HomeScreen } from './ui/HomeScreen';
-import { ShortcutsDialog } from './ui/ShortcutsDialog';
+import { SnapshotsDialog } from './ui/SnapshotsDialog';
+import { AutoVersionsDialog } from './ui/AutoVersionsDialog';
+import { maybeSaveAutoVersion } from './io/autoVersions';
+import { restoreUndoFor, startUndoPersistence, type UndoStoreApi } from './io/undoStore';
+import { checkBackupReminder } from './io/backup';
 import { SizeMenu } from './ui/SizeMenu';
 import { DownloadMenu, type Fmt } from './ui/DownloadMenu';
 import { ContextMenu, FloatToolbar } from './ui/SelectionMenus';
 import { PageBar } from './ui/PageBar';
+import { getStyleSource, setStyleSource } from './editor/core/styleClipboard';
 import { UpdateBanner } from './ui/UpdateBanner';
-import { ChartEditor } from './ui/ChartEditor';
 import { CommandPalette, type Command } from './ui/CommandPalette';
 import { HistoryPopover } from './ui/HistoryPopover';
 import { Tour, shouldShowTour } from './ui/Tour';
+import { ColorBlindView } from './ui/ColorBlindView';
 import { setTheme } from './theme';
 import { openExternal } from './io/openExternal';
 import { AUTHOR, SUPPORT } from './branding';
@@ -66,6 +72,23 @@ import type { ChartSpec, TableSpec } from './editor/core/charts';
 import { DEFAULT_ADJUST } from './editor/core/types';
 import './App.css';
 import './dropzone.css';
+import './ui/perf.css';
+import { TouchRuntime, TouchMenuItems } from './ui/TouchRuntime';
+import { classifyPaste, classifyDrop, choosePasteSource, dataUrlToBlob } from './io/paste';
+import { cancelAI } from './ai/worker-client';
+import { canInstallPwa, onInstallAvailability, promptInstall } from './io/pwa';
+
+// Carga diferida: módulos pesados que no se ven al arrancar (se bajan al abrirlos).
+const MaskEditor = lazy(() => import('./ui/MaskEditor').then((m) => ({ default: m.MaskEditor })));
+const VideoEditor = lazy(() => import('./ui/VideoEditor').then((m) => ({ default: m.VideoEditor })));
+const Presentation = lazy(() => import('./ui/Presentation').then((m) => ({ default: m.Presentation })));
+const BgPreview = lazy(() => import('./ui/BgPreview').then((m) => ({ default: m.BgPreview })));
+const ChartEditor = lazy(() => import('./ui/ChartEditor').then((m) => ({ default: m.ChartEditor })));
+const ShortcutsDialog = lazy(() => import('./ui/ShortcutsDialog').then((m) => ({ default: m.ShortcutsDialog })));
+const SettingsDialog = lazy(() => import('./ui/LicenseDialogs').then((m) => ({ default: m.SettingsDialog })));
+const DonateDialog = lazy(() => import('./ui/LicenseDialogs').then((m) => ({ default: m.DonateDialog })));
+const RequestLicenseDialog = lazy(() => import('./ui/LicenseDialogs').then((m) => ({ default: m.RequestLicenseDialog })));
+const lazyFallback = <div className="lazy-fallback">Cargando…</div>;
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -78,6 +101,12 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
+// Enganche del store con el historial de deshacer persistente (io/undoStore.ts).
+const UNDO_API: UndoStoreApi = {
+  getState: () => useEditor.getState(),
+  subscribe: (fn) => useEditor.subscribe(fn),
+  restoreHistory: (past, id) => useEditor.getState().restoreHistory(past, id),
+};
 const EXPORT_LS = 'chamva.exportOpts';
 const BG_ENGINE_LS = 'chamva.bgEngine';
 
@@ -87,6 +116,7 @@ export default function App() {
   const fontFileRef = useRef<HTMLInputElement>(null);
   const textEditRef = useRef<HTMLTextAreaElement>(null);
   const clipLayer = useRef<Layer | null>(null);
+  const leftAppSinceCopy = useRef(false); // salió de la ventana desde el último Ctrl+C interno
 
   // ---- store ----
   const doc = useEditor((s) => s.doc);
@@ -119,6 +149,7 @@ export default function App() {
   const redo = useEditor((s) => s.redo);
   const editingTextId = useEditor((s) => s.editingTextId);
   useLang(); // re-renderiza al cambiar el idioma
+  useShortcuts(); // y al cambiar los atajos (paleta y tooltips)
 
   const selected = doc.layers.find((l) => l.id === selectedId) ?? null;
 
@@ -129,7 +160,7 @@ export default function App() {
         format?: Fmt;
         scale?: number;
         quality?: number;
-        scope?: 'page' | 'all';
+        scope?: 'page' | 'all' | 'selection';
       };
     } catch {
       return {};
@@ -138,9 +169,15 @@ export default function App() {
   const [format, setFormat] = useState<Fmt>(savedExport.format ?? 'png');
   const [scale, setScale] = useState(savedExport.scale ?? 1);
   const [quality, setQuality] = useState(savedExport.quality ?? 0.92);
-  const [scope, setScope] = useState<'page' | 'all'>(savedExport.scope ?? 'page');
+  const [scope, setScope] = useState<'page' | 'all' | 'selection'>(
+    savedExport.scope === 'selection' ? 'page' : (savedExport.scope ?? 'page'),
+  );
   const [showDownload, setShowDownload] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showSnapshots, setShowSnapshots] = useState(false);
+  const [showAutoVersions, setShowAutoVersions] = useState(false);
+  // Ctrl+Z también deshace operaciones de proyecto entero (varios formatos, restaurar versión).
+  const canStructUndo = useEditor((s) => !!s.structUndo && s.doc === s.structUndo.docAfter && s.pageIndex === s.structUndo.pageIndexAfter);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [customW, setCustomW] = useState(String(doc.width));
   const [customH, setCustomH] = useState(String(doc.height));
@@ -274,6 +311,7 @@ export default function App() {
   const openDesign = async (d: SavedDesign) => {
     const p = await rehydrateDocs(d.pages);
     loadPages(p, d.pageIndex);
+    void restoreUndoFor(UNDO_API); // deshacer que sobrevive: mismos pasos del diseño
     setSizeInputs(p[d.pageIndex] ?? p[0]);
     setShowHome(false);
   };
@@ -294,38 +332,61 @@ export default function App() {
   // ---- atajos globales ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+F: buscar y reemplazar texto (también desde un campo de texto).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        openFindReplace();
+        return;
+      }
       if (isTypingTarget(e.target)) return;
-      const ctrl = e.ctrlKey || e.metaKey;
       const st = useEditor.getState();
-      if (ctrl && e.key.toLowerCase() === 'k') {
+      // Ctrl+Alt+V: pegar solo el formato de la capa copiada (fuera del registro: no es personalizable).
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        const src = getStyleSource();
+        if (src) st.pasteStyle(src);
+        else toast('Copia primero una capa (Ctrl+C) para pegar su formato.', 'info');
+        return;
+      }
+      // Atajos personalizables: el registro (editor/core/shortcuts.ts) dice qué acción es.
+      const act = actionForEvent(e);
+      if (act === 'palette') {
         e.preventDefault();
         setShowPalette((v) => !v);
-      } else if (ctrl && e.key.toLowerCase() === 'g') {
+      } else if (act === 'focus') {
         e.preventDefault();
-        if (e.shiftKey) st.ungroupSelected();
-        else st.groupSelected();
-      } else if (e.key === '?' || (e.key === 'F1' && !ctrl)) {
+        toggleFocusMode();
+      } else if (act === 'group') {
+        e.preventDefault();
+        st.groupSelected();
+      } else if (act === 'ungroup') {
+        e.preventDefault();
+        st.ungroupSelected();
+      } else if (act === 'shortcuts') {
         e.preventDefault();
         setShowShortcuts((v) => !v);
-      } else if (ctrl && e.key.toLowerCase() === 'z') {
+      } else if (act === 'undo') {
         e.preventDefault();
-        e.shiftKey ? redo() : undo();
-      } else if (ctrl && e.key.toLowerCase() === 'y') {
+        undo();
+      } else if (act === 'redo') {
         e.preventDefault();
         redo();
-      } else if (ctrl && e.key.toLowerCase() === 'd') {
+      } else if (act === 'duplicate') {
         e.preventDefault();
         if (selectedId) st.duplicateLayer(selectedId);
-      } else if (ctrl && e.key.toLowerCase() === 'c') {
+      } else if (act === 'copy') {
         const l = st.doc.layers.find((x) => x.id === st.selectedId);
-        if (l) clipLayer.current = l;
-      } else if (ctrl && e.key.toLowerCase() === 'v') {
-        if (clipLayer.current) {
-          e.preventDefault();
-          pasteLayer(clipLayer.current);
+        if (l) {
+          clipLayer.current = l;
+          setStyleSource(l);
+          leftAppSinceCopy.current = false;
         }
+      } else if (act === 'paste') {
+        // El pegado (capa interna, imagen o texto del portapapeles) lo decide el
+        // evento 'paste' (más abajo): aquí NO se cancela para que el navegador lo emita.
       } else if (e.key === 'Escape') {
-        if (st.cropMode) st.cancelCrop();
+        if (getFocusMode()) setFocusMode(false);
+        else if (st.cropMode) st.cancelCrop();
         else if (st.selectedId) st.selectLayer(null);
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault();
@@ -381,7 +442,10 @@ export default function App() {
     (async () => {
       try {
         const saved = await idbGet<{ pages: Doc[]; index: number }>('autosave');
-        if (saved?.pages?.length) loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0);
+        if (saved?.pages?.length) {
+          loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0);
+          await restoreUndoFor(UNDO_API); // recupera los últimos pasos de deshacer
+        }
       } catch {
         /* sin recuperación si falla */
       } finally {
@@ -390,6 +454,17 @@ export default function App() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Historial de deshacer persistente y aviso de copia de seguridad (cada 30 días).
+  useEffect(() => {
+    if (!autosaveReady) return;
+    const stop = startUndoPersistence(UNDO_API);
+    const id = setTimeout(() => checkBackupReminder((m) => toast(m, 'info')), 20_000);
+    return () => {
+      stop();
+      clearTimeout(id);
+    };
+  }, [autosaveReady]);
 
   // Las imágenes van por referencia (io/assets.ts): cada escritura pesa KB.
   // Galería y copias, que releen/reescriben listas, van cada 30 s como mucho.
@@ -417,6 +492,7 @@ export default function App() {
             pages: light,
             thumb,
           });
+          maybeSaveAutoVersion(first.id, light, st.pageIndex, thumb); // versión automática (cada ~10 min)
         } catch {
           /* miniatura opcional */
         }
@@ -460,20 +536,39 @@ export default function App() {
     }
   };
 
+  const offlineCancelled = useRef(false);
+  // Botón «Cancelar» de la barra de tareas: aborta IA/descarga de modelos en curso.
+  const cancelHeavyTask = () => {
+    offlineCancelled.current = true;
+    cancelAI();
+  };
   const onPrepareOffline = async () => {
     const pct = (r: number) => (r > 0 ? ` ${Math.round(r * 100)}%` : '…');
+    const stop = () => {
+      if (offlineCancelled.current) throw new Error('cancelado');
+    };
+    offlineCancelled.current = false;
     setOfflineMsg('Descargando quitafondos…');
     try {
       await prefetchBgModel((r) => setOfflineMsg(`Quitafondos${pct(r)}`), bgQuality);
+      stop();
       setOfflineMsg('Descargando optimizador…');
       await prefetchUpscaleModel((r) => setOfflineMsg(`Optimizador${pct(r)}`));
+      stop();
       setOfflineMsg('Cargando borrador mágico…');
       await loadOpenCV();
+      stop();
       setOfflineMsg('Descargando conversor de video…');
       await prefetchFFmpeg();
+      stop();
       setOfflineMsg('✓ Listo para usar sin internet');
       setTimeout(() => setOfflineMsg(''), 4000);
     } catch (e) {
+      if ((e as Error).message === 'cancelado') {
+        setOfflineMsg('✕ Descarga cancelada');
+        setTimeout(() => setOfflineMsg(''), 3000);
+        return;
+      }
       console.error(e);
       setOfflineMsg('✕ Error al descargar (revisa tu conexión)');
       setTimeout(() => setOfflineMsg(''), 4000);
@@ -646,6 +741,7 @@ export default function App() {
   const onApplyCrop = async () => {
     if (!selected || selected.type !== 'image' || !cropRect) return;
     const img = await loadImageElement(selected.src);
+    await preloadFxImages(selected.adjust);
     const processed = needsProcessing(selected) ? processImage(img, selected) : img;
     let sx = (cropRect.x - selected.x) / selected.scaleX;
     let sy = (cropRect.y - selected.y) / selected.scaleY;
@@ -732,6 +828,105 @@ export default function App() {
     };
   }, []);
 
+  // Pegar (Ctrl+V) y arrastrar desde fuera de la app. Prioridad: si hay una capa copiada
+  // dentro del editor y el usuario no ha salido de la ventana desde entonces, gana la
+  // capa; si salió (pudo copiar algo fuera) gana el portapapeles del sistema; si este no
+  // trae nada utilizable, se pega la capa interna. El `drop` de archivos ya lo cubre el
+  // efecto anterior: aquí solo los arrastres SIN archivos (imagen desde otra pestaña).
+  const showHomeRef = useRef(showHome);
+  showHomeRef.current = showHome;
+  useEffect(() => {
+    const importBlob = async (blob: Blob, name: string) => {
+      const type = blob.type.startsWith('image/') ? blob.type : 'image/png';
+      const ext = type.split('/')[1]?.split('+')[0] || 'png';
+      await importFilesRef.current([new File([blob], `${name}.${ext}`, { type })], true);
+    };
+    const onBlur = () => {
+      leftAppSinceCopy.current = true;
+    };
+    const onPaste = async (e: ClipboardEvent) => {
+      if (isTypingTarget(e.target) || showHomeRef.current) return;
+      const cd = e.clipboardData;
+      const files = Array.from(cd?.files ?? []).filter((f) => f.type.startsWith('image/'));
+      const external = classifyPaste({
+        imageTypes: files.map((f) => f.type),
+        text: cd?.getData('text/plain') ?? '',
+        html: cd?.getData('text/html') ?? '',
+      });
+      const source = choosePasteSource({
+        hasInternal: !!clipLayer.current,
+        leftAppSinceCopy: leftAppSinceCopy.current,
+        external: external.kind,
+      });
+      if (source === 'none') return;
+      e.preventDefault();
+      if (source === 'internal') {
+        useEditor.getState().pasteLayer(clipLayer.current!);
+        return;
+      }
+      try {
+        if (external.kind === 'image') await importFilesRef.current(files, true);
+        else if (external.kind === 'svg')
+          await importBlob(new Blob([external.svg], { type: 'image/svg+xml' }), 'pegado');
+        else if (external.kind === 'data-image') {
+          const blob = dataUrlToBlob(external.url);
+          if (blob) await importBlob(blob, 'pegado');
+        } else if (external.kind === 'text') {
+          const text = external.text.length > 2000 ? external.text.slice(0, 2000) : external.text;
+          useEditor.getState().addTextLayer({ text, fontSize: text.length > 120 ? 28 : 48, bold: false });
+        }
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo pegar el contenido del portapapeles.', 'error');
+      }
+    };
+    const dropTypes = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []);
+    const isExternalImageDrag = (e: DragEvent) => {
+      const ty = dropTypes(e);
+      return !ty.includes('Files') && !ty.includes('application/x-chamva-upload') && (ty.includes('text/uri-list') || ty.includes('text/html'));
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (showHomeRef.current || isTypingTarget(e.target) || !isExternalImageDrag(e)) return;
+      e.preventDefault(); // sin esto el navegador abriría la imagen y saldría de la app
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const onDrop = async (e: DragEvent) => {
+      if (e.defaultPrevented || showHomeRef.current || isTypingTarget(e.target) || !isExternalImageDrag(e)) return;
+      e.preventDefault();
+      const r = classifyDrop({
+        uriList: e.dataTransfer?.getData('text/uri-list') ?? '',
+        html: e.dataTransfer?.getData('text/html') ?? '',
+      });
+      if (r.kind === 'none') return;
+      if (r.kind === 'remote') {
+        toast('Esa imagen viene de internet: guarda el archivo en tu equipo y arrástralo desde ahí.', 'info');
+        return;
+      }
+      try {
+        const blob = r.url.startsWith('data:') ? dataUrlToBlob(r.url) : await (await fetch(r.url)).blob();
+        if (!blob) throw new Error('imagen no válida');
+        await importBlob(blob, 'arrastrada');
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo leer la imagen arrastrada: guarda el archivo y arrástralo desde tu equipo.', 'error');
+      }
+    };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('paste', onPaste);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('paste', onPaste);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
+  // «Instalar ChamVa» (PWA): solo aparece si el navegador lo ofrece.
+  const [canInstall, setCanInstall] = useState(canInstallPwa());
+  useEffect(() => onInstallAvailability(() => setCanInstall(canInstallPwa())), []);
+
   const baseName = (d: { name: string }) => (d.name || 'chamva').replace(/[^\w\-]+/g, '_');
 
   const onDownload = async () => {
@@ -766,21 +961,16 @@ export default function App() {
         downloadBlob(await exportIco(st.doc), `${baseName(st.doc)}.ico`);
         return;
       }
-      const targets = scope === 'all' ? allPages : [st.doc];
-      for (let i = 0; i < targets.length; i++) {
-        const page = targets[i];
-        let blob: Blob;
-        let ext: string;
-        if (format === 'svg') {
-          blob = new Blob([await exportDocToSvg(page)], { type: 'image/svg+xml' });
-          ext = 'svg';
-        } else {
-          blob = await exportDoc(page, { format: format as ExportFormat, quality, scale });
-          ext = format === 'jpeg' ? 'jpg' : format;
-        }
-        const suffix = targets.length > 1 ? `_pag${i + 1}` : '';
-        downloadBlob(blob, `${baseName(page)}${suffix}.${ext}`);
+      // Imágenes (PNG/JPG/WebP/AVIF/SVG): selección, varios tamaños, ZIP, marca de agua…
+      if (scope === 'all' && allPages.length > 1) {
+        // Varias páginas (ZIP): pasa por la cola y se puede cancelar desde el panel «Exportaciones».
+        await runInQueue(`Exportar ${allPages.length} páginas (${format.toUpperCase()})`, async (ctx) => {
+          ctx.onCancel(cancelExport);
+          await runImageExport({ format, scale, quality, scope });
+        });
+        return;
       }
+      await runImageExport({ format, scale, quality, scope });
     } catch (e) {
       console.error(e);
       toast('Error al descargar: ' + (e as Error).message, 'error');
@@ -863,6 +1053,15 @@ export default function App() {
     const st = useEditor.getState();
     saveProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex);
   };
+  const onSavePortable = async () => {
+    const st = useEditor.getState();
+    try {
+      const { savePortableProject } = await import('./io/portableProject');
+      await savePortableProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex);
+    } catch (e) {
+      toast('No se pudo guardar el proyecto portátil: ' + (e as Error).message, 'error');
+    }
+  };
   const onOpenProject = async (files: FileList | File[] | null) => {
     const file = files?.[0];
     if (!file) return;
@@ -900,16 +1099,20 @@ export default function App() {
       c('Archivo', 'download', 'Descargar…', () => setShowDownload(true), { keywords: 'exportar guardar imagen png jpg pdf svg gif' }),
       c('Archivo', 'copy', 'Copiar al portapapeles', onCopyToClipboard, { keywords: 'imagen' }),
       c('Archivo', 'save-project', 'Guardar proyecto', onSaveProject, { keywords: 'archivo chamva' }),
+      c('Archivo', 'save-portable', 'Guardar proyecto portátil', onSavePortable, { keywords: 'archivo chamva zip imágenes mover equipo' }),
+      c('Archivo', 'batch-share', 'Lote y compartir…', openBatchShare, { keywords: 'convertir imágenes por lote compartir informe recursos apng webp presentación html' }),
       c('Archivo', 'open-project', 'Abrir proyecto', () => projectRef.current?.click(), { keywords: 'archivo chamva' }),
+      c('Archivo', 'snapshots', 'Versiones del diseño…', () => setShowSnapshots(true), { keywords: 'instantaneas guardar version restaurar historial' }),
+      c('Archivo', 'auto-versions', 'Versiones automáticas…', () => setShowAutoVersions(true), { keywords: 'autoguardado copias recuperar restaurar historial tiempo' }),
       c('Archivo', 'save-template', 'Guardar como plantilla', onSaveTemplate, { keywords: 'plantillas reutilizar' }),
       c('Archivo', 'home', 'Ir al inicio', () => setShowHome(true), { keywords: 'nuevo diseño tamaño pantalla principal' }),
-      c('Editar', 'undo', 'Deshacer', undo, { shortcut: 'Ctrl+Z' }),
-      c('Editar', 'redo', 'Rehacer', redo, { shortcut: 'Ctrl+Y' }),
+      c('Editar', 'undo', 'Deshacer', undo, { shortcut: getShortcut('undo') }),
+      c('Editar', 'redo', 'Rehacer', redo, { shortcut: getShortcut('redo') }),
       c('Editar', 'history', 'Historial de cambios', () => setShowHistory(true), { keywords: 'deshacer pasos volver' }),
-      c('Editar', 'duplicate', 'Duplicar elemento', () => selectedId && st.duplicateLayer(selectedId), { shortcut: 'Ctrl+D', keywords: 'copiar clonar' }),
+      c('Editar', 'duplicate', 'Duplicar elemento', () => selectedId && st.duplicateLayer(selectedId), { shortcut: getShortcut('duplicate'), keywords: 'copiar clonar' }),
       c('Editar', 'delete', 'Borrar elemento', () => st.removeSelected(), { shortcut: 'Supr', keywords: 'eliminar quitar' }),
-      c('Editar', 'group', 'Agrupar', () => st.groupSelected(), { shortcut: 'Ctrl+G' }),
-      c('Editar', 'ungroup', 'Desagrupar', () => st.ungroupSelected(), { shortcut: 'Ctrl+Shift+G' }),
+      c('Editar', 'group', 'Agrupar', () => st.groupSelected(), { shortcut: getShortcut('group') }),
+      c('Editar', 'ungroup', 'Desagrupar', () => st.ungroupSelected(), { shortcut: getShortcut('ungroup') }),
       c('Insertar', 'text', 'Añadir texto', () => st.addTextLayer(), { keywords: 'titulo letra escribir' }),
       shape('rect', 'Añadir rectángulo', 'cuadro caja forma'),
       shape('ellipse', 'Añadir círculo', 'elipse forma'),
@@ -934,13 +1137,15 @@ export default function App() {
       c('Ver', 'zoom-in', 'Acercar', () => st.setZoom(st.zoom * 1.2), { keywords: 'zoom aumentar' }),
       c('Ver', 'zoom-out', 'Alejar', () => st.setZoom(st.zoom / 1.2), { keywords: 'zoom reducir' }),
       c('Ver', 'zoom-fit', 'Ajustar zoom a la ventana', () => st.setZoom(1), { keywords: 'zoom encajar' }),
+      c('Ver', 'focus', 'Modo concentración', toggleFocusMode, { shortcut: getShortcut('focus'), keywords: 'ocultar paneles barras solo lienzo zen' }),
       c('Ver', 'present', 'Modo presentación', () => setShowPresent(true), { keywords: 'pantalla completa diapositivas' }),
       c('Ver', 'theme-light', 'Tema claro', () => setTheme('light'), { keywords: 'apariencia color' }),
       c('Ver', 'theme-dark', 'Tema oscuro', () => setTheme('dark'), { keywords: 'apariencia color' }),
+      c('Ver', 'theme-contrast', 'Tema de alto contraste', () => setTheme('contrast'), { keywords: 'apariencia color accesibilidad blanco negro' }),
       c('Ver', 'theme-system', 'Tema del sistema', () => setTheme('system'), { keywords: 'apariencia automatico' }),
       c('Herramientas', 'video', 'Abrir el editor de video', () => setShowVideo(true), { keywords: 'audio clip' }),
       c('Herramientas', 'preview-anim', 'Previsualizar animaciones', playAnimations),
-      c('Ayuda', 'shortcuts', 'Atajos de teclado', () => setShowShortcuts(true), { shortcut: '?' }),
+      c('Ayuda', 'shortcuts', 'Atajos de teclado', () => setShowShortcuts(true), { shortcut: getShortcut('shortcuts') }),
       c('Ayuda', 'settings', 'Ajustes y licencia', () => setShowSettings(true), { keywords: 'idioma tema actualizaciones donantes' }),
       c('Ayuda', 'tour', 'Ver el recorrido de bienvenida', () => setShowTour(true), { keywords: 'tutorial guia ayuda' }),
       c('Ayuda', 'star', 'Dale una estrella en GitHub', () => openExternal(AUTHOR.repo), { keywords: 'apoyar calificar' }),
@@ -986,12 +1191,39 @@ export default function App() {
               </button>
               <button
                 onClick={() => {
+                  onSavePortable();
+                  setShowFileMenu(false);
+                }}
+                title={t('Un solo archivo con el diseño y todas sus imágenes')}
+              >
+                📦 {t('Guardar proyecto portátil')}
+              </button>
+              <button
+                onClick={() => {
                   onSaveTemplate();
                   setShowFileMenu(false);
                 }}
                 title="Guarda esta página como plantilla reutilizable (pestaña Plantillas)"
               >
                 ◫ {t('Guardar como plantilla')}
+              </button>
+              <button
+                onClick={() => {
+                  setShowSnapshots(true);
+                  setShowFileMenu(false);
+                }}
+                title="Guarda versiones con nombre de todo el proyecto y vuelve a ellas cuando quieras"
+              >
+                🕘 {t('Versiones…')}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAutoVersions(true);
+                  setShowFileMenu(false);
+                }}
+                title="Copias automáticas del diseño (cada 10 min mientras editas) para volver atrás tras un fallo"
+              >
+                ⏱ {t('Versiones automáticas…')}
               </button>
             </div>
           )}
@@ -1013,7 +1245,7 @@ export default function App() {
         </div>
 
         <div className="group">
-          <button disabled={past.length === 0} onClick={undo} title="Ctrl+Z">
+          <button disabled={past.length === 0 && !canStructUndo} onClick={undo} title="Ctrl+Z">
             ↩ {t('Deshacer')}
           </button>
           <button disabled={future.length === 0} onClick={redo} title="Ctrl+Y">
@@ -1056,6 +1288,10 @@ export default function App() {
               <button onClick={() => setShowSettings(true)} disabled={offlineBusy}>
                 ⬇ {t('Usar sin internet')}…
               </button>
+              {canInstall && (
+                <button onClick={() => void promptInstall()}>⤓ {t('Instalar ChamVa')}</button>
+              )}
+              <TouchMenuItems />
             </div>
           )}
         </div>
@@ -1244,9 +1480,13 @@ export default function App() {
       )}
 
       <PageBar onShowShortcuts={() => setShowShortcuts(true)} />
+      <TouchRuntime />
 
-      {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
+      <Suspense fallback={lazyFallback}>
+        {showShortcuts && <ShortcutsDialog onClose={() => setShowShortcuts(false)} />}
+      </Suspense>
 
+      <Suspense fallback={lazyFallback}>
       {maskSession && (
         <MaskEditor layer={maskSession.layer} onApply={maskSession.onApply} onCancel={() => setMaskSession(null)} />
       )}
@@ -1273,7 +1513,10 @@ export default function App() {
       {showPresent && (
         <Presentation pages={pages.map((p, i) => (i === pageIndex ? doc : p))} start={pageIndex} onClose={() => setShowPresent(false)} />
       )}
+      </Suspense>
 
+      <UiPrefs />
+      <TipLayer />
       <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} commands={commands} />
       {showTour && !showHome && <Tour onDone={() => setShowTour(false)} />}
 
@@ -1282,6 +1525,9 @@ export default function App() {
           <span>Suelta la imagen para añadirla al diseño</span>
         </div>
       )}
+
+      {showSnapshots && <SnapshotsDialog onClose={() => setShowSnapshots(false)} />}
+      {showAutoVersions && <AutoVersionsDialog onClose={() => setShowAutoVersions(false)} />}
 
       {showHome && (
         <HomeScreen
@@ -1302,11 +1548,12 @@ export default function App() {
             setShowVideo(true);
           }}
           onOpenDesign={openDesign}
-          onRemoveDesign={(id) => removeDesign(id).then(setDesigns)}
+          onDesignsChange={setDesigns}
           onSettings={() => setShowSettings(true)}
         />
       )}
 
+      <Suspense fallback={lazyFallback}>
       {showDonate && !license && (
         <DonateDialog
           title={showDonate}
@@ -1365,7 +1612,19 @@ export default function App() {
         />
       )}
 
+      <TextToolsHost />
+      </Suspense>
+
+      {(bgBusy || upBusy || offlineBusy) && (
+        <div className="task-bar" role="status">
+          <span>{offlineBusy ? offlineMsg : bgBusy ? bgMsg : upMsg}</span>
+          <button onClick={cancelHeavyTask}>✕ {t('Cancelar')}</button>
+        </div>
+      )}
+
       <Toaster />
+      <ColorBlindView />
+      <BatchShareHost />
     </div>
   );
 }

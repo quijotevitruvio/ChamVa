@@ -1,5 +1,10 @@
 import { DEFAULT_ADJUST, type ImageAdjust, type ImageLayer } from './types';
 import { applyOverlayDuotone, cssFor, getFilter } from './filters';
+import { applyCurves, hasCurves } from './curves';
+import { applyLevels, isNeutralLevels } from './levels';
+import { applyHslMix, hasHslMix } from './hslMixer';
+import { applyDehaze, applyDenoise, applyLens } from './photoFix';
+import { applyImageEffects, hasImageFx } from './imageEffects';
 
 // String de filtro CSS (ajustes + filtro con nombre). Lo usan igual editor y export.
 export function buildFilterString(layer: ImageLayer): string {
@@ -29,7 +34,16 @@ function hasPixelOps(a: ImageAdjust): boolean {
     a.invert === true ||
     n(a.pixelate) > 0 ||
     n(a.vignette) > 0 ||
-    n(a.grain) > 0
+    n(a.grain) > 0 ||
+    hasCurves(a.curves) ||
+    !isNeutralLevels(a.levels) ||
+    hasHslMix(a.hslMix) ||
+    n(a.denoise) > 0 ||
+    n(a.denoiseColor) > 0 ||
+    n(a.dehaze) > 0 ||
+    n(a.lensDistortion) !== 0 ||
+    n(a.lensVignette) > 0 ||
+    hasImageFx(a.fx)
   );
 }
 
@@ -494,10 +508,19 @@ export function processImage(
 
   if (hasPixelOps(adj)) {
     const data = ctx.getImageData(0, 0, w, h);
+    // Correcciones de foto primero (geometría, ruido, bruma), luego tono y color.
+    applyLens(data, n(adj.lensDistortion), n(adj.lensVignette));
+    applyDenoise(data, n(adj.denoise), n(adj.denoiseColor));
+    applyDehaze(data, n(adj.dehaze), scale);
+    applyLevels(data, adj.levels);
+    applyCurves(data, adj.curves);
     applyColorOps(data, adj);
+    applyHslMix(data, adj.hslMix);
     applySharpen(data, n(adj.sharpen), scale);
     applyClarity(data, n(adj.clarity), scale);
     applyInvertThreshold(data, adj);
+    // --- hook efectos creativos ---
+    applyImageEffects(data, adj.fx);
     applyPixelate(data, n(adj.pixelate) * scale);
     applyVignette(data, n(adj.vignette));
     applyGrain(data, n(adj.grain));
@@ -635,5 +658,45 @@ export const ADJUST_PRESETS: { id: string; label: string; adjust: Partial<ImageA
     id: 'poster',
     label: 'Póster',
     adjust: { posterize: 0.75, saturate: 1.3, contrast: 1.15 },
+  },
+  // Estilos con efectos creativos (ver imageEffects.ts)
+  { id: 'comic', label: 'Cómic', adjust: { contrast: 1.1, fx: { sketchMode: 'comic', sketchAmount: 100 } } },
+  { id: 'pencil', label: 'Lápiz', adjust: { fx: { sketchMode: 'pencil', sketchAmount: 100 } } },
+  { id: 'glitch', label: 'Glitch', adjust: { fx: { glitch: 45, glitchSeed: 7, chroma: 35, chromaAngle: 0 } } },
+  {
+    id: 'film',
+    label: 'Película',
+    adjust: {
+      temperature: 0.15,
+      contrast: 0.95,
+      saturate: 0.88,
+      vignette: 0.3,
+      fx: { texKind: 'film', texAmount: 0.55, texMode: 'overlay', texSeed: 3, glowAmount: 20, glowRadius: 30 },
+    },
+  },
+  {
+    id: 'dreamy',
+    label: 'Soñador',
+    adjust: { brightness: 1.05, contrast: 0.92, saturate: 1.1, fx: { glowAmount: 55, glowRadius: 55 } },
+  },
+  {
+    id: 'pop',
+    label: 'Pop art',
+    adjust: { saturate: 1.4, contrast: 1.1, fx: { htSize: 16, htAngle: 45, htColor: true } },
+  },
+  {
+    id: 'miniature',
+    label: 'Maqueta',
+    adjust: { contrast: 1.08, fx: { tiltAmount: 60, tiltPos: 0.5, tiltWidth: 0.22, tiltSat: 45 } },
+  },
+  {
+    id: 'duotone',
+    label: 'Duotono',
+    adjust: {
+      fx: {
+        gradMapAmount: 100,
+        gradMap: { angle: 0, stops: [{ offset: 0, color: '#0b1a3a' }, { offset: 1, color: '#f5d9a8' }] },
+      },
+    },
   },
 ];

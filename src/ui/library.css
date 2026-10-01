@@ -1,0 +1,371 @@
+/* Biblioteca de diseños, buscador de plantillas, varios formatos e instantáneas.
+   Plano y monocromo: solo variables del tema. */
+
+/* ---------- Biblioteca en el inicio ---------- */
+.lib {
+  width: min(920px, 94vw);
+  margin-top: 8px;
+}
+.lib-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.lib-tab {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.lib-tab:hover {
+  border-color: var(--accent);
+}
+.lib-tab.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.lib-tab small {
+  opacity: 0.6;
+  margin-left: 4px;
+}
+.lib-tab.add {
+  border-style: dashed;
+  color: var(--muted);
+}
+.lib-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.lib-input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+.lib-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.lib-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.lib-btn:hover {
+  border-color: var(--accent);
+}
+.lib-btn.danger {
+  color: var(--danger);
+}
+.lib-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.lib-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.lib-chip {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.lib-chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.lib-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0;
+}
+.lib-grid {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+.lib-card {
+  position: relative;
+  width: 132px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  transition: border-color 0.12s;
+}
+.lib-card:hover {
+  border-color: var(--accent);
+}
+.lib-card img {
+  width: 100%;
+  height: 84px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+  display: block;
+}
+.lib-card-name {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.lib-card-meta {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 13px;
+}
+.lib-card-acts {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.lib-card:hover .lib-card-acts,
+.lib-card:focus-within .lib-card-acts {
+  opacity: 1;
+}
+.lib-mini {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lib-mini:hover {
+  border-color: var(--accent);
+}
+.lib-confirm {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* ---------- Diálogos (detalles, varios formatos, versiones) ---------- */
+.lib-dialog {
+  width: 460px;
+}
+.lib-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.lib-row > label {
+  min-width: 78px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.lib-row .lib-input {
+  flex: 1;
+}
+.lib-sizes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 42vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  margin: 8px 0;
+}
+.lib-sizes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.lib-sizes label:hover {
+  background: var(--panel-2);
+}
+.lib-sizes label small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.lib-sizes h5 {
+  margin: 6px 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.lib-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.lib-snap-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.lib-snap-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+.lib-snap-list img {
+  width: 44px;
+  height: 32px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 4px;
+  flex: none;
+}
+.lib-snap-list .grow {
+  flex: 1;
+  min-width: 0;
+}
+.lib-snap-list .grow b,
+.lib-snap-list .grow small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-snap-list small {
+  color: var(--muted);
+}
+
+/* ---------- Buscador de plantillas (panel lateral) ---------- */
+.tpl-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0 4px;
+}
+.tpl-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+.tpl-swatches {
+  display: flex;
+  gap: 5px;
+  margin: 4px 0 6px;
+  align-items: center;
+}
+.tpl-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.12s;
+}
+.tpl-swatch:hover {
+  border-color: var(--accent);
+}
+.tpl-swatch.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tpl-tagline {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  max-width: calc(100% - 6px);
+  font-size: 9px;
+  background: var(--panel-2);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upload-thumb .tpl-edit {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.upload-thumb:hover .tpl-edit {
+  opacity: 1;
+}
+
+/* La biblioteca puede alargar la pantalla de inicio: que se pueda desplazar. */
+.home-overlay {
+  overflow-y: auto;
+  justify-content: safe center;
+}

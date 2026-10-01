@@ -76,6 +76,25 @@ Ve a la [última release](https://github.com/quijotevitruvio/ChamVa/releases/lat
 - **Autoguardado** (IndexedDB) y recuperación al reabrir.
 - Exportar a **PNG, JPG, WebP, AVIF, SVG, PDF, GIF, GIF animado, MP4, ICO** y copiar al portapapeles.
 
+### ✨ Novedades de la v0.5.0
+Más de 120 mejoras (detalle en [`docs/estado-ideas.md`](docs/estado-ideas.md)):
+- **Foto:** curvas, niveles con histograma, mezclador por color, perspectiva, enderezar, reducir ruido, quitar
+  neblina, tilt-shift, desenfoques, glitch, halftone, lápiz y cómic, doble exposición, texturas, ojos rojos,
+  piel, mapa de degradado, reflejo y sombra en el suelo, mockups y censurar zonas.
+- **Texto:** buscador de fuentes con favoritas, columnas, capitular, sangría, sup/sub y fracciones, tabulaciones
+  con puntos, kerning, campos dinámicos, relleno con imagen, extrusión 3D, contornos múltiples, tinta
+  desgastada, resaltador, texto sobre trazado y buscar y reemplazar.
+- **Diseño:** carpetas de capas, estilos compartidos, página maestra, clasificador de páginas, restricciones,
+  márgenes, sangrado y columnas, patrones de fondo, notas adhesivas y notas del orador.
+- **Color y marca:** degradados cónicos y en contornos, recolorear todo el diseño, contraste, simulador de
+  daltonismo, paletas por palabra, varios kits de marca, hoja de marca y variantes de logo.
+- **Exportación:** exportar selección, varios tamaños, peso máximo, marca de agua, ZIP de páginas, PDF con
+  sangrado y marcas de corte, pliegos, iconos de app, favicon, sprites, lote, proyecto portátil `.chamva`,
+  presentación HTML, APNG y cola de exportaciones.
+- **Uso:** paleta de comandos (Ctrl+K), historial visible, atajos personalizables, modo concentración, alto
+  contraste, tamaño de interfaz, gestos táctiles, minimapa, copias de seguridad completas, versiones
+  automáticas, deshacer que sobrevive al cierre y web instalable (PWA).
+
 ### 🎬 Editor de video / audio
 - Importar video/audio, **línea de tiempo con cabezal arrastrable** (scrubbing global), recorte por sliders o
   **arrastrando los bordes**, dividir, reordenar y **miniaturas** de clip.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Doc } from '../editor/core/types';
 import { renderDocToCanvas } from '../io/export';
+import './layoutaids.css';
 
 export function Presentation({
   pages,
@@ -13,6 +14,8 @@ export function Presentation({
 }) {
   const [i, setI] = useState(start);
   const imgRef = useRef<HTMLImageElement>(null);
+  const [showNotes, setShowNotes] = useState(false); // notas del orador (tecla N)
+  const notes = pages[i]?.speakerNotes ?? '';
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +38,7 @@ export function Presentation({
         setI((v) => Math.min(pages.length - 1, v + 1));
       else if (e.key === 'ArrowLeft')
         setI((v) => Math.max(0, v - 1));
+      else if (e.key === 'n' || e.key === 'N') setShowNotes((v) => !v);
       else if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
@@ -44,6 +48,9 @@ export function Presentation({
   return (
     <div className="present-overlay">
       <img ref={imgRef} className="present-img" alt={`Página ${i + 1}`} />
+      {showNotes && (
+        <div className="present-notes">{notes || 'Esta página no tiene notas del orador.'}</div>
+      )}
       <div className="present-bar">
         <button onClick={() => setI((v) => Math.max(0, v - 1))} disabled={i === 0}>
           ‹
@@ -56,6 +63,9 @@ export function Presentation({
           disabled={i === pages.length - 1}
         >
           ›
+        </button>
+        <button onClick={() => setShowNotes((v) => !v)} title="Notas del orador (N)">
+          Notas (N)
         </button>
         <button onClick={onClose}>✕ Salir (Esc)</button>
       </div>

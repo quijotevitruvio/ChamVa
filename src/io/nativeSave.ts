@@ -34,10 +34,55 @@ export async function saveNative(
   const { save } = await import('@tauri-apps/plugin-dialog');
   const ext = filename.includes('.') ? filename.split('.').pop()! : '';
   const path = await save({
-    defaultPath: filename,
+    defaultPath: joinPath(getLastDir(), filename),
     filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : undefined,
   });
   if (!path) return { status: 'cancelled' };
   await writeFile(path, bytes);
+  setLastDir(dirOf(path));
+  emitSaved(path);
   return { status: 'saved', path };
+}
+
+// ---- carpeta recordada y «Abrir carpeta» (solo app instalada) ----
+const LAST_DIR_KEY = 'chamva.lastSaveDir';
+
+export function dirOf(path: string): string {
+  return path.replace(/[\\/][^\\/]*$/, '');
+}
+export function joinPath(dir: string | null, name: string): string {
+  if (!dir) return name;
+  return dir + (dir.includes('\\') ? '\\' : '/') + name;
+}
+export function getLastDir(): string | null {
+  try {
+    return localStorage.getItem(LAST_DIR_KEY);
+  } catch {
+    return null;
+  }
+}
+function setLastDir(dir: string) {
+  try {
+    if (dir) localStorage.setItem(LAST_DIR_KEY, dir);
+  } catch {
+    /* noop */
+  }
+}
+
+// Aviso de «guardado» para que la interfaz ofrezca «Abrir carpeta».
+const savedListeners = new Set<(path: string) => void>();
+export function onSaved(fn: (path: string) => void): () => void {
+  savedListeners.add(fn);
+  return () => {
+    savedListeners.delete(fn);
+  };
+}
+function emitSaved(path: string) {
+  savedListeners.forEach((f) => f(path));
+}
+
+// Muestra el archivo en el explorador del sistema (plugin opener, permiso opener:default).
+export async function revealSaved(path: string): Promise<void> {
+  const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+  await revealItemInDir(path);
 }

@@ -1,20 +1,17 @@
-import { t } from '../i18n';
+import { t, useLang } from '../i18n';
+import { ACTIONS, useShortcuts } from '../editor/core/shortcuts';
 
 const GROUPS: { title: string; items: [string, string][] }[] = [
   {
     title: 'Editor de imágenes',
     items: [
-      ['Ctrl+Z / Ctrl+Y', 'Deshacer / Rehacer'],
-      ['Ctrl+C / Ctrl+V', 'Copiar / Pegar capa'],
-      ['Ctrl+D', 'Duplicar capa'],
       ['Supr', 'Borrar capa (no bloqueadas)'],
       ['Flechas', 'Mover 1 px · con Shift 10 px'],
-      ['Esc', 'Deseleccionar / cancelar recorte'],
+      ['Esc', 'Deseleccionar / cancelar recorte / salir del modo concentración'],
       ['Rueda del ratón', 'Zoom hacia el cursor'],
       ['Espacio + arrastrar', 'Mover el lienzo (o botón central)'],
       ['Clic derecho', 'Menú contextual de la capa'],
       ['Doble clic en texto', 'Editar el texto'],
-      ['?', 'Este panel'],
     ],
   },
   {
@@ -36,6 +33,13 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
 ];
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  useLang();
+  const keys = useShortcuts();
+  // Atajos personalizables: se muestran los efectivos, en su grupo.
+  const custom = [...new Set(ACTIONS.map((a) => a.group))].map((g) => ({
+    title: g,
+    items: ACTIONS.filter((a) => a.group === g).map((a): [string, string] => [keys[a.id] || '—', a.label]),
+  }));
   return (
     <div className="donate-overlay" onClick={onClose}>
       <div className="settings-card" onClick={(e) => e.stopPropagation()}>
@@ -43,7 +47,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
           ✕
         </button>
         <h3>⌨ {t('Atajos de teclado')}</h3>
-        {GROUPS.map((g) => (
+        {[...custom, ...GROUPS].map((g) => (
           <div className="settings-section" key={g.title}>
             <span className="settings-label">{t(g.title)}</span>
             <ul className="shortcut-list">
@@ -56,6 +60,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
             </ul>
           </div>
         ))}
+        <p className="support-desc">{t('Puedes cambiar estos atajos en Ajustes → Atajos.')}</p>
       </div>
     </div>
   );

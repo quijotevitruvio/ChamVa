@@ -1,0 +1,226 @@
+/* Herramientas de geometría de imagen: perspectiva, enderezar, censurar, mockups, comparador,
+   reflejo/sombra. Plano, sin sombras ni acentos; solo variables del tema. */
+
+.geo-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.geo-menu .geo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+.geo-menu .geo-list button {
+  text-align: left;
+}
+
+/* Editor modal (reutiliza .mask-overlay, .mask-toolbar y .mask-stage de App.css) */
+.geo-stage {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 16px;
+  min-height: 0;
+}
+.geo-pane {
+  position: relative;
+  line-height: 0;
+  background-image: linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(45deg, var(--checker-b) 25%, var(--checker-a) 25%, var(--checker-a) 75%, var(--checker-b) 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+  border: 1px solid var(--border);
+  touch-action: none;
+  user-select: none;
+}
+.geo-pane canvas {
+  display: block;
+  max-width: 44vw;
+  max-height: 72vh;
+}
+.geo-pane.single canvas {
+  max-width: 88vw;
+}
+.geo-pane svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.geo-pane svg .poly {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.geo-pane svg .grid {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1;
+  opacity: 0.45;
+  vector-effect: non-scaling-stroke;
+}
+.geo-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--text);
+  cursor: grab;
+  touch-action: none;
+}
+.geo-handle:active {
+  cursor: grabbing;
+}
+.geo-label {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  line-height: 1.2;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  pointer-events: none;
+}
+.geo-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.geo-tools input[type='range'] {
+  width: 140px;
+}
+.geo-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.geo-cross {
+  cursor: crosshair;
+}
+.geo-pane .geo-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--text);
+  pointer-events: none;
+}
+
+/* Comparador antes/después sobre el lienzo (solo pantalla) */
+.ba-root {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.ba-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.ba-before {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.ba-before img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ba-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  pointer-events: none;
+}
+.ba-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--bg);
+  outline: 1px solid var(--text);
+}
+.ba-grip {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--text);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+.ba-chip {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 41;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.ba-chip button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Diálogo de mockups */
+.mock-frames {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mock-bgs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.mock-bgs input[type='color'] {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: none;
+}

@@ -229,3 +229,121 @@ function range(b: Px[]): { ch: 'r' | 'g' | 'b'; span: number } {
 function dist(a: RGB, b: RGB): number {
   return Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
 }
+
+// ───────────── Contraste WCAG: niveles y ajuste automático ─────────────
+
+export interface ContrastLevels {
+  ratio: number;
+  aaNormal: boolean; // >= 4.5
+  aaaNormal: boolean; // >= 7
+  aaLarge: boolean; // >= 3
+  aaaLarge: boolean; // >= 4.5
+}
+
+export function contrastLevels(fg: string, bg: string): ContrastLevels {
+  const ratio = contrastRatio(fg, bg);
+  return {
+    ratio,
+    aaNormal: ratio >= 4.5,
+    aaaNormal: ratio >= 7,
+    aaLarge: ratio >= 3,
+    aaaLarge: ratio >= 4.5,
+  };
+}
+
+// Oscurece o aclara `fg` (conservando tono y saturación) hasta alcanzar `target`
+// de contraste contra `bg`. Prueba primero la dirección natural (oscurecer sobre
+// fondo claro, aclarar sobre oscuro) y, si no llega, la contraria. Si ninguna
+// llega devuelve blanco o negro, lo mejor posible.
+export function adjustForContrast(fg: string, bg: string, target = 4.5): string {
+  const rgb = hexToRgb(fg) ?? { r: 0, g: 0, b: 0 };
+  const start = rgbToHex(rgb);
+  if (contrastRatio(start, bg) >= target) return start;
+  const hsl = rgbToHsl(rgb);
+  const tryDir = (dir: 1 | -1): string | null => {
+    for (let i = 1; i <= 100; i++) {
+      const l = clamp(hsl.l + (dir * i) / 100, 0, 1);
+      const c = rgbToHex(hslToRgb({ ...hsl, l }));
+      if (contrastRatio(c, bg) >= target) return c;
+      if (l === 0 || l === 1) break;
+    }
+    return null;
+  };
+  const first: 1 | -1 = luminance(bg) < 0.18 ? 1 : -1;
+  return tryDir(first) ?? tryDir(first === 1 ? -1 : 1) ?? readableOn(bg);
+}
+
+// ───────────── Escala tonal estilo Tailwind (50…950) ─────────────
+
+export const TONAL_STEPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const;
+const TONAL_LIGHTNESS = [0.96, 0.92, 0.84, 0.74, 0.63, 0.53, 0.44, 0.35, 0.27, 0.19, 0.11];
+
+// 11 pasos de claro a oscuro con el tono del color; la luminosidad decrece siempre.
+export function tonalScale(hex: string): string[] {
+  const rgb = hexToRgb(hex) ?? { r: 128, g: 128, b: 128 };
+  const { h, s } = rgbToHsl(rgb);
+  return TONAL_LIGHTNESS.map((l, i) => {
+    const edge = i === 0 || i === TONAL_LIGHTNESS.length - 1 ? 0.85 : 1;
+    return rgbToHex(hslToRgb({ h, s: s * edge, l }));
+  });
+}
+
+// ───────────── Simulación de daltonismo ─────────────
+
+export type ColorBlindKind = 'protanopia' | 'deuteranopia' | 'tritanopia' | 'acromatopsia';
+
+export const COLORBLIND_LABELS: Record<ColorBlindKind, string> = {
+  protanopia: 'Protanopía (sin rojo)',
+  deuteranopia: 'Deuteranopía (sin verde)',
+  tritanopia: 'Tritanopía (sin azul)',
+  acromatopsia: 'Acromatopsia (grises)',
+};
+
+// Matrices 3x3 (Machado et al. 2009, severidad 1.0); acromatopsia = luminancia.
+export const COLORBLIND_MATRICES: Record<ColorBlindKind, number[]> = {
+  protanopia: [0.152286, 1.052583, -0.204868, 0.114503, 0.786281, 0.099216, -0.003882, -0.048116, 1.051998],
+  deuteranopia: [0.367322, 0.860646, -0.227968, 0.280085, 0.672501, 0.047413, -0.01182, 0.04294, 0.968881],
+  tritanopia: [1.255528, -0.076749, -0.178779, -0.078411, 0.930809, 0.147602, 0.004733, 0.691367, 0.3039],
+  acromatopsia: [0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722, 0.2126, 0.7152, 0.0722],
+};
+
+// Aplica la simulación a un color hex (muestras y pruebas).
+export function simulateColorBlind(hex: string, kind: ColorBlindKind): string {
+  const rgb = hexToRgb(hex) ?? { r: 0, g: 0, b: 0 };
+  const m = COLORBLIND_MATRICES[kind];
+  return rgbToHex({
+    r: m[0] * rgb.r + m[1] * rgb.g + m[2] * rgb.b,
+    g: m[3] * rgb.r + m[4] * rgb.g + m[5] * rgb.b,
+    b: m[6] * rgb.r + m[7] * rgb.g + m[8] * rgb.b,
+  });
+}
+
+// ───────────── CIELAB (distancias perceptuales) ─────────────
+
+export interface Lab {
+  L: number;
+  a: number;
+  b: number;
+}
+
+export function rgbToLab({ r, g, b }: RGB): Lab {
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const R = lin(r);
+  const G = lin(g);
+  const B = lin(b);
+  const X = (R * 0.4124564 + G * 0.3575761 + B * 0.1804375) / 0.95047;
+  const Y = R * 0.2126729 + G * 0.7151522 + B * 0.072175;
+  const Z = (R * 0.0193339 + G * 0.119192 + B * 0.9503041) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const fx = f(X);
+  const fy = f(Y);
+  const fz = f(Z);
+  return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+}
+
+export function labDistance(p: Lab, q: Lab): number {
+  return Math.sqrt((p.L - q.L) ** 2 + (p.a - q.a) ** 2 + (p.b - q.b) ** 2);
+}

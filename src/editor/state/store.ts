@@ -14,8 +14,24 @@ import {
   type SavedTemplate,
 } from '../core/types';
 import { jumpInHistory } from './historyLogic';
+import { resizeDocTo, type TargetSize } from '../core/libraryMeta';
+import { similarLayerIds, stylePatch } from '../core/layerStyle';
+import { NOTE_COLORS } from '../core/layout';
+import { applyConstraints, resizeLayer } from '../core/constraints';
+import { registerMasterPages } from '../core/master';
+import type { StickyNote } from '../core/types';
 import { loadStoredFonts } from '../core/fonts';
-import { idbGet, idbSet } from '../../io/idb';
+import {
+  activeKit,
+  createKit,
+  deleteKit,
+  duplicateKit,
+  migrateKits,
+  renameKit,
+  updateKit,
+  type BrandKit,
+} from '../core/brandKits';
+import { idbDelete, idbGet, idbSet } from '../../io/idb';
 import {
   dehydrateTemplates,
   dehydrateUploads,
@@ -45,6 +61,48 @@ function loadBrandFonts(): string[] {
   } catch {
     return [];
   }
+}
+
+// Varios kits de marca. Metadatos (nombre, colores, fuentes) en localStorage;
+// los logos en IndexedDB ('brandKitLogos': id de kit → logos por referencia).
+// El kit único anterior (colores/fuentes/'brandLogos') migra al primer kit.
+const LS_BRAND_KITS = 'chamva.brandKits';
+const LS_BRAND_ACTIVE = 'chamva.brandKitActive';
+function loadBrandKits(): { kits: BrandKit[]; activeId: string } {
+  let raw: unknown;
+  let activeId: string | null = null;
+  try {
+    raw = JSON.parse(localStorage.getItem(LS_BRAND_KITS) ?? 'null');
+    activeId = localStorage.getItem(LS_BRAND_ACTIVE);
+  } catch {
+    /* noop */
+  }
+  const kits = migrateKits(
+    raw,
+    { colors: loadColors(LS_BRAND), fonts: loadBrandFonts(), logos: [] },
+    () => uid(),
+  );
+  const id = activeKit(kits, activeId).id;
+  // Primera vez: fija el id del kit migrado para que sus logos (IDB) lo encuentren.
+  if (!Array.isArray(raw)) persistKits(kits, id, false);
+  return { kits, activeId: id };
+}
+function persistKits(kits: BrandKit[], activeId: string, logosChanged: boolean) {
+  try {
+    localStorage.setItem(
+      LS_BRAND_KITS,
+      JSON.stringify(kits.map(({ logos: _l, ...meta }) => meta)),
+    );
+    localStorage.setItem(LS_BRAND_ACTIVE, activeId);
+  } catch {
+    /* noop */
+  }
+  if (!logosChanged) return;
+  (async () => {
+    const byKit: Record<string, UploadedImage[]> = {};
+    for (const k of kits) byKit[k.id] = await dehydrateUploads(k.logos);
+    await idbSet('brandKitLogos', byKit);
+  })();
 }
 
 function loadImageEl(src: string): Promise<HTMLImageElement> {
@@ -111,6 +169,11 @@ function layerBox(l: Layer): { x: number; y: number; w: number; h: number } {
   return { x: l.x, y: l.y, w: m.width * l.scaleX, h: m.height * l.scaleY };
 }
 
+const layerBox2 = (l: Layer) => {
+  const b = layerBox(l);
+  return { w: b.w, h: b.h };
+};
+
 function emptyDoc(): Doc {
   return {
     id: uid(),
@@ -149,27 +212,39 @@ interface EditorState {
   customFonts: string[];
   uploads: UploadedImage[];
   templates: SavedTemplate[];
+  // Estado previo a una operación sobre todo el proyecto (varios formatos,
+  // restaurar versión): permite deshacerla de un golpe. Solo vale mientras el
+  // documento actual sea el que dejó la operación (docAfter).
+  structUndo: { pages: Doc[]; pageIndex: number; docAfter: Doc; pageIndexAfter: number } | null;
   cropMode: boolean;
   cropRect: Rect | null;
   cropAspect: number | null; // ancho/alto fijo, null = libre
   textEditNonce: number;
   animPlayNonce: number;
-  selRect: { left: number; top: number; width: number } | null;
+  selRect: { left: number; top: number; width: number; height?: number } | null;
   zoom: number; // multiplicador de zoom del usuario (1 = ajustar)
   viewScale: number; // escala aplicada real (para mostrar %)
   showRulers: boolean;
   showGrid: boolean;
   showGuides: boolean;
   snapToGrid: boolean;
+  showNotes: boolean; // notas adhesivas visibles (solo editor)
+  showLayout: boolean; // márgenes, sangrado y columnas visibles (solo editor)
   pages: Doc[];
   pageIndex: number;
-  brandLogos: UploadedImage[];
-  brandFonts: string[];
+  brandLogos: UploadedImage[]; // logos del kit activo (espejo de brandKits)
+  brandFonts: string[]; // fuentes del kit activo
+  brandKits: BrandKit[]; // todos los kits (el activo se refleja en brandColors/brandLogos/brandFonts)
+  activeBrandKitId: string;
+  showRespect: boolean; // zona de respeto de los logos del kit (solo editor)
   editingTextId: string | null; // texto que se está editando sobre el lienzo
   textSel: { id: string; start: number; end: number } | null; // selección dentro del texto
 
   // documento / lienzo
   setCanvasSize: (width: number, height: number) => void;
+  // Organización (carpetas, estilos compartidos, maestra, clasificador): la lógica vive en core/*.ts.
+  editDoc: (fn: (doc: Doc) => Doc) => void; // un paso de deshacer
+  editPages: (fn: (pages: Doc[], currentId: string) => { pages: Doc[]; currentId: string }) => void;
   setBackground: (background: Background) => void;
   setDocName: (name: string) => void;
   loadDoc: (doc: Doc) => void;
@@ -179,6 +254,13 @@ interface EditorState {
   duplicatePage: () => void;
   newDesign: (size?: { width: number; height: number; name?: string }) => void;
   addResizedPage: (width: number, height: number) => void;
+  // Biblioteca: crea páginas en varios formatos / restaura una instantánea
+  // (ambas se deshacen con un solo Ctrl+Z, ver structUndo).
+  addResizedPages: (sizes: TargetSize[]) => number;
+  restorePages: (pages: Doc[], index: number) => void;
+  // Historial de deshacer recuperado tras reabrir el diseño (io/undoStore.ts).
+  restoreHistory: (past: Doc[], docId: string) => void;
+  setTemplateTags: (id: string, tags: string[]) => void;
   switchPage: (i: number) => void;
   deletePage: (i: number) => void;
   reorderPages: (from: number, to: number) => void;
@@ -190,6 +272,13 @@ interface EditorState {
   addBrandLogo: (img: UploadedImage) => void;
   removeBrandLogo: (id: string) => void;
   toggleBrandFont: (family: string) => void;
+  setActiveBrandKit: (id: string) => void;
+  createBrandKit: (name: string) => void;
+  duplicateBrandKit: (id: string) => void;
+  renameBrandKit: (id: string, name: string) => void;
+  deleteBrandKit: (id: string) => void;
+  setBrandLogoRespect: (logoId: string, factor: number) => void;
+  setShowRespect: (on: boolean) => void;
 
   // fuentes propias
   addCustomFont: (family: string) => void;
@@ -268,7 +357,7 @@ interface EditorState {
   removeSelected: () => void;
   requestTextEdit: (id: string) => void;
   playAnimations: () => void;
-  setSelRect: (r: { left: number; top: number; width: number } | null) => void;
+  setSelRect: (r: { left: number; top: number; width: number; height?: number } | null) => void;
   setZoom: (z: number) => void;
   setViewScale: (s: number) => void;
   toggleRulers: () => void;
@@ -277,6 +366,16 @@ interface EditorState {
   toggleSnapToGrid: () => void;
   // Reemplaza las guías de la página (un paso de deshacer).
   setGuides: (guides: { x: number[]; y: number[] }) => void;
+  // Ayudas de lienzo: maquetación, notas internas, notas del orador, similares y formato.
+  toggleNotes: () => void;
+  toggleLayout: () => void;
+  setLayoutAids: (patch: Partial<Pick<Doc, 'margins' | 'bleed' | 'columns'>>) => void;
+  addNote: () => void;
+  updateNote: (id: string, patch: Partial<Omit<StickyNote, 'id'>>) => void;
+  removeNote: (id: string) => void;
+  setSpeakerNotes: (text: string) => void;
+  selectSimilar: (id: string) => void;
+  pasteStyle: (src: Layer) => void;
   moveLayer: (id: string, dir: 'up' | 'down') => void;
   alignLayer: (id: string, kind: AlignKind) => void;
   alignSelected: (kind: AlignKind) => void;
@@ -292,6 +391,11 @@ interface EditorState {
   undo: () => void;
   redo: () => void;
   jumpToHistory: (index: number) => void;
+  // Buscar y reemplazar: edita capas de OTRAS páginas (el historial es por página: no se deshace).
+  patchOtherPages: (edits: { page: number; id: string; patch: Partial<Layer> }[]) => void;
+  // Recolorear diseño (recolor.ts): `live` = vista previa sin historial; si no, un solo paso de deshacer.
+  recolorDoc: (doc: Doc, live?: boolean) => void;
+  recolorOtherPages: (fn: (d: Doc) => Doc) => void; // las demás páginas (no se deshace)
 }
 
 // Helper: aplica un cambio al documento registrándolo en el historial.
@@ -364,21 +468,50 @@ function viewPrefs(s: EditorState): ViewPrefs {
   return { rulers: s.showRulers, grid: s.showGrid, guides: s.showGuides, snap: s.snapToGrid };
 }
 
+// Espejo del kit activo en los campos planos (brandColors/brandLogos/brandFonts).
+function mirrorKit(kits: BrandKit[], activeId: string) {
+  const k = activeKit(kits, activeId);
+  return {
+    brandKits: kits,
+    activeBrandKitId: k.id,
+    brandColors: k.colors,
+    brandLogos: k.logos,
+    brandFonts: k.fonts,
+  };
+}
+// Aplica un cambio al kit activo y lo persiste.
+function kitState(
+  s: { brandKits: BrandKit[]; activeBrandKitId: string },
+  patch: Partial<BrandKit>,
+  logosChanged: boolean,
+) {
+  const kits = updateKit(s.brandKits, s.activeBrandKitId, patch);
+  persistKits(kits, s.activeBrandKitId, logosChanged);
+  return mirrorKit(kits, s.activeBrandKitId);
+}
+
+const INITIAL_KITS = loadBrandKits();
+const INITIAL_KIT = activeKit(INITIAL_KITS.kits, INITIAL_KITS.activeId);
+
 export const useEditor = create<EditorState>((set, get) => ({
   doc: FIRST_DOC,
   selectedId: null,
   selectedIds: [],
   past: [],
   future: [],
-  brandColors: loadColors(LS_BRAND),
+  brandColors: INITIAL_KIT.colors,
   recentColors: loadColors(LS_RECENT),
   customFonts: [], // se rellena en hydrate() (las fuentes viven en IndexedDB)
   brandLogos: [],
-  brandFonts: loadBrandFonts(),
+  brandFonts: INITIAL_KIT.fonts,
+  brandKits: INITIAL_KITS.kits,
+  activeBrandKitId: INITIAL_KITS.activeId,
+  showRespect: false,
   editingTextId: null,
   textSel: null,
   uploads: [],
   templates: [],
+  structUndo: null,
   cropMode: false,
   cropRect: null,
   cropAspect: null,
@@ -391,15 +524,51 @@ export const useEditor = create<EditorState>((set, get) => ({
   showGrid: loadView().grid,
   showGuides: loadView().guides,
   snapToGrid: loadView().snap,
+  showNotes: true,
+  showLayout: true,
   pages: [FIRST_DOC],
   pageIndex: 0,
 
   setCanvasSize: (width, height) =>
-    set((s) => commit(s, { ...s.doc, width, height })),
+    set((s) => {
+      // Las capas con restricciones se recolocan según su anclaje (constraints.ts).
+      const from = { width: s.doc.width, height: s.doc.height };
+      const layers = s.doc.layers.some((l) => l.constraints)
+        ? s.doc.layers.map((l) => applyConstraints(l, from, { width, height }, layerBox2))
+        : s.doc.layers;
+      return commit(s, { ...s.doc, width, height, layers });
+    }),
+
+  editDoc: (fn) => set((s) => commit(s, fn(s.doc))),
+
+  // Operaciones sobre la lista de páginas (clasificador, maestra). El historial es por
+  // página: solo se conserva si la página actual sigue siendo exactamente la misma.
+  editPages: (fn) =>
+    set((s) => {
+      const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
+      const r = fn(synced, s.doc.id);
+      if (r.pages === synced) return {};
+      const idx = Math.max(0, r.pages.findIndex((p) => p.id === r.currentId));
+      const doc = r.pages[idx];
+      return doc === s.doc
+        ? { pages: r.pages, pageIndex: idx }
+        : { pages: r.pages, doc, pageIndex: idx, selectedId: null, selectedIds: [], past: [], future: [], cropMode: false, cropRect: null };
+    }),
 
   setBackground: (background) =>
     set((s) => {
-      const base = commit(s, { ...s.doc, background });
+      const base = commit(s, {
+        ...s.doc,
+        background,
+        ...(background.type === 'solid'
+          ? {
+              recentColors: [
+                background.color,
+                ...(s.doc.recentColors ?? []).filter((c) => c !== background.color),
+              ].slice(0, 16),
+            }
+          : {}),
+      });
       if (background.type === 'solid') {
         const recent = [
           background.color,
@@ -414,44 +583,79 @@ export const useEditor = create<EditorState>((set, get) => ({
   addBrandColor: (color) =>
     set((s) => {
       if (s.brandColors.includes(color)) return {};
-      const brand = [...s.brandColors, color].slice(0, 24);
-      saveColors(LS_BRAND, brand);
-      return { brandColors: brand };
+      return kitState(s, { colors: [...s.brandColors, color].slice(0, 24) }, false);
     }),
 
   removeBrandColor: (color) =>
-    set((s) => {
-      const brand = s.brandColors.filter((c) => c !== color);
-      saveColors(LS_BRAND, brand);
-      return { brandColors: brand };
-    }),
+    set((s) => kitState(s, { colors: s.brandColors.filter((c) => c !== color) }, false)),
 
   addBrandLogo: (img) =>
-    set((s) => {
-      const brandLogos = [img, ...s.brandLogos].slice(0, 24);
-      dehydrateUploads(brandLogos).then((d) => idbSet('brandLogos', d));
-      return { brandLogos };
-    }),
+    set((s) => kitState(s, { logos: [img, ...s.brandLogos].slice(0, 24) }, true)),
 
   removeBrandLogo: (id) =>
-    set((s) => {
-      const brandLogos = s.brandLogos.filter((l) => l.id !== id);
-      dehydrateUploads(brandLogos).then((d) => idbSet('brandLogos', d));
-      return { brandLogos };
-    }),
+    set((s) => kitState(s, { logos: s.brandLogos.filter((l) => l.id !== id) }, true)),
 
   toggleBrandFont: (family) =>
+    set((s) =>
+      kitState(
+        s,
+        {
+          fonts: s.brandFonts.includes(family)
+            ? s.brandFonts.filter((f) => f !== family)
+            : [...s.brandFonts, family],
+        },
+        false,
+      ),
+    ),
+
+  setActiveBrandKit: (id) =>
     set((s) => {
-      const brandFonts = s.brandFonts.includes(family)
-        ? s.brandFonts.filter((f) => f !== family)
-        : [...s.brandFonts, family];
-      try {
-        localStorage.setItem(LS_BRAND_FONTS, JSON.stringify(brandFonts));
-      } catch {
-        /* noop */
-      }
-      return { brandFonts };
+      if (!s.brandKits.some((k) => k.id === id)) return {};
+      persistKits(s.brandKits, id, false);
+      return mirrorKit(s.brandKits, id);
     }),
+
+  createBrandKit: (name) =>
+    set((s) => {
+      const id = uid();
+      const kits = createKit(s.brandKits, name, id);
+      if (kits === s.brandKits) return {};
+      persistKits(kits, id, true);
+      return mirrorKit(kits, id);
+    }),
+
+  duplicateBrandKit: (id) =>
+    set((s) => {
+      const nid = uid();
+      const kits = duplicateKit(s.brandKits, id, nid);
+      if (kits === s.brandKits) return {};
+      persistKits(kits, nid, true);
+      return mirrorKit(kits, nid);
+    }),
+
+  renameBrandKit: (id, name) =>
+    set((s) => {
+      const kits = renameKit(s.brandKits, id, name);
+      if (kits === s.brandKits) return {};
+      persistKits(kits, s.activeBrandKitId, false);
+      return { brandKits: kits };
+    }),
+
+  deleteBrandKit: (id) =>
+    set((s) => {
+      const r = deleteKit(s.brandKits, id, s.activeBrandKitId);
+      if (r.kits === s.brandKits) return {};
+      persistKits(r.kits, r.activeId, true);
+      return mirrorKit(r.kits, r.activeId);
+    }),
+
+  setBrandLogoRespect: (logoId, factor) =>
+    set((s) => {
+      const k = activeKit(s.brandKits, s.activeBrandKitId);
+      return kitState(s, { respect: { ...(k.respect ?? {}), [logoId]: Math.max(0, factor) } }, false);
+    }),
+
+  setShowRespect: (on) => set({ showRespect: on }),
 
   addCustomFont: (family) =>
     set((s) =>
@@ -468,11 +672,22 @@ export const useEditor = create<EditorState>((set, get) => ({
     const templates = await rehydrateTemplates(
       (await idbGet<SavedTemplate[]>('templates')) ?? [],
     );
-    const brandLogos = await rehydrateUploads(
-      (await idbGet<UploadedImage[]>('brandLogos')) ?? [],
-    );
+    // Logos por kit. Si aún no existe 'brandKitLogos', migra el 'brandLogos' del
+    // kit único anterior al primer kit y retira la clave antigua.
+    let byKit = await idbGet<Record<string, UploadedImage[]>>('brandKitLogos');
+    if (!byKit) {
+      const legacy = (await idbGet<UploadedImage[]>('brandLogos')) ?? [];
+      byKit = { [get().brandKits[0].id]: legacy };
+      if (await idbSet('brandKitLogos', byKit)) await idbDelete('brandLogos');
+    }
+    const stored = byKit;
+    const kitLogos: Record<string, UploadedImage[]> = {};
+    for (const k of get().brandKits) kitLogos[k.id] = await rehydrateUploads(stored[k.id] ?? []);
     const customFonts = await loadStoredFonts();
-    set({ uploads, templates, customFonts, brandLogos });
+    set((s) => {
+      const kits = s.brandKits.map((k) => ({ ...k, logos: kitLogos[k.id] ?? k.logos }));
+      return { uploads, templates, customFonts, ...mirrorKit(kits, s.activeBrandKitId) };
+    });
   },
 
   addUpload: (img) =>
@@ -545,6 +760,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const copy = JSON.parse(JSON.stringify(s.doc)) as Doc;
       copy.id = uid();
       copy.name = `${s.doc.name} (copia)`;
+      delete copy.isMaster; // la copia no es una segunda maestra
       copy.layers = copy.layers.map((l) => ({ ...l, id: uid() }));
       const pages = [...synced];
       pages.splice(s.pageIndex + 1, 0, copy);
@@ -591,13 +807,20 @@ export const useEditor = create<EditorState>((set, get) => ({
       scaled.width = width;
       scaled.height = height;
       scaled.name = `${cur.name} ${width}×${height}`;
-      scaled.layers = scaled.layers.map((l) => ({
-        ...l,
-        x: l.x * factor + offX,
-        y: l.y * factor + offY,
-        scaleX: l.scaleX * factor,
-        scaleY: l.scaleY * factor,
-      }));
+      delete scaled.isMaster;
+      // Con restricciones la capa se recoloca según su anclaje; sin ellas, escala y centra.
+      const oldSize = { width: cur.width, height: cur.height };
+      scaled.layers = scaled.layers.map((l) =>
+        l.constraints
+          ? resizeLayer(l, oldSize, { width, height }, layerBox2)
+          : {
+              ...l,
+              x: l.x * factor + offX,
+              y: l.y * factor + offY,
+              scaleX: l.scaleX * factor,
+              scaleY: l.scaleY * factor,
+            },
+      );
       return {
         pages: [...synced, scaled],
         doc: scaled,
@@ -607,6 +830,69 @@ export const useEditor = create<EditorState>((set, get) => ({
         past: [],
         future: [],
       };
+    }),
+
+  // Crea de una vez una página nueva por formato (mismo cálculo que
+  // addResizedPage). Devuelve cuántas creó. Un solo paso de deshacer.
+  addResizedPages: (sizes) => {
+    let created = 0;
+    set((s) => {
+      const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
+      const fresh = sizes.map((z) => resizeDocTo(s.doc, z, uid));
+      created = fresh.length;
+      if (!fresh.length) return {};
+      const pages = [...synced, ...fresh];
+      const doc = fresh[0];
+      const pageIndex = synced.length;
+      return {
+        pages,
+        doc,
+        pageIndex,
+        selectedId: null,
+        selectedIds: [],
+        past: [],
+        future: [],
+        structUndo: { pages: synced, pageIndex: s.pageIndex, docAfter: doc, pageIndexAfter: pageIndex },
+      };
+    });
+    return created;
+  },
+
+  // Sustituye todo el proyecto (restaurar una instantánea). Ctrl+Z lo revierte.
+  restorePages: (pages, index) =>
+    set((s) => {
+      if (!pages.length) return {};
+      const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
+      const pageIndex = pages[index] ? index : 0;
+      const doc = pages[pageIndex];
+      return {
+        pages,
+        doc,
+        pageIndex,
+        selectedId: null,
+        selectedIds: [],
+        past: [],
+        future: [],
+        cropMode: false,
+        cropRect: null,
+        structUndo: { pages: synced, pageIndex: s.pageIndex, docAfter: doc, pageIndexAfter: pageIndex },
+      };
+    }),
+
+  // Solo se aplica si sigue abierta la misma página y aún no hay historial nuevo.
+  restoreHistory: (past, docId) =>
+    set((s) => (s.doc.id === docId && s.past.length === 0 && past.length ? { past: past.slice(-HISTORY_LIMIT) } : {})),
+
+  setTemplateTags: (id, tags) =>
+    set((s) => {
+      const templates = s.templates.map((t) => {
+        if (t.id !== id) return t;
+        const { tags: _old, ...rest } = t;
+        void _old;
+        return tags.length ? { ...rest, tags } : rest;
+      });
+      dehydrateTemplates(templates).then((d) => idbSet('templates', d));
+      return { templates };
     }),
 
   switchPage: (i) =>
@@ -1222,6 +1508,79 @@ export const useEditor = create<EditorState>((set, get) => ({
       return commit(s, { ...s.doc, guides });
     }),
 
+  toggleNotes: () => set({ showNotes: !get().showNotes }),
+  toggleLayout: () => set({ showLayout: !get().showLayout }),
+
+  setLayoutAids: (patch) =>
+    set((s) => {
+      const next = { ...s.doc, ...patch } as Doc;
+      // Los valores vacíos se quitan del documento (queda idéntico a uno antiguo).
+      if (!next.margins) delete next.margins;
+      if (!next.bleed) delete next.bleed;
+      if (!next.columns) delete next.columns;
+      if (JSON.stringify(next) === JSON.stringify(s.doc)) return {};
+      return commit(s, next);
+    }),
+
+  addNote: () =>
+    set((s) => {
+      const notes = s.doc.notes ?? [];
+      const o = (notes.length % 8) * 24;
+      const note: StickyNote = {
+        id: uid(),
+        x: Math.round(s.doc.width * 0.05) + o,
+        y: Math.round(s.doc.height * 0.05) + o,
+        text: '',
+        color: NOTE_COLORS[0],
+      };
+      return { ...commit(s, { ...s.doc, notes: [...notes, note] }), showNotes: true };
+    }),
+
+  updateNote: (id, patch) =>
+    set((s) => {
+      const notes = s.doc.notes ?? [];
+      if (!notes.some((n) => n.id === id)) return {};
+      return commit(s, { ...s.doc, notes: notes.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
+    }),
+
+  removeNote: (id) =>
+    set((s) => {
+      const notes = (s.doc.notes ?? []).filter((n) => n.id !== id);
+      const next = { ...s.doc, notes } as Doc;
+      if (!notes.length) delete next.notes;
+      return commit(s, next);
+    }),
+
+  setSpeakerNotes: (text) =>
+    set((s) => {
+      if ((s.doc.speakerNotes ?? '') === text) return {};
+      const next = { ...s.doc, speakerNotes: text } as Doc;
+      if (!text) delete next.speakerNotes;
+      return commit(s, next);
+    }),
+
+  // Selecciona todas las capas parecidas a la dada (mismo tipo/relleno/fuente).
+  selectSimilar: (id) =>
+    set((s) => {
+      const ids = similarLayerIds(s.doc.layers, id);
+      if (!ids.length) return {};
+      return { selectedIds: ids, selectedId: id, textSel: null };
+    }),
+
+  // Pega solo el formato de `src` en la selección: un único paso de deshacer.
+  pasteStyle: (src) =>
+    set((s) => {
+      const targets = new Set(s.selectedIds.length ? s.selectedIds : s.selectedId ? [s.selectedId] : []);
+      let changed = false;
+      const layers = s.doc.layers.map((l) => {
+        if (!targets.has(l.id) || l.locked) return l;
+        changed = true;
+        return { ...l, ...stylePatch(src, l) } as Layer;
+      });
+      if (!changed) return {};
+      return commit(s, { ...s.doc, layers });
+    }),
+
   moveLayer: (id, dir) =>
     set((s) => {
       const idx = s.doc.layers.findIndex((l) => l.id === id);
@@ -1347,7 +1706,22 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   undo: () =>
     set((s) => {
-      if (s.past.length === 0) return {};
+      if (s.past.length === 0) {
+        // Sin historial de la página: deshacer una operación de proyecto entero.
+        const u = s.structUndo;
+        if (u && s.doc === u.docAfter && s.pageIndex === u.pageIndexAfter) {
+          const idx = Math.min(u.pageIndex, u.pages.length - 1);
+          return {
+            pages: u.pages,
+            doc: u.pages[idx],
+            pageIndex: idx,
+            selectedId: null,
+            selectedIds: [],
+            structUndo: null,
+          };
+        }
+        return {};
+      }
       const previous = s.past[s.past.length - 1];
       return {
         doc: previous,
@@ -1369,4 +1743,32 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   jumpToHistory: (index) =>
     set((s) => jumpInHistory(s.past, s.doc, s.future, index) ?? {}),
+
+  patchOtherPages: (edits) =>
+    set((s) => {
+      const pages = s.pages.map((pg, i) => {
+        if (i === s.pageIndex) return pg;
+        const mine = edits.filter((e) => e.page === i);
+        if (!mine.length) return pg;
+        return {
+          ...pg,
+          layers: pg.layers.map((l) => {
+            const e = mine.find((x) => x.id === l.id);
+            return e ? patchLayer(l, e.patch) : l;
+          }),
+        };
+      });
+      return { pages };
+    }),
+
+  recolorDoc: (doc, live) => set((s) => (live ? { doc } : commit(s, doc))),
+
+  recolorOtherPages: (fn) =>
+    set((s) => ({ pages: s.pages.map((pg, i) => (i === s.pageIndex ? pg : fn(pg))) })),
 }));
+
+// Las capas de la página maestra se resuelven al dibujar/exportar (core/master.ts).
+registerMasterPages(() => {
+  const s = useEditor.getState();
+  return s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
+});

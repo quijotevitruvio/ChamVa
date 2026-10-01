@@ -30,7 +30,58 @@ export interface LayerBase {
   anim?: string; // id de animación de entrada (ver animations.ts)
   animOut?: string; // id de animación de salida
   animDuration?: number; // segundos (def. 0.6)
+  folderId?: string; // carpeta de capas (solo organización: no cambia el orden de dibujo)
+  styleId?: string; // estilo de objeto compartido vinculado (Doc.styles)
+  constraints?: LayerConstraints; // cómo se recoloca al cambiar el tamaño del lienzo
 }
+
+// Restricciones al redimensionar el lienzo (ver constraints.ts).
+export type ConstraintH = 'left' | 'right' | 'center' | 'stretch' | 'scale';
+export type ConstraintV = 'top' | 'bottom' | 'center' | 'stretch' | 'scale';
+export interface LayerConstraints {
+  h: ConstraintH;
+  v: ConstraintV;
+}
+
+// Carpeta de capas (Doc.folders). Árbol por parentId; solo organiza el panel.
+export interface LayerFolder {
+  id: string;
+  name: string;
+  parentId?: string;
+  collapsed?: boolean;
+  visible?: boolean; // false = oculta (sus capas se ocultan)
+  locked?: boolean; // true = bloqueada (sus capas se bloquean)
+}
+
+// Estilo de objeto con nombre (Doc.styles): un parche de estilo reutilizable.
+export interface SharedStyle {
+  id: string;
+  name: string;
+  style: Record<string, unknown>;
+}
+
+// --- Ajustes de píxel avanzados (curvas, niveles, mezclador HSL) ---
+export type CurvePoint = [number, number]; // [entrada, salida], ambos 0..255
+export interface ToneCurves {
+  rgb?: CurvePoint[]; // curva maestra
+  r?: CurvePoint[];
+  g?: CurvePoint[];
+  b?: CurvePoint[];
+}
+export interface LevelsAdjust {
+  inBlack: number; // 0..254 (0 = neutro)
+  gamma: number; // 0.1..10 (1 = neutro; >1 aclara medios)
+  inWhite: number; // 1..255 (255 = neutro)
+  outBlack: number; // 0..255 (0 = neutro)
+  outWhite: number; // 0..255 (255 = neutro)
+}
+export type HslFamily = 'red' | 'orange' | 'yellow' | 'green' | 'aqua' | 'blue' | 'purple' | 'magenta';
+export interface HslShift {
+  h?: number; // -100..100 (±100 = ±30° de tono)
+  s?: number; // -100..100
+  l?: number; // -100..100
+}
+export type HslMix = Partial<Record<HslFamily, HslShift>>;
 
 export interface ImageAdjust {
   brightness: number; // 0..2 (1 = normal)
@@ -57,6 +108,61 @@ export interface ImageAdjust {
   grayscale?: number; // 0..100 (0 = color)
   sepia?: number; // 0..100 (0 = off)
   threshold?: number; // 0..255 (0 = off), blanco/negro puro
+  curves?: ToneCurves; // curvas de tono (undefined = off)
+  levels?: LevelsAdjust; // niveles (undefined = off)
+  hslMix?: HslMix; // mezclador por familia de color (undefined = off)
+  denoise?: number; // 0..100 (0 = off), reducir ruido de luminancia
+  denoiseColor?: number; // 0..100 (0 = off), reducir ruido de color
+  dehaze?: number; // 0..100 (0 = off), quitar neblina
+  lensDistortion?: number; // -100..100 (0 = off; + corrige barril, - corrige cojín)
+  lensVignette?: number; // 0..100 (0 = off), aclara los bordes (corrige viñeteo)
+  fx?: ImageFx; // efectos creativos y retoque (undefined = off)
+}
+
+// Efectos creativos y retoque (ver imageEffects.ts). Todo opcional; 0/undefined = apagado.
+export type FxBlend = 'screen' | 'multiply' | 'overlay' | 'softlight';
+export type FxTexture = 'paper' | 'film' | 'dust' | 'bokeh' | 'leak' | 'canvas';
+export interface RedEyePoint {
+  x: number; // 0..1 del ancho
+  y: number; // 0..1 del alto
+  r: number; // radio, fracción del lado mayor
+}
+export interface ImageFx {
+  tiltAmount?: number; // 0..100 desenfoque tilt-shift
+  tiltPos?: number; // 0..1 centro de la banda nítida (def. .5)
+  tiltWidth?: number; // 0..1 ancho de la banda (def. .25)
+  tiltVertical?: boolean; // banda vertical en vez de horizontal
+  tiltSat?: number; // 0..100 saturación extra (efecto maqueta)
+  motionDist?: number; // 0..100 desenfoque de movimiento
+  motionAngle?: number; // grados
+  radialAmount?: number; // 0..100 desenfoque radial (giro)
+  zoomAmount?: number; // 0..100 desenfoque de zoom
+  blurCx?: number; // 0..1 centro de radial/zoom (def. .5)
+  blurCy?: number;
+  chroma?: number; // 0..100 aberración cromática
+  chromaAngle?: number; // grados
+  glitch?: number; // 0..100 intensidad
+  glitchSeed?: number; // semilla entera
+  htSize?: number; // 0..40 tamaño de punto del halftone (0 = off)
+  htAngle?: number; // grados de la trama
+  htColor?: boolean; // puntos de color (si no, monocromo)
+  sketchMode?: 'pencil' | 'comic';
+  sketchAmount?: number; // 0..100 (0 = off)
+  dblSrc?: string; // imagen de la doble exposición (dataURL reducido)
+  dblMode?: FxBlend;
+  dblOpacity?: number; // 0..1
+  texKind?: FxTexture;
+  texAmount?: number; // 0..1 opacidad (0 = off)
+  texMode?: FxBlend;
+  texScale?: number; // 0.5..3
+  texSeed?: number;
+  redEyes?: RedEyePoint[];
+  skin?: number; // 0..100 suavizar piel
+  gradMap?: Gradient; // mapa de degradado
+  gradMapAmount?: number; // 0..100 (0 = off)
+  glowAmount?: number; // 0..100 resplandor (bloom)
+  glowRadius?: number; // 0..100
+  glowColor?: string; // hex; vacío = color natural
 }
 
 export const DEFAULT_ADJUST: ImageAdjust = {
@@ -83,6 +189,11 @@ export const DEFAULT_ADJUST: ImageAdjust = {
   grayscale: 0,
   sepia: 0,
   threshold: 0,
+  denoise: 0,
+  denoiseColor: 0,
+  dehaze: 0,
+  lensDistortion: 0,
+  lensVignette: 0,
 };
 
 export interface LayerShadow {
@@ -115,6 +226,24 @@ export interface ImageLayer extends LayerBase, LayerShadow {
   iconName?: string; // si viene de Iconify, permite recolorear
   chart?: ChartSpec; // gráfica reeditable (se re-renderiza a src)
   table?: TableSpec; // tabla reeditable (se re-renderiza a src)
+  reflection?: ImageReflection; // reflejo en el suelo (no destructivo)
+  castShadow?: ImageCastShadow; // sombra proyectada sobre el suelo (no destructivo)
+}
+
+// Reflejo en suelo: copia volteada bajo la capa con degradado de desvanecimiento.
+export interface ImageReflection {
+  opacity: number; // 0..1 (opacidad del reflejo en su arranque)
+  length: number; // 0.1..1 (fracción de la altura de la imagen que se ve)
+  gap: number; // separación en px (de la propia imagen) entre capa y reflejo
+}
+
+// Sombra proyectada «en el suelo»: silueta aplastada que parte de la base de la capa.
+export interface ImageCastShadow {
+  angle: number; // grados: 0 = hacia la derecha, 90 = hacia el espectador, -90 = detrás
+  length: number; // 0.1..2 (veces la altura de la imagen)
+  blur: number; // px de desenfoque
+  opacity: number; // 0..1
+  color: string;
 }
 
 export type TextTransform = 'none' | 'upper' | 'lower' | 'caps';
@@ -145,6 +274,61 @@ export interface TextLayer extends LayerBase {
   listStyle?: 'none' | 'bullet' | 'number'; // lista: viñetas / numerada
   underline?: boolean; // subrayado de todo el texto
   spans?: TextSpan[]; // estilo por palabra: solo lo que difiere de la base (richText.ts)
+  // Tipografía avanzada (typography.ts): todo opcional; sin estos campos el texto se dibuja como siempre.
+  boxWidth?: number; // ancho fijo de la caja (px): el texto salta de línea por palabras
+  boxHeight?: number; // alto fijo de la caja (px); necesario para columnas y autoajuste
+  autoFit?: boolean; // reduce/ajusta el tamaño de fuente hasta que quepa en la caja
+  fitMin?: number; // tamaño mínimo del autoajuste (def. 6)
+  fitMax?: number; // tamaño máximo del autoajuste (def. fontSize)
+  indent?: number; // sangría de la primera línea de cada párrafo (px)
+  paragraphSpacing?: number; // espacio extra entre párrafos (px)
+  dropCap?: 'none' | 'first' | 'all'; // capitular: solo el primer párrafo / todos
+  dropCapLines?: number; // alto de la capitular en líneas (2–5)
+  columns?: number; // columnas de texto (con boxWidth)
+  columnGap?: number; // separación entre columnas (px)
+  tabStops?: number[]; // paradas de tabulación (px); def. cada 4 em
+  tabLeader?: 'none' | 'dots' | 'dashes'; // relleno de la tabulación
+  fractions?: boolean; // «1/2» → «½» al dibujar
+  kerning?: Record<string, number>; // ajuste en px por pareja de letras («AV»)
+  // Efectos de texto avanzados (textFx.ts): todo opcional; sin ellos el texto se dibuja como siempre.
+  imageFill?: TextImageFill; // relleno del texto con una imagen
+  extrude?: TextExtrude; // sombra larga / extrusión 3D
+  outlines?: TextOutline[]; // contornos concéntricos (del interior al exterior, hasta 4)
+  inkTexture?: TextInk; // desgaste de tinta (ruido determinista)
+  highlight?: TextHighlight; // resaltador / subrayado / tachado de rotulador (todo el texto)
+  pathText?: TextPathCurve; // el texto sigue una curva Bézier de 4 puntos de control
+}
+
+export interface TextImageFill {
+  src: string; // dataURL de la imagen
+  fit: 'cover' | 'tile'; // cubrir el cuadro o repetir en mosaico
+  scale: number; // 1 = tamaño natural (mosaico) / ajuste exacto (cubrir)
+  x: number; // desplazamiento (px)
+  y: number;
+}
+export interface TextExtrude {
+  depth: number; // px (máx. 200)
+  angle: number; // grados (0 = derecha, 90 = abajo)
+  color: string;
+  mode: 'long' | 'solid'; // sombra larga plana / extrusión con oscurecimiento
+}
+export interface TextOutline {
+  color: string;
+  width: number; // grosor del anillo (px)
+}
+export interface TextInk {
+  amount: number; // 0..1
+  seed: number;
+}
+export interface TextHighlight {
+  color: string;
+  opacity: number; // 0..1
+  mode: 'marker' | 'underline' | 'strike';
+  thickness: number; // relativo al tamaño de fuente
+}
+export interface TextPathCurve {
+  points: { x: number; y: number }[]; // 4 puntos de control (Bézier cúbica), en el espacio de la capa
+  offset?: number; // desplazamiento del inicio del texto a lo largo del trazado (px)
 }
 
 // Texto tal cual se dibuja: aplica transformación de caja y prefijos de lista.
@@ -260,6 +444,7 @@ export interface ShapeLayer extends LayerBase, LayerShadow {
   height: number;
   fill: string;
   fillGradient?: Gradient; // si existe, sustituye a `fill`
+  strokeGradient?: Gradient; // si existe, el contorno usa este degradado en vez de `stroke`
   stroke: string;
   strokeWidth: number;
   cornerRadius: number;
@@ -300,13 +485,43 @@ export interface GradientStop {
 export interface Gradient {
   angle: number; // grados (solo lineal)
   stops: GradientStop[];
-  kind?: 'linear' | 'radial'; // por defecto lineal
+  kind?: 'linear' | 'radial' | 'conic'; // por defecto lineal
+  // Cónico (conic.ts): `angle` es el ángulo de inicio; centro como fracción 0..1 de la caja (def. 0.5).
+  cx?: number;
+  cy?: number;
+  dither?: boolean; // «Suavizar»: ruido muy sutil determinista contra las bandas
+}
+
+// Grano del fondo (grain.ts): amount 0..100, size = tamaño del grano en px del documento.
+export interface BgGrain {
+  amount: number;
+  size: number;
 }
 
 export type Background =
   | { type: 'transparent' }
-  | { type: 'solid'; color: string }
-  | { type: 'gradient'; gradient: Gradient };
+  | { type: 'solid'; color: string; grain?: BgGrain }
+  | { type: 'gradient'; gradient: Gradient; grain?: BgGrain }
+  | { type: 'pattern'; pattern: PatternSpec; grain?: BgGrain };
+
+// Patrón de fondo repetido (ver patterns.ts): color1 = fondo, color2 = motivo.
+export type PatternKind = 'dots' | 'lines' | 'grid' | 'diagonal' | 'zigzag' | 'checks' | 'waves';
+export interface PatternSpec {
+  kind: PatternKind;
+  color1: string;
+  color2: string;
+  size: number; // lado de la baldosa en px del documento
+  thickness: number; // grosor del trazo (o radio del punto) en px
+}
+
+// Nota adhesiva interna: solo se ve en el editor, no se exporta.
+export interface StickyNote {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string; // solo grises/blanco
+}
 
 export const TRANSPARENT_BG: Background = { type: 'transparent' };
 
@@ -320,6 +535,18 @@ export interface Doc {
   version: number;
   // Guías del usuario (px del documento): x = verticales, y = horizontales.
   guides?: { x: number[]; y: number[] };
+  // Ayudas de maquetación (solo editor, nunca se exportan).
+  margins?: { top: number; right: number; bottom: number; left: number };
+  bleed?: number; // sangrado en px, fuera del lienzo
+  columns?: { count: number; gutter: number; margin: number };
+  notes?: StickyNote[];
+  speakerNotes?: string; // notas del orador de esta página
+  // Colores usados en este diseño (el más reciente primero): «Colores del diseño».
+  recentColors?: string[];
+  folders?: LayerFolder[]; // carpetas de capas (organización del panel)
+  styles?: SharedStyle[]; // estilos de objeto compartidos
+  isMaster?: boolean; // esta página es una página maestra
+  masterId?: string; // id de la página maestra cuyas capas se muestran detrás (solo lectura)
 }
 
 // Calcula los puntos inicio/fin de un degradado lineal según el ángulo y el tamaño.
@@ -349,6 +576,7 @@ export interface SavedTemplate {
   name: string;
   thumb: string; // dataURL de vista previa
   doc: Doc;
+  tags?: string[]; // etiquetas propias para el buscador de plantillas
 }
 
 // Presets de tamaño de lienzo (como Canva).

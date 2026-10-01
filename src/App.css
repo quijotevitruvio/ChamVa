@@ -3187,3 +3187,40 @@ button.primary:hover:not(:disabled) {
     transition: none;
   }
 }
+
+/* ===== Tema de alto contraste (negro/blanco puros) ===== */
+:root[data-theme="contrast"] {
+  --bg: #000000;
+  --panel: #000000;
+  --panel-2: #000000;
+  --border: #ffffff;
+  --text: #ffffff;
+  --muted: #ffffff;
+  --accent: #ffffff;
+  --on-accent: #000000;
+  --canvas-bg: #000000;
+  --danger: #ff6b5e;
+  --checker-a: #ffffff;
+  --checker-b: #d9d9d6;
+  --overlay: rgba(0, 0, 0, 0.85);
+  --icon-invert: 1;
+  color-scheme: dark;
+}
+
+@media (prefers-contrast: more) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg: #000000;
+    --panel: #000000;
+    --panel-2: #000000;
+    --border: #ffffff;
+    --text: #ffffff;
+    --muted: #ffffff;
+    --accent: #ffffff;
+    --on-accent: #000000;
+    --canvas-bg: #000000;
+    --danger: #ff6b5e;
+    --overlay: rgba(0, 0, 0, 0.85);
+    --icon-invert: 1;
+    color-scheme: dark;
+  }
+}

@@ -1,0 +1,243 @@
+/* Lote y compartir, informe de recursos y cola de exportación.
+   Plano, solo variables del tema. */
+
+/* ---- Panel de la cola ---- */
+.eq-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 900;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.eq-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.eq-job {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.eq-head + .eq-job {
+  border-top: 0;
+  padding-top: 0;
+}
+.eq-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.eq-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eq-state,
+.eq-detail {
+  color: var(--muted);
+}
+.eq-job.error .eq-state {
+  color: var(--danger);
+}
+.eq-cancel,
+.eq-x {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.eq-x {
+  border-color: transparent;
+  padding: 2px 6px;
+}
+.eq-cancel:hover,
+.eq-x:hover {
+  background: var(--panel-2);
+}
+.eq-bar {
+  height: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.eq-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.12s;
+}
+.eq-bar.indet i {
+  width: 30%;
+  animation: eq-slide 1s linear infinite;
+}
+@keyframes eq-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+/* ---- Diálogo ---- */
+.bs-card {
+  width: min(560px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bs-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.bs-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.bs-tabs button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.bs-tabs button:hover {
+  background: var(--panel-2);
+}
+.bs-tabs button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.bs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.bs-row select,
+.bs-row input[type='number'] {
+  width: 140px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.bs-row input[type='range'] {
+  width: 140px;
+}
+.bs-drop {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.bs-drop:hover,
+.bs-drop.over {
+  background: var(--panel-2);
+}
+.bs-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.bs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bs-actions button {
+  flex: 1 1 auto;
+}
+.bs-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.bs-list li {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bs-list li:last-child {
+  border-bottom: 0;
+}
+.bs-list li span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bs-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bs-sec h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+.bs-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.bs-colors span {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.bs-issue.aviso {
+  color: var(--text);
+}
+.bs-issue.info {
+  color: var(--muted);
+}
+.bs-issue b {
+  font-weight: 600;
+}

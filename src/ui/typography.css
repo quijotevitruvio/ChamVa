@@ -1,0 +1,42 @@
+/* Tipografía avanzada del texto (TextTypography). Plano, sin sombras, con las variables del tema. */
+.ty .ty-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 4px 0;
+}
+.ty .ty-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ty .ty-grid input,
+.ty .ty-grid select,
+.ty > select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ty .ty-values {
+  word-break: break-word;
+}
+.ty .ty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0;
+}
+.ty .ty-chip {
+  font-size: 12px;
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ty .ty-chip:hover {
+  background: var(--panel-2);
+}

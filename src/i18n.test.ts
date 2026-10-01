@@ -16,3 +16,15 @@ describe('i18n', () => {
     setLang('es');
   });
 });
+
+describe('idiomas importados', () => {
+  it('valida y rechaza JSON malo', async () => {
+    const { parseLangPack, slugLang } = await import('./i18n');
+    expect(parseLangPack('no json').ok).toBe(false);
+    expect(parseLangPack('[]').ok).toBe(false);
+    expect(parseLangPack('{"__nombre":"X"}').ok).toBe(false);
+    const r = parseLangPack('{"__nombre":"Français","Descargar":"Télécharger"}');
+    expect(r.ok && r.code).toBe('x-francais');
+    expect(slugLang('')).toBe('x-idioma');
+  });
+});

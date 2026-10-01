@@ -8,6 +8,7 @@ import {
   type ResolvedStyle,
   type TextSpan,
 } from '../core/richText';
+import { SymbolPicker } from '../../ui/SymbolPicker';
 import { useEditor } from '../state/store';
 
 // Editor de texto EN el lienzo (como Canva). Es un div contentEditable colocado
@@ -32,7 +33,8 @@ function toHtml(l: TextLayer): string {
       chars[j].bold === st.bold &&
       chars[j].italic === st.italic &&
       chars[j].underline === st.underline &&
-      chars[j].color === st.color
+      chars[j].color === st.color &&
+      chars[j].script === st.script
     ) {
       chunk += l.text[j];
       j++;
@@ -43,7 +45,8 @@ function toHtml(l: TextLayer): string {
     if (st.underline !== base.underline)
       css.push(`text-decoration:${st.underline ? 'underline' : 'none'}`);
     if (st.color !== base.color) css.push(`color:${st.color}`);
-    const inner = esc(chunk).replace(/\n/g, '<br>');
+    let inner = esc(chunk).replace(/\n/g, '<br>');
+    if (st.script) inner = `<${st.script}>${inner}</${st.script}>`; // superíndice / subíndice
     html += css.length ? `<span style="${css.join(';')}">${inner}</span>` : inner;
     i = j;
   }
@@ -71,7 +74,7 @@ function serialize(root: HTMLElement, base: ResolvedStyle) {
       styles.push(st);
     }
   };
-  const walk = (node: Node, underline: boolean) => {
+  const walk = (node: Node, underline: boolean, script?: 'sup' | 'sub') => {
     if (node.nodeType === Node.TEXT_NODE) {
       const el = node.parentElement ?? root;
       const cs = getComputedStyle(el);
@@ -81,6 +84,7 @@ function serialize(root: HTMLElement, base: ResolvedStyle) {
         italic: cs.fontStyle === 'italic' || cs.fontStyle.startsWith('oblique'),
         underline,
         color: rgbToHex(cs.color),
+        ...(script ? { script } : {}),
       });
       return;
     }
@@ -97,7 +101,13 @@ function serialize(root: HTMLElement, base: ResolvedStyle) {
       if (node.tagName === 'U' || deco.includes('underline')) ul = true;
       else if (deco === 'none' && node.style.textDecoration === 'none') ul = false;
     }
-    node.childNodes.forEach((c) => walk(c, ul));
+    let sc = script;
+    if (node !== root) {
+      const va = node.style.verticalAlign;
+      if (node.tagName === 'SUP' || va === 'super') sc = 'sup';
+      else if (node.tagName === 'SUB' || va === 'sub') sc = 'sub';
+    }
+    node.childNodes.forEach((c) => walk(c, ul, sc));
   };
   walk(root, base.underline);
   // El <br> de relleno final no es contenido real.
@@ -203,6 +213,13 @@ export function InlineTextEditor({ layer, left, top, scale, onDone }: Props) {
         <button title="Subrayado (Ctrl+U)" onClick={() => exec('underline')}>
           <u>U</u>
         </button>
+        <button title="Superíndice (Ctrl+.)" onClick={() => exec('superscript')}>
+          x²
+        </button>
+        <button title="Subíndice (Ctrl+,)" onClick={() => exec('subscript')}>
+          x₂
+        </button>
+        <SymbolPicker onPick={(sym) => exec('insertText', sym)} />
         {colors.map((c) => (
           <button
             key={c}
@@ -242,6 +259,8 @@ export function InlineTextEditor({ layer, left, top, scale, onDone }: Props) {
           textAlign: layer.align,
           textTransform: (transformMap[layer.textTransform] ?? 'none') as 'none',
           padding: pad,
+          // Caja de ancho fijo: el editor también salta de línea (sin columnas ni capitular).
+          ...(layer.boxWidth ? { width: layer.boxWidth, whiteSpace: 'pre-wrap' as const, boxSizing: 'content-box' as const } : {}),
           background: bg ? layer.effectColor ?? '#000000' : 'transparent',
           borderRadius: bg ? layer.fontSize * 0.2 : 0,
           outlineWidth: 2 / Math.max(0.05, scale * layer.scaleX),
@@ -254,6 +273,10 @@ export function InlineTextEditor({ layer, left, top, scale, onDone }: Props) {
           } else if (e.key === 'Enter') {
             e.preventDefault();
             document.execCommand('insertLineBreak');
+          } else if ((e.ctrlKey || e.metaKey) && (e.key === '.' || e.key === ',')) {
+            // Superíndice / subíndice con Ctrl+. y Ctrl+,
+            e.preventDefault();
+            exec(e.key === '.' ? 'superscript' : 'subscript');
           }
         }}
         onKeyUp={saveRange}

@@ -3,6 +3,8 @@ import type { ImageLayer } from '../editor/core/types';
 import { inpaintCanvas } from '../ai/inpaint';
 import { toast } from './toast';
 import { t } from '../i18n';
+import { isPalm, penIsRecent, pressureFactor } from '../editor/canvas/gestures';
+import { setPenPressure, usePenPressure } from './tabletMode';
 
 type Mode = 'erase' | 'restore' | 'magic';
 
@@ -33,6 +35,10 @@ export function MaskEditor({
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
   const magicPainted = useRef(false);
+  // Lápiz: presión del trazo actual (1 con ratón/dedo) y rechazo de palma.
+  const pressure = useRef(1);
+  const lastPen = useRef(0);
+  const penPressure = usePenPressure();
   // Historial de trazos (deshacer): instantáneas de ambos lienzos.
   const undoStack = useRef<{ work: ImageData; overlay: ImageData }[]>([]);
   const baseSize = useRef<{ w: number; h: number } | null>(null);
@@ -95,14 +101,16 @@ export function MaskEditor({
     y: number,
     r: number,
   ) => {
-    const g = ctx.createRadialGradient(x, y, r * hardness, x, y, r);
+    // Con poca presión el borde también se suaviza.
+    const hard = hardness * (0.5 + 0.5 * pressure.current);
+    const g = ctx.createRadialGradient(x, y, r * hard, x, y, r);
     g.addColorStop(0, 'rgba(0,0,0,1)');
     g.addColorStop(1, 'rgba(0,0,0,0)');
     return g;
   };
 
   const dab = (x: number, y: number) => {
-    const r = size / 2;
+    const r = Math.max(0.5, (size / 2) * pressure.current);
     if (mode === 'magic') {
       const ctx = overlayRef.current!.getContext('2d')!;
       ctx.fillStyle = 'rgba(255,40,40,0.5)';
@@ -184,6 +192,18 @@ export function MaskEditor({
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (busy || e.button !== 0) return;
+    if (e.pointerType === 'pen') lastPen.current = performance.now();
+    // Rechazo de palma: con el lápiz en uso se ignoran los toques anchos.
+    if (
+      isPalm({
+        pointerType: e.pointerType,
+        width: e.width,
+        height: e.height,
+        penRecent: penIsRecent(lastPen.current, performance.now()),
+      })
+    )
+      return;
+    pressure.current = pressureFactor(e.pointerType, e.pressure, penPressure);
     snapshot();
     drawing.current = true;
     last.current = null;
@@ -191,7 +211,9 @@ export function MaskEditor({
     strokeTo(x, y);
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'pen') lastPen.current = performance.now();
     if (!drawing.current) return;
+    pressure.current = pressureFactor(e.pointerType, e.pressure, penPressure);
     const { x, y } = toCoords(e.clientX, e.clientY);
     strokeTo(x, y);
   };
@@ -288,6 +310,10 @@ export function MaskEditor({
             onChange={(e) => setHardness(Number(e.target.value))}
           />
           <span>{Math.round(hardness * 100)}%</span>
+        </label>
+        <label className="mask-size" title="Con lápiz, el grosor y la dureza responden a la presión">
+          <input type="checkbox" checked={penPressure} onChange={(e) => setPenPressure(e.target.checked)} />
+          {t('Presión del lápiz')}
         </label>
         <div className="mask-zoom">
           <button onClick={() => zoomBy(1 / 1.5)} title="Alejar">−</button>

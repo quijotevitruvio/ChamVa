@@ -1,0 +1,244 @@
+/* Ayudas de lienzo: popover de maquetación, notas adhesivas, notas del orador,
+   patrones de fondo. Plano, solo grises, variables del proyecto. */
+.lp-pop {
+  position: fixed;
+  z-index: 60;
+  width: 264px;
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  font-size: 12px;
+}
+.lp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lp-pop h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.lp-pop h5 {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.lp-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.lp-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.lp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.lp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+}
+.lp-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+.lp-foot {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.lp-reset {
+  flex: 1;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lp-reset:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+.lp-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ---- Notas adhesivas (solo editor) ---- */
+.sn-layer {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.sn-note {
+  position: absolute;
+  width: 168px;
+  pointer-events: auto;
+  border: 1px solid #8a8a8a;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  color: #111;
+}
+.sn-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.sn-bar:active {
+  cursor: grabbing;
+}
+.sn-grip {
+  flex: 1;
+  font-size: 10px;
+  letter-spacing: 1px;
+  opacity: 0.55;
+}
+.sn-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid #555;
+  padding: 0;
+  cursor: pointer;
+}
+.sn-x {
+  background: transparent;
+  border: none;
+  color: #111;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.sn-text {
+  background: transparent;
+  color: #111;
+  border: none;
+  resize: vertical;
+  min-height: 54px;
+  padding: 5px 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-family: inherit;
+  outline: none;
+}
+
+/* ---- Notas del orador ---- */
+.sp-panel {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  padding: 6px 12px 8px;
+}
+.sp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.sp-text {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 64px;
+  max-height: 30vh;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.present-notes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 56px;
+  max-height: 34vh;
+  overflow: auto;
+  margin: 0 auto;
+  width: min(880px, 92vw);
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 18px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* ---- Patrones de fondo ---- */
+.pp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.pp-kind {
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  background-color: var(--panel-2);
+  background-repeat: repeat;
+  transition: border-color 0.12s;
+}
+.pp-kind:hover {
+  border-color: var(--muted);
+}
+.pp-kind.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.pp-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pp-ctl span {
+  min-width: 62px;
+}
+.pp-ctl input[type='range'] {
+  flex: 1;
+}
+.pp-ctl input[type='color'] {
+  width: 32px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+}

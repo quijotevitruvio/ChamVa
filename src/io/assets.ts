@@ -137,7 +137,7 @@ export async function rehydrateTemplates(list: SavedTemplate[]): Promise<SavedTe
 // Borra las imágenes que ya no referencia nada (autosave, copias, galería de
 // diseños, subidos, plantillas). Se llama de vez en cuando, nunca en caliente.
 
-function collectRefs(value: unknown, into: Set<string>) {
+export function collectRefs(value: unknown, into: Set<string>) {
   if (typeof value === 'string') {
     if (isAssetRef(value)) into.add(value);
   } else if (Array.isArray(value)) {
@@ -147,11 +147,18 @@ function collectRefs(value: unknown, into: Set<string>) {
   }
 }
 
+// Claves de IndexedDB que referencian imágenes. 'brandKitLogos' (logos de todos
+// los kits de marca) sustituye a 'brandLogos' (kit único anterior, que se
+// sigue leyendo por si aún no se migró).
+export const GC_KEYS = ['autosave', 'autosave.history', 'designs', 'snapshots', 'uploads', 'templates', 'brandLogos', 'brandKitLogos', 'autoVersions'];
+
 export async function gcAssets(): Promise<number> {
   const live = new Set<string>();
-  for (const key of ['autosave', 'autosave.history', 'designs', 'uploads', 'templates', 'brandLogos']) {
+  for (const key of GC_KEYS) {
     collectRefs(await idbGet(key), live);
   }
+  // Historial de deshacer persistido (io/undoStore.ts): una clave `undo:<diseño>` por diseño.
+  for (const key of await idbKeys('undo:')) collectRefs(await idbGet(key), live);
   const keys = await idbKeys(PREFIX);
   let removed = 0;
   for (const k of keys) {

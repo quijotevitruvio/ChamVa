@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, type ReactElement } from 'react';
+import { useFxImagesVersion } from './useFxImages';
 import { Image as KonvaImage, Shape as KonvaShape } from 'react-konva';
 import type Konva from 'konva';
 import type { ImageLayer } from '../core/types';
@@ -6,6 +7,7 @@ import { useImage } from './useImage';
 import { useEditor } from '../state/store';
 import { needsProcessing, processImage } from '../core/imageProcessing';
 import { shapePath } from '../core/shapes';
+import { drawGroundFx, hasGroundFx } from '../core/groundFx';
 
 // Resolución máxima de la vista previa del editor (la exportación usa resolución completa).
 const PREVIEW_MAX = 2048;
@@ -20,6 +22,9 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
   const clickSelect = useEditor((s) => s.clickSelect);
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
+  const fxRef = useRef<Konva.Shape>(null); // reflejo / sombra proyectada (se mueve con la capa)
+
+  const fxVersion = useFxImagesVersion(layer.adjust); // recalcula cuando llega la imagen de la doble exposición
 
   // Imagen con filtros/volteo aplicados (se recalcula solo si cambian esos campos).
   const rendered = useMemo<CanvasImageSource | null>(() => {
@@ -34,6 +39,7 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     layer.flipY,
     layer.naturalWidth,
     layer.naturalHeight,
+    fxVersion,
   ]);
 
   if (!rendered || !layer.visible) return null;
@@ -62,6 +68,9 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     // Doble clic: entrar a un elemento suelto de un grupo.
     onDblClick: () => selectLayer(layer.id),
     onDblTap: () => selectLayer(layer.id),
+    onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
+      if (fxRef.current) fxRef.current.position({ x: e.target.x(), y: e.target.y() });
+    },
     onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) =>
       updateLayer(layer.id, { x: e.target.x(), y: e.target.y() }),
     onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {
@@ -76,9 +85,36 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     },
   };
 
+  // Reflejo en suelo / sombra proyectada: nodo propio bajo la imagen (no interactivo).
+  const fxNode = hasGroundFx(layer) ? (
+    <KonvaShape
+      ref={fxRef}
+      x={layer.x}
+      y={layer.y}
+      scaleX={layer.scaleX}
+      scaleY={layer.scaleY}
+      rotation={layer.rotation}
+      opacity={layer.opacity}
+      listening={false}
+      sceneFunc={(ctx) => {
+        const c = (ctx as any)._context as CanvasRenderingContext2D;
+        drawGroundFx(c, rendered, w, h, layer.maskShape, layer);
+      }}
+    />
+  ) : null;
+  const withFx = (main: ReactElement) =>
+    fxNode ? (
+      <>
+        {fxNode}
+        {main}
+      </>
+    ) : (
+      main
+    );
+
   // Con máscara: recorta la imagen a una forma (marco).
   if (layer.maskShape) {
-    return (
+    return withFx(
       <KonvaShape
         {...common}
         width={w}
@@ -97,11 +133,9 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
           ctx.closePath();
           ctx.fillStrokeShape(node);
         }}
-      />
+      />,
     );
   }
 
-  return (
-    <KonvaImage {...common} image={rendered} width={w} height={h} />
-  );
+  return withFx(<KonvaImage {...common} image={rendered} width={w} height={h} />);
 }

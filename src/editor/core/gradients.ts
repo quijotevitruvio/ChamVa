@@ -4,6 +4,11 @@ import { gradientPoints, type Gradient, type GradientStop } from './types';
 // el lienzo (Konva), al exportar a imagen (canvas 2D), a SVG y en CSS.
 
 export const isRadial = (g: Gradient) => g.kind === 'radial';
+export const isConicGradient = (g: Gradient) => g.kind === 'conic';
+const conicCenterOf = (g: Gradient, w: number, h: number) => ({
+  x: Math.max(0, Math.min(1, g.cx ?? 0.5)) * w,
+  y: Math.max(0, Math.min(1, g.cy ?? 0.5)) * h,
+});
 
 // ---------- colores con alfa ----------
 
@@ -99,7 +104,12 @@ export function gradientFromColor(color: string): Gradient {
 
 export function canvasGradient(ctx: CanvasRenderingContext2D, g: Gradient, w: number, h: number): CanvasGradient {
   let grad: CanvasGradient;
-  if (isRadial(g)) {
+  const conic = (ctx as CanvasRenderingContext2D & { createConicGradient?: (a: number, x: number, y: number) => CanvasGradient })
+    .createConicGradient;
+  if (isConicGradient(g) && typeof conic === 'function') {
+    const c = conicCenterOf(g, w, h);
+    grad = conic.call(ctx, (g.angle * Math.PI) / 180, c.x, c.y);
+  } else if (isRadial(g)) {
     grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(1, Math.hypot(w, h) / 2));
   } else {
     const p = gradientPoints(g.angle, w, h);
@@ -136,6 +146,7 @@ export function konvaGradientProps(g: Gradient, w: number, h: number) {
 
 /** <linearGradient>/<radialGradient> con el id dado, en coordenadas de usuario de w×h. */
 export function svgGradientDef(id: string, g: Gradient, w: number, h: number): string {
+  if (isConicGradient(g)) return svgConicPattern(id, g, w, h);
   const stops = sortStops(g.stops)
     .map((s) => {
       const p = parseColor(s.color);
@@ -151,11 +162,35 @@ export function svgGradientDef(id: string, g: Gradient, w: number, h: number): s
   return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${p.x0}" y1="${p.y0}" x2="${p.x1}" y2="${p.y1}">${stops}</linearGradient>`;
 }
 
+/** SVG no tiene degradado cónico: se rasteriza a un <pattern> con <image> (declarado en la exportación). */
+function svgConicPattern(id: string, g: Gradient, w: number, h: number): string {
+  const k = Math.min(1, 1024 / Math.max(1, w, h));
+  const pw = Math.max(1, Math.round(w * k));
+  const ph = Math.max(1, Math.round(h * k));
+  let href = '';
+  if (typeof document !== 'undefined') {
+    const c = document.createElement('canvas');
+    c.width = pw;
+    c.height = ph;
+    const cx = c.getContext('2d');
+    if (cx) {
+      cx.fillStyle = canvasGradient(cx, g, pw, ph);
+      cx.fillRect(0, 0, pw, ph);
+      href = c.toDataURL('image/png');
+    }
+  }
+  return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${w}" height="${h}"><image width="${w}" height="${h}" preserveAspectRatio="none" href="${href}"/></pattern>`;
+}
+
 // ---------- CSS (vistas previas) ----------
 
 export function gradientCss(g: Gradient): string {
   const stops = sortStops(g.stops)
     .map((s) => `${s.color} ${Math.round(s.offset * 100)}%`)
     .join(', ');
+  if (isConicGradient(g)) {
+    const c = conicCenterOf(g, 100, 100);
+    return `conic-gradient(from ${g.angle + 90}deg at ${c.x}% ${c.y}%, ${stops})`;
+  }
   return isRadial(g) ? `radial-gradient(circle, ${stops})` : `linear-gradient(${g.angle + 90}deg, ${stops})`;
 }

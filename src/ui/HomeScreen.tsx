@@ -4,6 +4,7 @@ import { APP_VERSION } from '../branding';
 import type { SavedDesign } from '../io/designs';
 import { PURPOSES } from '../editor/core/purposes';
 import { Icon } from './Icon';
+import { DesignFolders } from './DesignFolders';
 import { t } from '../i18n';
 
 interface Props {
@@ -13,7 +14,8 @@ interface Props {
   onContinue: () => void;
   onEditVideo: () => void;
   onOpenDesign: (d: SavedDesign) => void;
-  onRemoveDesign: (id: string) => void;
+  // La biblioteca (carpetas, etiquetas, papelera) modifica la lista guardada.
+  onDesignsChange: (list: SavedDesign[]) => void;
   onSettings: () => void;
 }
 
@@ -28,7 +30,7 @@ export function HomeScreen({
   onContinue,
   onEditVideo,
   onOpenDesign,
-  onRemoveDesign,
+  onDesignsChange,
   onSettings,
 }: Props) {
   const [group, setGroup] = useState<(typeof GROUPS)[number]>('Redes sociales');
@@ -109,29 +111,7 @@ export function HomeScreen({
           <p className="home-sub" style={{ marginTop: 20 }}>
             {t('Diseños recientes')}
           </p>
-          <div className="home-designs">
-            {designs.map((d) => (
-              <div
-                key={d.id}
-                className="home-design"
-                onClick={() => onOpenDesign(d)}
-                title={`${d.name} — ${new Date(d.updatedAt).toLocaleString()}`}
-              >
-                <img src={d.thumb} alt={d.name} />
-                <span className="home-design-name">{d.name}</span>
-                <button
-                  className="upload-del"
-                  title="Quitar de recientes"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveDesign(d.id);
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
+          <DesignFolders designs={designs} onChange={onDesignsChange} onOpen={onOpenDesign} />
         </>
       )}
 

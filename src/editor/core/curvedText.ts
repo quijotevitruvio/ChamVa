@@ -1,6 +1,7 @@
 import type { TextLayer } from './types';
 import { runFont, styledLines, type ResolvedStyle } from './richText';
 import { runUsesGradient, textCanvasGradient, type PointMap } from './textGradient';
+import { buildArcTable, drawTextWithFx, hasPathText, hasTextFx, pathBox, pointAtLength, type FxPass } from './textFx';
 
 export interface CurvedMetrics {
   width: number;
@@ -34,6 +35,7 @@ export function measureCurved(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
 ): CurvedMetrics {
+  if (hasPathText(layer)) return pathBox(layer.pathText!.points, layer.fontSize); // texto sobre trazado
   const total = charWidths(ctx, layer, curvedChars(layer)).reduce((a, b) => a + b, 0);
   const arc = (Math.abs(layer.curve ?? 0) * Math.PI) / 180;
   const fs = layer.fontSize;
@@ -55,6 +57,22 @@ export function drawCurvedText(
   width: number,
   height: number = measureCurved(ctx, layer).height,
 ) {
+  if (!hasTextFx(layer)) {
+    drawCurvedBase(ctx, layer, width, height);
+    return;
+  }
+  // Efectos avanzados (textFx.ts): el dibujo normal se envuelve en varias pasadas.
+  drawTextWithFx(ctx, layer, { width, height }, (c, pass) => drawCurvedBase(c, layer, width, height, pass));
+}
+
+// `pass` (textFx.ts): pasada plana de un efecto (un color, contorno dado).
+function drawCurvedBase(
+  ctx: CanvasRenderingContext2D,
+  layer: TextLayer,
+  width: number,
+  height: number,
+  pass?: FxPass,
+) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const chars = curvedChars(layer);
@@ -70,15 +88,48 @@ export function drawCurvedText(
     : null;
   const drawChar = (ch: CurvedChar, x: number, y: number) => {
     ctx.font = runFont(layer, ch.st);
-    ctx.fillStyle = grad && runUsesGradient(layer, ch.st.color) ? grad(toLocal) : ch.st.color;
-    if (layer.strokeWidth > 0) {
-      ctx.strokeStyle = layer.strokeColor;
-      ctx.lineWidth = layer.strokeWidth;
+    ctx.fillStyle = pass ? pass.color : grad && runUsesGradient(layer, ch.st.color) ? grad(toLocal) : ch.st.color;
+    const sw = pass ? pass.strokeWidth : layer.strokeWidth;
+    if (sw > 0) {
+      ctx.strokeStyle = pass ? pass.color : layer.strokeColor;
+      ctx.lineWidth = sw;
       ctx.lineJoin = 'round';
       ctx.strokeText(ch.c, x, y);
     }
     ctx.fillText(ch.c, x, y);
   };
+
+  // Texto sobre trazado libre (Bézier de 4 puntos): cada letra va sobre la curva,
+  // apoyada en la línea base y girada con la tangente.
+  if (hasPathText(layer)) {
+    const pt = layer.pathText!;
+    const table = buildArcTable(pt.points);
+    ctx.textBaseline = 'alphabetic';
+    let start = pt.offset ?? 0;
+    if (layer.align === 'center') start += (table.length - total) / 2;
+    else if (layer.align === 'right') start += table.length - total;
+    let s = start;
+    for (let i = 0; i < chars.length; i++) {
+      const p = pointAtLength(table, s + widths[i] / 2);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      {
+        // Inversa de translate(p)·rotate(ángulo): del cuadro al espacio local de la letra.
+        const cos = Math.cos(-p.angle);
+        const sin = Math.sin(-p.angle);
+        toLocal = (px, py) => {
+          const dx = px - p.x;
+          const dy = py - p.y;
+          return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+        };
+      }
+      drawChar(chars[i], 0, 0);
+      ctx.restore();
+      s += widths[i];
+    }
+    return;
+  }
 
   const arc = (Math.abs(curveDeg) * Math.PI) / 180;
   if (arc < 0.01) {

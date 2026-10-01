@@ -35,6 +35,9 @@ function getWorker(): Worker {
     const p = pending.get(id);
     if (!p) return;
     if (typeof progress === 'number') {
+      // Aviso global para la insignia «todo local» (ui/LocalBadge.tsx).
+      if (String(stage ?? '').startsWith('fetch'))
+        window.dispatchEvent(new CustomEvent('chamva:net', { detail: { downloading: progress < 1 } }));
       p.onProgress?.(progress, stage ?? '');
       return;
     }
@@ -63,7 +66,29 @@ function failAll(err: Error) {
 // Cancela cualquier trabajo de IA en curso (el próximo uso re-crea el worker,
 // pero los modelos ya descargados siguen en la caché del navegador).
 export function cancelAI() {
+  epoch++;
   failAll(new Error('cancelado'));
+}
+
+// Cada cancelAI() sube la época: un trabajo que ya corría en el hilo principal
+// (reintento sin worker, que no se puede terminar) ignora su resultado y
+// termina como «cancelado». También acepta un AbortSignal opcional.
+let epoch = 0;
+async function cancelable<T>(run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (signal?.aborted) throw new Error('cancelado');
+  const started = epoch;
+  const onAbort = () => cancelAI();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const out = await run();
+    if (epoch !== started) throw new Error('cancelado');
+    return out;
+  } catch (e) {
+    if (epoch !== started) throw new Error('cancelado');
+    throw e;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 function call<T>(
@@ -88,10 +113,14 @@ function blobToDataURL(blob: Blob): Promise<string> {
 
 // --- API pública (misma forma que los módulos originales) ---
 
-export async function removeImageBackground(
+export function removeImageBackground(
   src: string,
-  options: BgOptions = {},
+  options: BgOptions & { signal?: AbortSignal } = {},
 ): Promise<string> {
+  return cancelable(() => removeBgImpl(src, options), options.signal);
+}
+
+async function removeBgImpl(src: string, options: BgOptions): Promise<string> {
   const { quality = 'modnet', edges = 'auto', onProgress } = options;
   try {
     const { blob } = await call<{ blob: Blob }>(
@@ -110,10 +139,15 @@ export async function removeImageBackground(
   }
 }
 
-export async function upscaleImage(
+export function upscaleImage(
   src: string,
   onProgress?: Progress,
+  signal?: AbortSignal,
 ): Promise<UpscaleResult> {
+  return cancelable(() => upscaleImpl(src, onProgress), signal);
+}
+
+async function upscaleImpl(src: string, onProgress?: Progress): Promise<UpscaleResult> {
   let result: UpscaleResult;
   try {
     const { blob, width, height } = await call<{
@@ -182,10 +216,15 @@ async function restoreAlpha(
   return { dataUrl: out.toDataURL('image/png'), width, height };
 }
 
-export async function prefetchBgModel(
+export function prefetchBgModel(
   onProgress?: Progress,
   quality: BgQuality = 'modnet',
+  signal?: AbortSignal,
 ): Promise<void> {
+  return cancelable(() => prefetchBgImpl(onProgress, quality), signal);
+}
+
+async function prefetchBgImpl(onProgress: Progress | undefined, quality: BgQuality): Promise<void> {
   try {
     await call({ op: 'prefetchBg', quality }, onProgress);
   } catch (e) {
@@ -195,9 +234,14 @@ export async function prefetchBgModel(
   }
 }
 
-export async function prefetchUpscaleModel(
+export function prefetchUpscaleModel(
   onProgress?: Progress,
+  signal?: AbortSignal,
 ): Promise<void> {
+  return cancelable(() => prefetchUpImpl(onProgress), signal);
+}
+
+async function prefetchUpImpl(onProgress?: Progress): Promise<void> {
   try {
     await call({ op: 'prefetchUp' }, onProgress);
   } catch (e) {

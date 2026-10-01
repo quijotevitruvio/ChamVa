@@ -1,5 +1,8 @@
 import type { Background, Doc } from '../editor/core/types';
 import { downloadBlob } from './export';
+import { normalizeLayoutFields } from '../editor/core/layout';
+import { normalizePattern } from '../editor/core/patterns';
+import { normalizeOrganization } from '../editor/core/organize';
 
 // Extensión propia (JSON por dentro). Permite asociar la app a estos archivos
 // en Windows (doble clic → abrir en ChamVa). Los .chamva.json antiguos siguen
@@ -18,13 +21,16 @@ function normalizeBackground(doc: Doc): Doc {
   if (typeof bg === 'string') doc.background = { type: 'solid', color: bg };
   else if (!bg || typeof bg !== 'object')
     doc.background = { type: 'transparent' } as Background;
+  if (doc.background.type === 'pattern')
+    doc.background = { type: 'pattern', pattern: normalizePattern(doc.background.pattern) };
+  normalizeLayoutFields(doc);
   const g = (doc as { guides?: unknown }).guides as { x?: unknown; y?: unknown } | undefined;
   if (g && typeof g === 'object') {
     const nums = (a: unknown) =>
       Array.isArray(a) ? a.filter((n): n is number => typeof n === 'number' && isFinite(n)) : [];
     doc.guides = { x: nums(g.x), y: nums(g.y) };
   } else delete doc.guides;
-  return doc;
+  return normalizeOrganization(doc);
 }
 
 export function saveProject(pages: Doc[], pageIndex: number) {
@@ -58,30 +64,13 @@ export function parseProject(text: string): Project {
   return { kind: 'chamva-project', version: 2, pageIndex, pages };
 }
 
-export function readProjectFile(file: File): Promise<Project> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error);
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result as string);
-        let pages: Doc[];
-        let pageIndex = 0;
-        if (data && data.kind === 'chamva-project' && Array.isArray(data.pages)) {
-          pages = data.pages;
-          pageIndex = data.pageIndex ?? 0;
-        } else if (data && Array.isArray(data.layers)) {
-          // Formato antiguo: un solo documento.
-          pages = [data as Doc];
-        } else {
-          throw new Error('Archivo de proyecto inválido');
-        }
-        pages = pages.map(normalizeBackground);
-        resolve({ kind: 'chamva-project', version: 2, pageIndex, pages });
-      } catch (e) {
-        reject(e);
-      }
-    };
-    reader.readAsText(file);
-  });
+// Abre un .chamva: ZIP portátil (se detecta por la firma) o JSON (formato clásico).
+export async function readProjectFile(file: File): Promise<Project> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const { isZip } = await import('./zipRead');
+  if (isZip(bytes)) {
+    const { portableBytesToJson } = await import('./portableProject');
+    return parseProject(portableBytesToJson(bytes));
+  }
+  return parseProject(new TextDecoder().decode(bytes));
 }

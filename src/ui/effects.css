@@ -1,0 +1,97 @@
+/* Efectos creativos y retoque (plano, solo variables del tema) */
+.fx-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fx-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.fx-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.fx-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.fx-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fx-presets button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.fx-grad {
+  width: 48px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.fx-thumbs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.fx-thumb {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.fx-thumb:hover {
+  border-color: var(--accent);
+}
+.fx-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.fx-redeye {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fx-redeye-stage {
+  position: relative;
+  width: 100%;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px;
+  border: 1px solid var(--border);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.fx-redeye-stage canvas,
+.fx-redeye-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.fx-redeye-stage svg {
+  pointer-events: none;
+}
+.fx-redeye-stage circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}

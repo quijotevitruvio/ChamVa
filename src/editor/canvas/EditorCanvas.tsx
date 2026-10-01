@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Stage,
   Layer,
@@ -12,7 +12,7 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditor } from '../state/store';
-import { konvaGradientProps } from '../core/gradients';
+import { GradientBg, GrainBg } from './BackgroundFx';
 import { animTotalFor, layerAnimAt } from '../core/animations';
 import { getCheckerboard } from './useImage';
 import { ImageLayerNode } from './ImageLayerNode';
@@ -20,8 +20,19 @@ import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
 import { InlineTextEditor } from './InlineTextEditor';
 import { Rulers } from './Rulers';
+import { StickyNotes } from './StickyNotes';
+import { MasterBackdrop } from './MasterBackdrop';
+import { BeforeAfterSlider } from '../../ui/BeforeAfterSlider';
+import { RespectZone } from '../../ui/RespectZone';
+import { columnBands, hasMargins, layoutSnapTargets } from '../core/layout';
+import { renderPatternTile } from '../core/patterns';
 import { computeSnap, gridStepFor, snapToStep } from './snap';
 import { loadImageFile } from '../../io/import';
+import { useTouchGestures } from './useTouchGestures';
+import { dragCacheRatio, isHeavyLayer } from './gestures';
+import { Minimap } from './Minimap';
+import { useMinimapOn, useSaveMode } from '../../ui/tabletMode';
+import '../../ui/touch.css';
 import type { Layer as DocLayer } from '../core/types';
 
 // ¿El punto (en coordenadas del documento) cae dentro de la capa? Tiene en
@@ -65,6 +76,8 @@ export function EditorCanvas() {
   const showGrid = useEditor((s) => s.showGrid);
   const showGuides = useEditor((s) => s.showGuides);
   const snapToGrid = useEditor((s) => s.snapToGrid);
+  const showLayout = useEditor((s) => s.showLayout);
+  const showNotes = useEditor((s) => s.showNotes);
   const setGuidesDoc = useEditor((s) => s.setGuides);
   const animPlayNonce = useEditor((s) => s.animPlayNonce);
   const textEditNonce = useEditor((s) => s.textEditNonce);
@@ -96,8 +109,9 @@ export function EditorCanvas() {
   const panDrag = useRef<{ x: number; y: number; sl: number; st: number } | null>(
     null,
   );
-  // Pinch para zoom en pantallas táctiles.
-  const pinchDist = useRef<number | null>(null);
+  // Gestos táctiles (pellizco/giro/paneo con dos dedos, toques de 2 y 3 dedos, palma).
+  const saveMode = useSaveMode();
+  const minimapOn = useMinimapOn();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -134,7 +148,9 @@ export function EditorCanvas() {
     const node = e.target as Konva.Node;
     const id = findLayerId(node);
     const selectedIds = useEditor.getState().selectedIds;
+    cacheHeavy(node);
     if (id && selectedIds.length > 1 && selectedIds.includes(id)) {
+      selectedIds.forEach((x) => cacheHeavy(nodeRefs.current.get(x)));
       beginBatch();
       groupDrag.current = {
         startX: node.x(),
@@ -180,6 +196,12 @@ export function EditorCanvas() {
       tX.push(b.x, b.x + b.width / 2, b.x + b.width);
       tY.push(b.y, b.y + b.height / 2, b.y + b.height);
     });
+    // Márgenes y bordes de columna (solo si se ven) también son destino del imán.
+    if (showLayout) {
+      const lt = layoutSnapTargets(doc);
+      tX.push(...lt.x);
+      tY.push(...lt.y);
+    }
     const snap = computeSnap({
       box,
       targetsX: tX,
@@ -296,7 +318,7 @@ export function EditorCanvas() {
     }
     const box = node.getClientRect();
     const r = stage.container().getBoundingClientRect();
-    setSelRect({ left: r.left + box.x, top: r.top + box.y, width: box.width });
+    setSelRect({ left: r.left + box.x, top: r.top + box.y, width: box.width, height: box.height });
   }, [selectedId, cropMode, setSelRect]);
 
   useEffect(() => {
@@ -311,6 +333,62 @@ export function EditorCanvas() {
       window.removeEventListener('scroll', updateSelRect, true);
     };
   }, [updateSelRect]);
+
+  useTouchGestures(containerRef, nodeRefs, updateSelRect);
+
+  // Vista previa ligera: mientras se arrastra/transforma una capa con efectos
+  // costosos se dibuja una copia en caché de baja resolución (clearCache al soltar).
+  const cachedNodes = useRef<Set<Konva.Node>>(new Set());
+  const cacheHeavy = (node: Konva.Node | undefined | null) => {
+    if (!node || cachedNodes.current.has(node)) return;
+    const id = findLayerId(node);
+    const l = id ? useEditor.getState().doc.layers.find((x) => x.id === id) : null;
+    if (!l || !isHeavyLayer(l)) return;
+    try {
+      node.cache({ pixelRatio: dragCacheRatio(scale) });
+      cachedNodes.current.add(node);
+    } catch {
+      /* caja vacía o sin tamaño: se dibuja normal */
+    }
+  };
+  const uncacheAll = () => {
+    if (!cachedNodes.current.size) return;
+    cachedNodes.current.forEach((n) => {
+      try {
+        n.clearCache();
+        n.getLayer()?.batchDraw();
+      } catch {
+        /* nodo ya destruido */
+      }
+    });
+    cachedNodes.current.clear();
+  };
+
+  // Modo ahorro: resolución 1× en el lienzo y sin sombras de nodo mientras se edita
+  // (la exportación no se ve afectada: no usa estos nodos).
+  const wasSaving = useRef(false);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const dpr = window.devicePixelRatio || 1;
+    stage.getLayers().forEach((ly) => {
+      const c = ly.getCanvas();
+      if (c.getPixelRatio() !== (saveMode ? 1 : dpr)) c.setPixelRatio(saveMode ? 1 : dpr);
+    });
+    stage.batchDraw();
+  }, [saveMode, showGrid, showLayout, showGuides, scale, doc.width, doc.height]);
+  useEffect(() => {
+    if (saveMode) {
+      nodeRefs.current.forEach((n) => (n as Konva.Shape).shadowEnabled(false));
+    } else if (wasSaving.current) {
+      nodeRefs.current.forEach((n, id) => {
+        const l = doc.layers.find((x) => x.id === id);
+        if (l && 'shadow' in l) (n as Konva.Shape).shadowEnabled(!!l.shadow);
+      });
+    }
+    wasSaving.current = saveMode;
+    stageRef.current?.batchDraw();
+  }, [saveMode, doc.layers]);
 
   // Previsualizar animaciones de entrada (manipula los nodos directamente).
   useEffect(() => {
@@ -482,6 +560,31 @@ export function EditorCanvas() {
     ctx.strokeShape(shape);
   };
 
+  // Patrón de fondo: baldosa a la resolución de pantalla (nítida al acercar).
+  const bgPattern = doc.background.type === 'pattern' ? doc.background.pattern : null;
+  const patternKey = bgPattern ? JSON.stringify(bgPattern) : '';
+  const patternK = Math.min(4, Math.max(1, Math.ceil(scale * (window.devicePixelRatio || 1))));
+  const patternTile = useMemo(
+    () => (bgPattern ? renderPatternTile(bgPattern, patternK) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [patternKey, patternK],
+  );
+
+  // Ayudas de maquetación (solo editor): márgenes, columnas y sangrado.
+  const layoutBands = useMemo(
+    () => (doc.columns ? columnBands(doc.width, doc.columns) : []),
+    [doc.columns, doc.width],
+  );
+  const bleedPx = showLayout && doc.bleed ? Math.round(doc.bleed * scale) : 0;
+
+  // Origen del lienzo dentro del área de scroll (para las notas adhesivas).
+  const [origin, setOrigin] = useState({ left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const c = stageRef.current?.container();
+    if (c && (c.offsetLeft !== origin.left || c.offsetTop !== origin.top))
+      setOrigin({ left: c.offsetLeft, top: c.offsetTop });
+  });
+
   const setStageCursor = (c: string) => {
     const el = stageRef.current?.container();
     if (el) el.style.cursor = c;
@@ -619,20 +722,6 @@ export function EditorCanvas() {
           containerRef.current?.releasePointerCapture(e.pointerId);
         }
       }}
-      onTouchMove={(e) => {
-        // Pinch con dos dedos = zoom.
-        if (e.touches.length !== 2) return;
-        e.preventDefault();
-        const [a, b] = [e.touches[0], e.touches[1]];
-        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-        if (pinchDist.current !== null && pinchDist.current > 0) {
-          setZoom(zoom * (d / pinchDist.current));
-        }
-        pinchDist.current = d;
-      }}
-      onTouchEnd={() => {
-        pinchDist.current = null;
-      }}
     >
       <Stage
         ref={stageRef}
@@ -644,9 +733,19 @@ export function EditorCanvas() {
           // Click en vacío = deseleccionar.
           if (e.target === e.target.getStage()) selectLayer(null);
         }}
+        onTap={(e) => {
+          // Tocar fuera de las capas deselecciona.
+          if (e.target === e.target.getStage()) selectLayer(null);
+        }}
+        onDblTap={(e) => {
+          // Doble toque en vacío: alternar entre ajustar y acercar.
+          if (e.target !== e.target.getStage()) return;
+          setZoom(useEditor.getState().zoom > 1.05 ? 1 : 2);
+        }}
         onDragStart={onStageDragStart}
         onDragMove={onStageDragMove}
         onDragEnd={() => {
+          uncacheAll();
           if (groupDrag.current) {
             groupDrag.current.others.forEach((o) =>
               updateLayer(o.id, { x: o.node.x(), y: o.node.y() }),
@@ -657,7 +756,17 @@ export function EditorCanvas() {
           setGuides({ vx: [], hy: [] });
           setDists([]);
         }}
-        style={{ margin: 'auto', outline: '1px solid rgba(128,128,128,0.45)' }}
+        style={
+          bleedPx
+            ? {
+                // Sangrado: banda tenue fuera del lienzo con borde discontinuo (solo editor).
+                margin: 'auto',
+                boxShadow: `0 0 0 1px rgba(128,128,128,0.45), 0 0 0 ${bleedPx}px rgba(128,128,128,0.16)`,
+                outline: '1px dashed rgba(128,128,128,0.8)',
+                outlineOffset: bleedPx,
+              }
+            : { margin: 'auto', outline: '1px solid rgba(128,128,128,0.45)' }
+        }
       >
         <Layer listening={false}>
           {/* Tablero de transparencia siempre de base (se ve a través del alfa) */}
@@ -674,17 +783,24 @@ export function EditorCanvas() {
               fill={doc.background.color}
             />
           )}
+          {patternTile && (
+            <Rect
+              width={doc.width}
+              height={doc.height}
+              fillPatternImage={patternTile.canvas as unknown as HTMLImageElement}
+              fillPatternRepeat="repeat"
+              fillPatternScale={{ x: patternTile.ps, y: patternTile.ps }}
+            />
+          )}
           {doc.background.type === 'gradient' &&
             (() => {
               const g = doc.background.gradient;
-              return (
-                <Rect
-                  width={doc.width}
-                  height={doc.height}
-                  {...konvaGradientProps(g, doc.width, doc.height)}
-                />
-              );
+              return <GradientBg g={g} w={doc.width} h={doc.height} />;
             })()}
+          {doc.background.type !== 'transparent' && doc.background.grain && (
+            <GrainBg grain={doc.background.grain} w={doc.width} h={doc.height} />
+          )}
+          <MasterBackdrop />
         </Layer>
         <Layer>
           {doc.layers.map((layer) => {
@@ -719,11 +835,15 @@ export function EditorCanvas() {
             rotateEnabled
             keepRatio={false}
             onTransformStart={() => {
+              transformerRef.current?.nodes().forEach((n) => cacheHeavy(n));
               if ((transformerRef.current?.nodes().length ?? 0) > 1) beginBatch();
             }}
             onTransformEnd={() => {
               // Los nodos reciben su transformend después: cerrar el lote luego.
-              setTimeout(endBatch, 0);
+              setTimeout(() => {
+                uncacheAll();
+                endBatch();
+              }, 0);
             }}
             borderStroke="#111111"
             borderStrokeWidth={1}
@@ -847,6 +967,26 @@ export function EditorCanvas() {
             <Shape sceneFunc={drawGrid(true)} stroke="rgba(128,128,128,0.7)" strokeWidth={1} strokeScaleEnabled={false} />
           </Layer>
         )}
+        {showLayout && (hasMargins(doc.margins) || layoutBands.length > 0) && (
+          <Layer listening={false}>
+            {layoutBands.map((b, i) => (
+              <Rect key={`c${i}`} x={b.x} y={0} width={b.w} height={doc.height} fill="rgba(128,128,128,0.13)" />
+            ))}
+            {hasMargins(doc.margins) && (
+              <Rect
+                x={doc.margins.left}
+                y={doc.margins.top}
+                width={Math.max(0, doc.width - doc.margins.left - doc.margins.right)}
+                height={Math.max(0, doc.height - doc.margins.top - doc.margins.bottom)}
+                stroke="rgba(128,128,128,0.9)"
+                strokeWidth={1}
+                strokeScaleEnabled={false}
+                dash={[6, 4]}
+              />
+            )}
+          </Layer>
+        )}
+        <RespectZone />
         {showGuides && (
           <Layer>
             {(['x', 'y'] as const).flatMap((axis) =>
@@ -898,6 +1038,10 @@ export function EditorCanvas() {
         )}
       </Stage>
 
+      {showNotes && <StickyNotes scale={scale} origin={origin} />}
+      <BeforeAfterSlider nodeRefs={nodeRefs} />
+
+
       {editingTextId &&
         editorPos &&
         (() => {
@@ -922,6 +1066,7 @@ export function EditorCanvas() {
           );
         })()}
     </div>
+      {minimapOn && <Minimap areaRef={containerRef} doc={doc} scale={scale} />}
     </div>
   );
 }

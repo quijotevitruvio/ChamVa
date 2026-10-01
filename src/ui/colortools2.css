@@ -1,0 +1,69 @@
+/* Herramientas de color 2: contraste, daltonismo, paletas, escala tonal. Plano, sin sombras. */
+.cb-picker .seg { flex-wrap: wrap; }
+.cb-badge {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 900;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cb-badge button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 11px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.cc-pair { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
+.cc-pair label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.cc-pair input[type='color'] { width: 26px; height: 22px; padding: 0; border: 1px solid var(--border); background: none; }
+.cc-sample {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 15px;
+  line-height: 1.2;
+}
+.cc-ratio { font-size: 18px; font-weight: 600; margin-right: 8px; }
+.cc-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 2px 8px; font-size: 12px; margin: 4px 0 6px; }
+.cc-grid .ok { color: var(--text); font-weight: 600; }
+.cc-grid .no { color: var(--muted); text-decoration: line-through; }
+.cc-fix { display: flex; align-items: center; gap: 6px; font-size: 12px; flex-wrap: wrap; }
+.cc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--text);
+}
+.cc-badge.bad { border-color: var(--danger); color: var(--danger); }
+.cp-names { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.cp-tonal { display: flex; }
+.cp-tonal .cp-swatch { flex: 1; width: auto; min-width: 0; border-radius: 0; }
+.cp-tonal-labels { display: flex; font-size: 9px; color: var(--muted); }
+.cp-tonal-labels span { flex: 1; text-align: center; }
+.cp-moods input { width: 100%; box-sizing: border-box; }
+.cp-moods-row { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; align-items: center; }
+.cp-io textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font: 11px/1.3 monospace;
+  resize: vertical;
+}
+.cp-io-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.cp-sub { font-size: 11px; color: var(--muted); margin: 6px 0 3px; }

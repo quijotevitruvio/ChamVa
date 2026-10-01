@@ -1,0 +1,225 @@
+/* ===== Interfaz y accesibilidad: tooltips, tamaño, concentración, contraste ===== */
+
+/* ---- Tooltip propio ---- */
+.tip-layer {
+  position: fixed;
+  z-index: 100000;
+  max-width: 260px;
+  transform: translateY(6px);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.tip-layer.above {
+  transform: translateY(calc(-100% - 6px));
+}
+.tip-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tip-head b {
+  font-weight: 600;
+}
+.tip-head kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.85;
+}
+.tip-desc {
+  margin-top: 2px;
+  opacity: 0.8;
+}
+.tip-wrap {
+  display: contents;
+}
+
+/* ---- Tamaño de la interfaz: solo barras y paneles, nunca el lienzo ---- */
+.toolbar,
+.rail,
+.rail-panel,
+.props,
+.page-bar,
+.settings-card {
+  zoom: var(--ui-scale, 1);
+}
+.scale-set input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.scale-preview {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 6px 0;
+  overflow: hidden;
+}
+.scale-preview > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform-origin: left center;
+}
+.scale-preview button {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+/* ---- Modo concentración: solo el lienzo ---- */
+html[data-focus] .toolbar,
+html[data-focus] .rail,
+html[data-focus] .rail-panel,
+html[data-focus] .props,
+html[data-focus] .page-bar {
+  display: none !important;
+}
+.focus-pill {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9000;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.12s;
+}
+.focus-pill:hover,
+.focus-pill:focus-visible {
+  opacity: 1;
+  color: var(--text);
+}
+
+/* ---- Insignia «todo local» ---- */
+.local-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.local-badge i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.local-badge.busy {
+  color: var(--text);
+}
+.local-badge.busy i {
+  background: var(--text);
+  animation: local-pulse 1s ease-in-out infinite;
+}
+@keyframes local-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ---- Editor de atajos ---- */
+.sc-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.sc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.sc-label {
+  flex: 1;
+  font-size: 13px;
+}
+.sc-row kbd,
+.sc-editor kbd {
+  font: inherit;
+  font-size: 12px;
+  min-width: 56px;
+  text-align: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+.sc-row kbd.listening {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.lang-actions {
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.crash-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- Alto contraste: bordes de 2 px y foco muy visible ---- */
+html[data-theme='contrast'] :where(
+    button,
+    input,
+    select,
+    textarea,
+    .toolbar,
+    .rail,
+    .rail-panel,
+    .props,
+    .page-bar,
+    .settings-card,
+    .dropdown,
+    .seg,
+    .crash-card,
+    .tip-layer,
+    .scale-preview
+  ) {
+  border-width: 2px;
+}
+html[data-theme='contrast'] :focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+html[data-theme='contrast'] button:hover:not(:disabled),
+html[data-theme='contrast'] a:hover {
+  text-decoration: underline;
+}
+html[data-theme='contrast'] .tip-layer {
+  border: 2px solid #000;
+  outline: 2px solid #fff;
+}
+html[data-theme='contrast'] ::placeholder {
+  color: #fff;
+  opacity: 0.8;
+}
+@media (prefers-contrast: more) {
+  html:not([data-theme='light']):not([data-theme='dark']) :where(button, input, select, textarea, .toolbar, .rail, .rail-panel, .props, .page-bar, .settings-card, .dropdown, .seg) {
+    border-width: 2px;
+  }
+  html:not([data-theme='light']):not([data-theme='dark']) :focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+  }
+}

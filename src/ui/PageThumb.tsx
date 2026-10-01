@@ -1,13 +1,21 @@
 import { useEffect, useRef } from 'react';
 import type { Doc } from '../editor/core/types';
 import { renderDocToCanvas } from '../io/export';
+import { useEditor } from '../editor/state/store';
+import { masterRevision } from '../editor/core/master';
 
 // Miniatura de una página en la barra inferior.
 // Se recalcula solo cuando cambia la "firma" (versión / nº de capas / tamaño),
 // no en cada arrastre en vivo, para no recargar imágenes constantemente.
 export function PageThumb({ doc }: { doc: Doc }) {
   const ref = useRef<HTMLImageElement>(null);
-  const sig = `${doc.version}-${doc.layers.length}-${doc.width}x${doc.height}-${doc.background.type}`;
+  // Si usa una página maestra, la miniatura se rehace cuando cambia la maestra.
+  const mrev = useEditor((s) => {
+    if (!doc.masterId) return 0;
+    const m = s.doc.id === doc.masterId ? s.doc : s.pages.find((p) => p.id === doc.masterId);
+    return m ? masterRevision(m) : 0;
+  });
+  const sig = `${doc.version}-${doc.layers.length}-${doc.width}x${doc.height}-${doc.background.type}-${mrev}`;
 
   useEffect(() => {
     let cancelled = false;

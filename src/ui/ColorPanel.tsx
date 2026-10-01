@@ -3,16 +3,55 @@ import { useEditor } from '../editor/state/store';
 import { toast } from './toast';
 import { TRANSPARENT_BG, type Gradient } from '../editor/core/types';
 import { GradientEditor } from './GradientEditor';
+import { PatternPicker } from './PatternPicker';
+import { BackgroundExtras } from './BackgroundExtras';
 import { ScreenPicker } from './ScreenPicker';
-import { extractPalette, harmonies, HARMONY_LABELS } from '../editor/core/colorTools';
+import { extractPalette, harmonies, HARMONY_LABELS, tonalScale, TONAL_STEPS } from '../editor/core/colorTools';
+import { colorName } from '../editor/core/colorNames';
+import { moodPalette, surpriseMood, type MoodResult } from '../editor/core/moods';
+import {
+  exportPalette,
+  parsePalette,
+  PALETTE_EXPORTS,
+  type PaletteExportFormat,
+} from '../editor/core/paletteIO';
+import { downloadBlob } from '../io/export';
+import { ContrastChecker } from './ContrastChecker';
+import { ColorBlindPicker } from './ColorBlindView';
 import './colortools.css';
+import './colortools2.css';
 import { gradientFromColor } from '../editor/core/gradients';
 import {
   PRESET_SOLIDS,
   PRESET_GRADIENTS,
+  GRADIENT_GROUPS,
   gradientToCss,
   resolveColor,
 } from '../editor/core/palette';
+
+// Colores y degradados guardados con nombre (localStorage `chamva.savedFills`).
+const LS_SAVED = 'chamva.savedFills';
+interface SavedFill {
+  name: string;
+  color?: string;
+  gradient?: Gradient;
+}
+function loadSaved(): SavedFill[] {
+  try {
+    const raw = localStorage.getItem(LS_SAVED);
+    const v = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v.filter((x) => x && (x.color || x.gradient)) : [];
+  } catch {
+    return [];
+  }
+}
+function persistSaved(list: SavedFill[]) {
+  try {
+    localStorage.setItem(LS_SAVED, JSON.stringify(list));
+  } catch {
+    /* noop */
+  }
+}
 
 // #rrggbb / #rrggbbaa / rgba(...) → {r,g,b}
 function hexToRgb(color: string): { r: number; g: number; b: number } | null {
@@ -59,6 +98,15 @@ export function ColorPanel({
   const [harmBase, setHarmBase] = useState<string | null>(null); // null = color del fondo
   const [photoColors, setPhotoColors] = useState<string[]>([]);
   const selectedId = useEditor((s) => s.selectedId);
+  const [saved, setSaved] = useState<SavedFill[]>(loadSaved);
+  const [saveName, setSaveName] = useState('');
+  const [moodText, setMoodText] = useState('');
+  const [moodVar, setMoodVar] = useState(0);
+  const [mood, setMood] = useState<MoodResult | null>(null);
+  const [ioText, setIoText] = useState('');
+  const [imported, setImported] = useState<string[]>([]);
+  const [exportSrc, setExportSrc] = useState<'brand' | 'doc'>('brand');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const bg = doc.background;
   const currentSolid = bg.type === 'solid' ? toHex6(bg.color) : '#ffffff';
@@ -172,6 +220,88 @@ export function ColorPanel({
     }
   };
 
+  // «Colores del diseño»: los del documento actual primero, luego los globales recientes.
+  const designColors = useMemo(() => {
+    const own = doc.recentColors ?? [];
+    return [...own, ...recentColors.filter((c) => !own.includes(c))].slice(0, 16);
+  }, [doc.recentColors, recentColors]);
+
+  const curColor = bg.type === 'solid' ? toHex6(bg.color) : null;
+
+  // Guardar el color/degradado actual con nombre.
+  const saveCurrent = () => {
+    if (bg.type === 'transparent' || bg.type === 'pattern') return;
+    const name = saveName.trim() || (bg.type === 'solid' ? colorName(toHex6(bg.color)) : 'Degradado');
+    const item: SavedFill = bg.type === 'solid' ? { name, color: bg.color } : { name, gradient: bg.gradient };
+    const list = [item, ...saved].slice(0, 48);
+    setSaved(list);
+    persistSaved(list);
+    setSaveName('');
+    toast(`Guardado «${name}»`, 'success');
+  };
+  const removeSaved = (i: number) => {
+    const list = saved.filter((_, j) => j !== i);
+    setSaved(list);
+    persistSaved(list);
+  };
+
+  const tonal = useMemo(() => tonalScale(harmSeed), [harmSeed]);
+
+  const runMood = (text: string, v: number) => {
+    setMood(text.trim() ? moodPalette(text, v) : surpriseMood());
+  };
+  const doSurprise = () => {
+    const r = surpriseMood();
+    setMood(r);
+    setMoodText(r.name);
+    setMoodVar(0);
+  };
+
+  // Colores del diseño para exportar: fondo, recientes del documento y rellenos de capas.
+  const docPalette = (): string[] => {
+    const out: string[] = [];
+    const add = (c: unknown) => {
+      if (typeof c !== 'string' || !c) return;
+      const h = toHex6(c);
+      if (!out.includes(h)) out.push(h);
+    };
+    if (bg.type === 'solid') add(bg.color);
+    (doc.recentColors ?? []).forEach(add);
+    doc.layers.forEach((l) => add((l as { fill?: unknown }).fill));
+    return out;
+  };
+  const doExport = async (fmt: PaletteExportFormat) => {
+    const colors = exportSrc === 'brand' ? brandColors : docPalette();
+    if (colors.length === 0) {
+      toast(exportSrc === 'brand' ? 'El kit de marca está vacío.' : 'El diseño no tiene colores.', 'info');
+      return;
+    }
+    const info = PALETTE_EXPORTS[fmt];
+    const name = exportSrc === 'brand' ? 'Kit de marca' : doc.name || 'Diseño';
+    const text = exportPalette(colors, fmt, name);
+    const base = name.replace(/[^\w-]+/g, '_');
+    await downloadBlob(new Blob([text], { type: info.mime }), `${base}.${info.ext}`);
+  };
+  const doImport = (text: string) => {
+    const r = parsePalette(text);
+    if (r.colors.length === 0) {
+      toast('No encontré colores válidos (GPL, CSS, JSON o hex).', 'error');
+      return;
+    }
+    setImported(r.colors);
+    toast(`${r.colors.length} colores leídos${r.name ? ` de «${r.name}»` : ''}`, 'success');
+  };
+  const onFile = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      const t = await f.text();
+      setIoText(t.slice(0, 200000));
+      doImport(t);
+    } catch {
+      toast('No se pudo leer el archivo.', 'error');
+    }
+  };
+
   return (
     <div className={embedded ? 'color-panel embedded' : 'color-panel'}>
       {picker && (
@@ -228,6 +358,7 @@ export function ColorPanel({
           <GradientEditor value={bg.gradient} onChange={(g) => setBackground({ type: 'gradient', gradient: g })} />
         </section>
       )}
+      <BackgroundExtras />
 
       <div className="cp-search">
         <input
@@ -266,11 +397,16 @@ export function ColorPanel({
           {bg.type === 'solid' && (
             <span
               className="cp-swatch big sel"
-              title={toHex6(bg.color)}
+              title={`${colorName(toHex6(bg.color))} ${toHex6(bg.color)}`}
               style={{ background: bg.color }}
             />
           )}
         </div>
+        {curColor && (
+          <p className="cp-names">
+            {colorName(curColor)} · {curColor}
+          </p>
+        )}
 
         <label className="cp-alpha">
           <span>Transparencia</span>
@@ -301,16 +437,16 @@ export function ColorPanel({
         </label>
       </section>
 
-      {recentColors.length > 0 && (
+      {designColors.length > 0 && (
         <section className="cp-sec">
           <h4>Colores del diseño</h4>
           <div className="cp-grid">
-            {recentColors.map((c) => (
+            {designColors.map((c) => (
               <button
                 key={c}
                 className="cp-swatch"
                 style={{ background: c }}
-                title={c}
+                title={`${colorName(c)} ${c}`}
                 onClick={() => pickSolid(c)}
               />
             ))}
@@ -398,6 +534,119 @@ export function ColorPanel({
         ))}
       </section>
 
+      <section className="cp-sec">
+        <h4>Escala tonal de {colorName(harmSeed).toLowerCase()}</h4>
+        <div className="cp-tonal">
+          {tonal.map((c, i) => (
+            <button
+              key={c + i}
+              className="cp-swatch"
+              style={{ background: c }}
+              title={`${TONAL_STEPS[i]} · ${c} — clic derecho para copiar`}
+              onClick={() => pickSolid(c)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                copyHex(c);
+              }}
+            />
+          ))}
+        </div>
+        <div className="cp-tonal-labels">
+          {TONAL_STEPS.map((n) => (
+            <span key={n}>{n}</span>
+          ))}
+        </div>
+        <button className="cp-mini" type="button" style={{ marginTop: 4 }} onClick={() => copyHex(tonal.join(' '))}>
+          copiar hex
+        </button>
+      </section>
+
+      <section className="cp-sec cp-moods">
+        <h4>Paletas por palabra</h4>
+        <input
+          placeholder='"atardecer", "bosque", "café", "playa"…'
+          value={moodText}
+          onChange={(e) => setMoodText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              setMoodVar(0);
+              runMood(moodText, 0);
+            }
+          }}
+        />
+        <div className="cp-moods-row">
+          <button
+            className="cp-mini"
+            type="button"
+            onClick={() => {
+              setMoodVar(0);
+              runMood(moodText, 0);
+            }}
+          >
+            Generar
+          </button>
+          <button className="cp-mini" type="button" onClick={doSurprise}>
+            Sorpréndeme
+          </button>
+          {mood && (
+            <button
+              className="cp-mini"
+              type="button"
+              onClick={() => {
+                const v = moodVar + 1;
+                setMoodVar(v);
+                setMood(moodPalette(moodText || mood.name, v));
+              }}
+            >
+              Otra variación
+            </button>
+          )}
+        </div>
+        {mood && (
+          <>
+            <p className="cp-sub">
+              {mood.name}
+              {mood.known ? '' : ' (paleta inventada)'}
+            </p>
+            <div className="cp-grid">
+              {mood.colors.map((c, i) => (
+                <button
+                  key={c + i}
+                  className="cp-swatch"
+                  style={{ background: c }}
+                  title={`${colorName(c)} ${c} — clic derecho para copiar`}
+                  onClick={() => pickSolid(c)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    copyHex(c);
+                  }}
+                />
+              ))}
+              <button
+                className="cp-mini"
+                type="button"
+                onClick={() => {
+                  mood.colors.forEach((c) => addBrandColor(c));
+                  toast('Paleta añadida al kit de marca', 'success');
+                }}
+              >
+                + al kit
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="cp-sec">
+        <h4>Contraste</h4>
+        <ContrastChecker onApplyBg={(hex) => pickSolid(hex)} />
+      </section>
+
+      <section className="cp-sec">
+        <h4>Simular daltonismo</h4>
+        <ColorBlindPicker />
+      </section>
+
       {photoColors.length > 0 && (
         <section className="cp-sec">
           <h4>Colores de tu foto</h4>
@@ -446,7 +695,140 @@ export function ColorPanel({
             />
           ))}
         </div>
+        {GRADIENT_GROUPS.map((grp) => (
+          <div key={grp.name}>
+            <p className="cp-sub">{grp.name}</p>
+            <div className="cp-grid">
+              {grp.items.map((g, i) => (
+                <button
+                  key={i}
+                  className="cp-swatch"
+                  title={grp.name}
+                  style={{ background: gradientToCss(g) }}
+                  onClick={() => pickGradient(g)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </section>
+
+      <section className="cp-sec">
+        <h4>Guardados</h4>
+        <div className="cp-harm-row">
+          <input
+            placeholder="Nombre (opcional)"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && saveCurrent()}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            className="cp-mini"
+            type="button"
+            disabled={bg.type === 'transparent'}
+            onClick={saveCurrent}
+            title="Guardar el color o degradado actual del fondo"
+          >
+            Guardar actual
+          </button>
+        </div>
+        {saved.length === 0 ? (
+          <p className="cp-empty">Guarda aquí tus colores y degradados favoritos.</p>
+        ) : (
+          <div className="cp-grid">
+            {saved.map((f, i) => (
+              <button
+                key={i}
+                className="cp-swatch"
+                style={{ background: f.gradient ? gradientToCss(f.gradient) : f.color }}
+                title={`${f.name} — clic derecho para quitar`}
+                onClick={() =>
+                  f.gradient ? setBackground({ type: 'gradient', gradient: f.gradient }) : f.color && pickSolid(f.color)
+                }
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  removeSaved(i);
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="cp-sec cp-io">
+        <h4>Importar y exportar paletas</h4>
+        <textarea
+          placeholder="Pega aquí hex, variables CSS, JSON o un .gpl de GIMP"
+          value={ioText}
+          onChange={(e) => setIoText(e.target.value)}
+        />
+        <div className="cp-io-row">
+          <button className="cp-mini" type="button" onClick={() => doImport(ioText)}>
+            Leer colores
+          </button>
+          <button className="cp-mini" type="button" onClick={() => fileRef.current?.click()}>
+            Abrir archivo…
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".gpl,.css,.json,.txt,.hex,text/*,application/json"
+            hidden
+            onChange={(e) => {
+              onFile(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        {imported.length > 0 && (
+          <>
+            <div className="cp-grid" style={{ marginTop: 6 }}>
+              {imported.map((c) => (
+                <button
+                  key={c}
+                  className="cp-swatch"
+                  style={{ background: c }}
+                  title={`${colorName(c)} ${c}`}
+                  onClick={() => pickSolid(c)}
+                />
+              ))}
+            </div>
+            <div className="cp-io-row">
+              <button
+                className="cp-mini"
+                type="button"
+                onClick={() => {
+                  imported.forEach((c) => addBrandColor(c));
+                  toast(`${imported.length} colores añadidos al kit`, 'success');
+                }}
+              >
+                Añadir todos al kit
+              </button>
+              <button className="cp-mini" type="button" onClick={() => setImported([])}>
+                Limpiar
+              </button>
+            </div>
+          </>
+        )}
+        <p className="cp-sub">Exportar</p>
+        <div className="seg" role="group" aria-label="Origen de la paleta">
+          <button className={exportSrc === 'brand' ? 'on' : ''} onClick={() => setExportSrc('brand')}>
+            Kit de marca
+          </button>
+          <button className={exportSrc === 'doc' ? 'on' : ''} onClick={() => setExportSrc('doc')}>
+            Este diseño
+          </button>
+        </div>
+        <div className="cp-io-row">
+          {(Object.keys(PALETTE_EXPORTS) as PaletteExportFormat[]).map((f) => (
+            <button key={f} className="cp-mini" type="button" onClick={() => doExport(f)}>
+              {PALETTE_EXPORTS[f].label}
+            </button>
+          ))}
+        </div>
+      </section>
+      <PatternPicker />
     </div>
   );
 }

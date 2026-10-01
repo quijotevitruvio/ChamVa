@@ -7,8 +7,10 @@ import './fonts.css';
 import './view.css';
 import './support.css';
 import { applyTheme } from './theme';
+import { registerServiceWorker } from './io/pwa';
 
 applyTheme();
+registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

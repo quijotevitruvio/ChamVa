@@ -1,8 +1,10 @@
+import { RecolorWithPalette } from './BrandKitPanel';
 import { FillControl } from './GradientEditor';
+import { ContrastBadge } from './ContrastChecker';
 import { toHex6 } from '../editor/core/gradients';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useEditor } from '../editor/state/store';
-import { FONT_FAMILIES, SHAPE_OPTIONS, type Gradient, type Layer, type TextLayer } from '../editor/core/types';
+import { SHAPE_OPTIONS, type Gradient, type Layer, type TextLayer } from '../editor/core/types';
 import { isStrokeOnly } from '../editor/core/shapes';
 import { toggleTarget, resolveCharStyles } from '../editor/core/richText';
 import { ANIMATIONS } from '../editor/core/animations';
@@ -11,9 +13,22 @@ import { loadImageFile } from '../io/import';
 import { BG_ENGINES } from '../ai/bgcore';
 import { cancelAI, type BgQuality, type EdgeMode } from '../ai/worker-client';
 import { AdjustPanel } from './AdjustPanel';
+import { ImageGeoTools } from './ImageGeoTools';
+import { ReflectionSection } from './ReflectionSection';
 import { toast } from './toast';
 import { t } from '../i18n';
+import { FontPicker, MissingFontNotice } from './FontPicker';
+import { SymbolPicker } from './SymbolPicker';
+import { TextTypography } from './TextTypography';
+import { TextEffectsPlus } from './TextEffectsPlus';
+import { openFindReplace } from './FindReplace';
+import { textStats, formatReadingTime } from '../editor/core/textSearch';
+import { loremText, type LoremKind } from '../editor/core/loremText';
+import './texttools.css';
 import './props-extra.css';
+import { StrokeGradient } from './StrokeGradient';
+import { SharedStyles } from './SharedStyles';
+import { Constraints } from './Constraints';
 
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] as const;
 const BLEND_LABEL: Record<(typeof BLEND_MODES)[number], string> = {
@@ -66,6 +81,16 @@ function Section({
   );
 }
 
+// Contador de palabras/caracteres y tiempo de lectura (200 ppm) bajo el cuadro de texto.
+function TextStatsLine({ text }: { text: string }) {
+  const s = textStats(text);
+  return (
+    <p className="tt-stats">
+      {s.words} {t('palabras')} · {s.chars} {t('caracteres')} · {t('lectura')} {formatReadingTime(s.readingSeconds)}
+    </p>
+  );
+}
+
 interface Props {
   bgBusy: boolean;
   bgMsg: string;
@@ -107,8 +132,6 @@ export function PropertiesPanel(p: Props) {
   const duplicateLayer = useEditor((s) => s.duplicateLayer);
   const removeLayer = useEditor((s) => s.removeLayer);
   const removeSelected = useEditor((s) => s.removeSelected);
-  const customFonts = useEditor((s) => s.customFonts);
-  const brandFonts = useEditor((s) => s.brandFonts);
   const textSel = useEditor((s) => s.textSel);
   const setTextSel = useEditor((s) => s.setTextSel);
   const styleTextRange = useEditor((s) => s.styleTextRange);
@@ -137,6 +160,39 @@ export function PropertiesPanel(p: Props) {
   // Recuerda qué parte del texto está seleccionada en el cuadro del panel.
   const captureSel = (el: HTMLTextAreaElement) =>
     setTextSel({ id: selected.id, start: el.selectionStart, end: el.selectionEnd });
+
+  // Inserta un símbolo en la posición del cursor del cuadro de texto.
+  const insertSymbol = (l: TextLayer, sym: string) => {
+    const ta = p.textEditRef.current;
+    const a = ta ? Math.min(ta.selectionStart, l.text.length) : l.text.length;
+    const b = ta ? Math.min(ta.selectionEnd, l.text.length) : a;
+    updateLayer(l.id, { text: l.text.slice(0, a) + sym + l.text.slice(b) });
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      ta.selectionStart = ta.selectionEnd = a + sym.length;
+    });
+  };
+  // Texto de relleno: las capas no ajustan a un ancho, el texto se corta a ~70 % del lienzo.
+  const loremWidth = (fontSize: number) =>
+    Math.max(12, Math.min(80, Math.round((doc.width * 0.7) / (fontSize * 0.55))));
+  const fillLorem = (l: TextLayer, kind: LoremKind) => {
+    const patch: Partial<TextLayer> = { text: loremText(kind, loremWidth(l.fontSize)) };
+    if (kind === 'list') patch.listStyle = 'bullet';
+    else if (l.listStyle && l.listStyle !== 'none') patch.listStyle = 'none';
+    updateLayer(l.id, patch);
+  };
+  const newLorem = (l: TextLayer) => {
+    const st = useEditor.getState();
+    const size = Math.min(l.fontSize, 40);
+    st.beginBatch();
+    try {
+      st.addTextLayer({ text: loremText('p1', loremWidth(size)), fontSize: size, bold: false });
+      const id = useEditor.getState().selectedId;
+      if (id) st.updateLayer(id, { name: 'Texto de ejemplo', fontFamily: l.fontFamily, fill: l.fill });
+    } finally {
+      st.endBatch();
+    }
+  };
 
   // --- estilo de texto: a la palabra seleccionada o a todo el texto ---
   const rangeOf = (l: TextLayer) =>
@@ -320,6 +376,8 @@ export function PropertiesPanel(p: Props) {
               `${(selected.animDuration ?? 0.6).toFixed(1)}s`,
             )}
         </div>
+        <SharedStyles layer={selected} />
+        <Constraints layer={selected} />
     </>
   );
 
@@ -446,6 +504,7 @@ export function PropertiesPanel(p: Props) {
                 </button>
                 <button onClick={p.onOpenMask}>🪄 Borrador</button>
               </div>
+              <ImageGeoTools layer={selected} />
               <button className="magic full" onClick={p.onUpscale} disabled={p.upBusy}>
                 {p.upBusy ? '🔍 …' : '🔍 Optimizar (HD ×2)'}
               </button>
@@ -502,10 +561,12 @@ export function PropertiesPanel(p: Props) {
                   />
                 </label>
               )}
+              <RecolorWithPalette layer={selected} />
               <div className="more-group">
                 <span className="more-title">{t('Sombra')}</span>
                 {shadowControls(selected)}
               </div>
+              <ReflectionSection layer={selected} />
               {commonMore}
             </Section>
           </>
@@ -528,6 +589,28 @@ export function PropertiesPanel(p: Props) {
                   onChange={(e) => updateLayerLive(selected.id, { text: e.target.value })}
                 />
               </label>
+              <TextStatsLine text={selected.text} />
+              <div className="tt-tools">
+                <SymbolPicker onPick={(sym) => insertSymbol(selected, sym)} />
+                <select
+                  value=""
+                  title={t('Texto de ejemplo')}
+                  onChange={(e) => {
+                    if (e.target.value) fillLorem(selected, e.target.value as LoremKind);
+                  }}
+                >
+                  <option value="">{t('Texto de ejemplo…')}</option>
+                  <option value="p1">{t('1 párrafo')}</option>
+                  <option value="p3">{t('3 párrafos')}</option>
+                  <option value="list">{t('Lista')}</option>
+                </select>
+                <button title={t('Crear una capa nueva con texto de ejemplo')} onClick={() => newLorem(selected)}>
+                  + {t('Capa de ejemplo')}
+                </button>
+                <button title="Ctrl+F" onClick={openFindReplace}>
+                  {t('Buscar y reemplazar')}
+                </button>
+              </div>
               <p className="rail-hint">
                 {rangeOf(selected)
                   ? '✨ Los botones B / I / U y el color se aplican a la selección.'
@@ -536,39 +619,15 @@ export function PropertiesPanel(p: Props) {
               <button className="full" onClick={() => requestTextEdit(selected.id)}>
                 ✎ {t('Editar sobre el diseño')}
               </button>
+              <MissingFontNotice layerId={selected.id} family={selected.fontFamily} />
               <label className="prop">
                 Fuente
                 <div className="font-row">
-                  <select
+                  <FontPicker
                     value={selected.fontFamily}
-                    onChange={(e) => updateLayer(selected.id, { fontFamily: e.target.value })}
-                  >
-                    {brandFonts.length > 0 && (
-                      <optgroup label="Fuentes de marca">
-                        {brandFonts.map((f) => (
-                          <option key={'b' + f} value={f} style={{ fontFamily: f }}>
-                            {f}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {customFonts.length > 0 && (
-                      <optgroup label="Mis fuentes">
-                        {customFonts.map((f) => (
-                          <option key={f} value={f}>
-                            {f}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    <optgroup label="Fuentes">
-                      {FONT_FAMILIES.map((f) => (
-                        <option key={f} value={f} style={{ fontFamily: f }}>
-                          {f}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
+                    sample={selected.text}
+                    onPick={(f) => updateLayer(selected.id, { fontFamily: f })}
+                  />
                   <button
                     className="font-upload"
                     title="Cargar fuente propia (.ttf/.otf/.woff)"
@@ -611,7 +670,9 @@ export function PropertiesPanel(p: Props) {
                   <u>U</u>
                 </button>
               </div>
-              <span className="rail-label">{t('Color del texto')}</span>
+              <span className="rail-label">
+                {t('Color del texto')} <ContrastBadge fg={colorOf(selected)} />
+              </span>
               <FillControl
                 fill={colorOf(selected)}
                 gradient={rangeOf(selected) ? undefined : selected.fillGradient}
@@ -749,7 +810,9 @@ export function PropertiesPanel(p: Props) {
                 updateLayerLive(selected.id, { strokeWidth: v }),
               )}
               {shadowControls(selected)}
+              <TextEffectsPlus layer={selected} />
             </div>
+              <TextTypography layer={selected} />
               {commonMore}
             </Section>
           </>
@@ -808,6 +871,7 @@ export function PropertiesPanel(p: Props) {
             {range('Grosor del borde', selected.strokeWidth, 0, 40, 1, (v) =>
               updateLayerLive(selected.id, { strokeWidth: v }),
             )}
+            <StrokeGradient layer={selected} />
             {selected.shape === 'rect' &&
               range(
                 'Esquinas',

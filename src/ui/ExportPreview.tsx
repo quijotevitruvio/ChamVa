@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
-import { exportDoc, type ExportFormat } from '../io/export';
+import type { ExportFormat } from '../io/export';
+import { useExtra } from '../io/exportExtra';
+import { cropDocToLayers, renderRasterBlob, selectedLayers } from '../io/runExport';
 import { finalSize, formatBytes, isTooLargeToPreview } from '../io/exportPreview';
 import './exportpreview.css';
 
@@ -9,7 +11,7 @@ interface Props {
   scale: number;
   quality: number;
   pageCount: number;
-  scope: 'page' | 'all';
+  scope: 'page' | 'all' | 'selection';
 }
 
 const RASTER = ['png', 'jpeg', 'webp', 'avif'];
@@ -17,10 +19,16 @@ const RASTER = ['png', 'jpeg', 'webp', 'avif'];
 interface Result {
   url: string;
   size: number;
+  width: number;
+  height: number;
+  quality: number;
+  fits: boolean;
 }
 
 export function ExportPreview({ format, scale, quality, pageCount, scope }: Props) {
   const doc = useEditor((s) => s.doc);
+  const selectedIds = useEditor((s) => s.selectedIds);
+  const extra = useExtra();
   const raster = RASTER.includes(format);
   const dims = finalSize(doc, raster ? scale : 1);
   const tooBig = raster && isTooLargeToPreview(dims.pixels);
@@ -49,6 +57,9 @@ export function ExportPreview({ format, scale, quality, pageCount, scope }: Prop
 
   // El PNG no usa calidad: no recalcular al moverla.
   const qualityDep = format === 'png' ? 0 : quality;
+  // Lo que cambia el resultado además del documento: marca de agua y peso máximo.
+  const extraDep = JSON.stringify([extra.watermark, format === 'png' ? 0 : extra.maxKB, extra.metaOn ? extra.meta : 0]);
+  const selDep = scope === 'selection' ? selectedIds.join(',') : '';
   useEffect(() => {
     const my = ++token.current;
     if (!raster || tooBig) {
@@ -61,12 +72,25 @@ export function ExportPreview({ format, scale, quality, pageCount, scope }: Prop
     setBusy(true);
     const timer = setTimeout(async () => {
       try {
-        const blob = await exportDoc(doc, { format: format as ExportFormat, quality, scale });
+        let target = doc;
+        if (scope === 'selection') {
+          const layers = selectedLayers(doc, selectedIds);
+          const cropped = layers.length ? await cropDocToLayers(doc, layers) : null;
+          if (!cropped) {
+            if (my !== token.current) return;
+            revoke();
+            setResult(null);
+            setError('Selecciona una capa visible para ver la vista previa');
+            return;
+          }
+          target = cropped;
+        }
+        const r = await renderRasterBlob(target, format as ExportFormat, scale, quality, extra);
         if (my !== token.current) return; // resultado obsoleto
         revoke();
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(r.blob);
         urlRef.current = url;
-        setResult({ url, size: blob.size });
+        setResult({ url, size: r.blob.size, width: r.width, height: r.height, quality: r.quality, fits: r.fits });
         setError(null);
       } catch (e) {
         if (my !== token.current) return;
@@ -77,9 +101,9 @@ export function ExportPreview({ format, scale, quality, pageCount, scope }: Prop
     }, 350);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, format, scale, qualityDep, raster, tooBig]);
+  }, [doc, format, scale, qualityDep, raster, tooBig, extraDep, scope, selDep]);
 
-  const dimText = `${dims.width} × ${dims.height} px`;
+  const dimText = result && raster ? `${result.width} × ${result.height} px` : `${dims.width} × ${dims.height} px`;
 
   if (!raster) {
     let extra: string;
@@ -120,6 +144,13 @@ export function ExportPreview({ format, scale, quality, pageCount, scope }: Prop
         <span>{dimText}</span>
         <span>{result ? `≈ ${formatBytes(result.size)}` : busy ? 'Calculando…' : '—'}</span>
       </div>
+      {result && extra.maxKB > 0 && format !== 'png' && (
+        <div className={result.fits ? 'xp-info' : 'xp-err'}>
+          {result.fits
+            ? `Calidad ajustada a ${Math.round(result.quality * 100)} %`
+            : `No cabe en ${extra.maxKB} KB ni con la calidad mínima: reduce la escala.`}
+        </div>
+      )}
     </div>
   );
 }

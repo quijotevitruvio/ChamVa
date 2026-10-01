@@ -1,0 +1,315 @@
+/* Organización de capas y páginas: carpetas, búsqueda, estilos compartidos,
+   restricciones y clasificador. Plano, solo variables del tema. */
+
+/* ---- Panel de capas (LayersTree) ---- */
+.lt-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lt-search input,
+.lt-search select,
+.lt-rename,
+.ss-name {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  min-width: 0;
+}
+.lt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lt-chip,
+.lt-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.lt-chip:hover,
+.lt-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.lt-chip.on {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  border-color: var(--accent);
+}
+.lt-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.lt-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lt-count {
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+.lt-list li.lt-folder {
+  font-weight: 600;
+}
+.lt-list li.lt-dim .name,
+.lt-list li.lt-dim .ico {
+  opacity: 0.45;
+}
+.lt-list li.drop {
+  border-color: var(--text);
+  border-style: dashed;
+}
+.lt-list .lt-caret {
+  width: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.lt-in {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 70px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lt-rename {
+  flex: 1;
+  padding: 2px 6px;
+}
+.lt-list li.lt-root {
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px dashed var(--border);
+  background: transparent;
+}
+
+/* ---- Estilos compartidos y restricciones (panel de propiedades) ---- */
+.ss-row,
+.cn-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.ss-row .ss-name {
+  flex: 1;
+}
+.ss-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 4px 0;
+  font-size: 12px;
+}
+.ss-item.on {
+  border-color: var(--text);
+}
+.ss-item .ss-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ss-item small {
+  color: var(--muted);
+}
+.cn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 22px);
+  grid-template-rows: repeat(3, 22px);
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.cn-grid button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s;
+}
+.cn-grid button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.cn-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  font-size: 12px;
+}
+.cn-side select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+/* ---- Barra de páginas: menú de maestra ---- */
+.pm-wrap {
+  display: inline-flex;
+}
+.pm-menu {
+  position: fixed;
+  min-width: 220px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+.pm-menu button {
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pm-menu button:hover {
+  background: var(--panel-2);
+}
+.pm-menu .pm-title {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.page-tab .page-master {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+}
+
+/* ---- Clasificador de páginas ---- */
+.ps-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay, rgba(0, 0, 0, 0.5));
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ps-dialog {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: min(1100px, 94vw);
+  height: min(760px, 90vh);
+  display: flex;
+  flex-direction: column;
+}
+.ps-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.ps-head h3 {
+  margin: 0;
+  font-size: 15px;
+  flex: 1;
+  min-width: 140px;
+}
+.ps-grid {
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  align-content: start;
+}
+.ps-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.12s;
+}
+.ps-card.sel {
+  border-color: var(--text);
+  border-width: 2px;
+  padding: 5px;
+}
+.ps-card.cur .ps-label::after {
+  content: ' (actual)';
+  color: var(--muted);
+}
+.ps-card.drop {
+  border-style: dashed;
+  border-color: var(--text);
+}
+.ps-thumb {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0 0 / 12px 12px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ps-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+.ps-label {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ps-label span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ps-foot {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}

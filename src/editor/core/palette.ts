@@ -25,6 +25,42 @@ export const PRESET_GRADIENTS: Gradient[] = [
   { angle: 45, stops: [{ offset: 0, color: '#ee9ca7' }, { offset: 1, color: '#ffdde1' }] },
 ];
 
+// 24 degradados más, por grupos: monocromos suaves, duotonos y metal.
+const lin = (angle: number, a: string, b: string, c?: string): Gradient => ({
+  angle,
+  stops: c
+    ? [{ offset: 0, color: a }, { offset: 0.5, color: b }, { offset: 1, color: c }]
+    : [{ offset: 0, color: a }, { offset: 1, color: b }],
+});
+export const GRADIENT_GROUPS: { name: string; items: Gradient[] }[] = [
+  {
+    name: 'Monocromos suaves',
+    items: [
+      lin(90, '#f5f5f5', '#dcdcdc'), lin(90, '#e8eefc', '#c3d3f5'), lin(90, '#fde8ef', '#f7bfd2'),
+      lin(90, '#e6f6ec', '#b7e3c6'), lin(90, '#fff4d9', '#fbdc92'), lin(90, '#ece6fb', '#c9bbf0'),
+      lin(90, '#3b3b3b', '#1a1a1a'), lin(90, '#1d3557', '#0d1b2e'),
+    ],
+  },
+  {
+    name: 'Duotonos',
+    items: [
+      lin(45, '#ff6a88', '#ff99ac'), lin(45, '#12c2e9', '#c471ed'), lin(45, '#f64f59', '#12c2e9'),
+      lin(45, '#fc466b', '#3f5efb'), lin(45, '#00b09b', '#96c93d'), lin(45, '#f7971e', '#ffd200'),
+      lin(45, '#8e2de2', '#4a00e0'), lin(45, '#11998e', '#38ef7d'),
+    ],
+  },
+  {
+    name: 'Metal',
+    items: [
+      lin(90, '#f4f4f4', '#9a9a9a', '#f4f4f4'), lin(90, '#fff3b0', '#c9a227', '#fff3b0'),
+      lin(90, '#ffe3d1', '#c2764f', '#ffe3d1'), lin(90, '#e6e9ee', '#7d8793', '#e6e9ee'),
+      lin(135, '#434343', '#9a9a9a', '#2b2b2b'), lin(135, '#f6d365', '#b8860b', '#f6d365'),
+      lin(135, '#cfd9df', '#6b7b8c', '#e2ebf0'), lin(135, '#d4a373', '#7f5539', '#e6ccb2'),
+    ],
+  },
+];
+export const PRESET_GRADIENTS_MORE: Gradient[] = GRADIENT_GROUPS.flatMap((g) => g.items);
+
 // CSS para previsualizar un degradado en un botón.
 export function gradientToCss(g: Gradient): string {
   return gradientCss(g);

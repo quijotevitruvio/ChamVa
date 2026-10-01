@@ -1,11 +1,13 @@
-// Tema de la interfaz: sigue al sistema por defecto, o fijo claro / oscuro.
-export type Theme = 'system' | 'light' | 'dark';
+// Tema de la interfaz: sigue al sistema por defecto, o fijo claro / oscuro /
+// alto contraste. Con «Sistema», prefers-contrast: more activa el alto contraste
+// (reglas al final de App.css).
+export type Theme = 'system' | 'light' | 'dark' | 'contrast';
 const KEY = 'chamva.theme';
 
 export function getTheme(): Theme {
   try {
     const v = localStorage.getItem(KEY);
-    return v === 'light' || v === 'dark' ? v : 'system';
+    return v === 'light' || v === 'dark' || v === 'contrast' ? v : 'system';
   } catch {
     return 'system';
   }

@@ -1,6 +1,13 @@
+import { useState } from 'react';
 import type { ExportFormat } from '../io/export';
 import { t } from '../i18n';
 import { ExportPreview } from './ExportPreview';
+import { ExportSettings } from './ExportSettings';
+import { useEditor } from '../editor/state/store';
+import { useExtra } from '../io/exportExtra';
+import { ExportMoreDialog } from './ExportMoreDialog';
+import { openBatchShare } from './ExportQueuePanel';
+import './export2.css';
 
 export type Fmt = ExportFormat | 'svg' | 'gif' | 'pdf' | 'anim' | 'anim-mp4' | 'ico';
 
@@ -11,8 +18,8 @@ interface Props {
   setScale: (n: number) => void;
   quality: number;
   setQuality: (n: number) => void;
-  scope: 'page' | 'all';
-  setScope: (s: 'page' | 'all') => void;
+  scope: 'page' | 'all' | 'selection';
+  setScope: (s: 'page' | 'all' | 'selection') => void;
   pageCount: number;
   transparentCanvas: boolean;
   onDownload: () => void;
@@ -33,9 +40,12 @@ export function DownloadMenu({
   onDownload,
   onCopy,
 }: Props) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  useExtra(); // re-renderiza al cambiar los ajustes extra
+  const selCount = useEditor((s) => s.selectedIds.length);
   const raster = format === 'png' || format === 'jpeg' || format === 'webp' || format === 'avif';
   return (
-    <div className="download-menu">
+    <div className="download-menu dl2">
       <label className="dl-row">
         {t('Formato')}
         <select value={format} onChange={(e) => setFormat(e.target.value as Fmt)}>
@@ -57,6 +67,7 @@ export function DownloadMenu({
           <label className="dl-row">
             {t('Tamaño')}
             <select value={scale} onChange={(e) => setScale(Number(e.target.value))}>
+              <option value={0.5}>@0.5x</option>
               <option value={1}>@1x</option>
               <option value={2}>@2x</option>
               <option value={3}>@3x</option>
@@ -81,8 +92,13 @@ export function DownloadMenu({
       {format !== 'gif' && format !== 'anim' && format !== 'anim-mp4' && format !== 'ico' && (
         <label className="dl-row">
           {t('Páginas')}
-          <select value={scope} onChange={(e) => setScope(e.target.value as 'page' | 'all')}>
+          <select value={scope} onChange={(e) => setScope(e.target.value as 'page' | 'all' | 'selection')}>
             <option value="page">{t('Esta página')}</option>
+            {(raster || format === 'svg') && (
+              <option value="selection" disabled={selCount === 0 && scope !== 'selection'}>
+                {t('Solo lo seleccionado')}
+              </option>
+            )}
             <option value="all">
               {t('Todas')} ({pageCount})
             </option>
@@ -103,6 +119,24 @@ export function DownloadMenu({
       )}
       {format === 'anim' && <p className="dl-hint">GIF con las animaciones de entrada de esta página.</p>}
 
+      {scope === 'selection' && (raster || format === 'svg') && (
+        <p className="dl-hint">Se recorta a la caja de la selección y el fondo queda transparente.</p>
+      )}
+      {scope === 'all' && pageCount > 1 && (raster || format === 'svg') && (
+        <p className="dl-hint">Una imagen por página, en un ZIP.</p>
+      )}
+
+      <ExportSettings
+        format={format}
+        setFormat={setFormat}
+        scale={scale}
+        setScale={setScale}
+        quality={quality}
+        setQuality={setQuality}
+        scope={scope}
+        setScope={setScope}
+      />
+
       <ExportPreview
         format={format}
         scale={scale}
@@ -110,6 +144,15 @@ export function DownloadMenu({
         pageCount={pageCount}
         scope={scope}
       />
+
+      {/* más formatos */}
+      <button className="dl-go" onClick={() => setMoreOpen(true)}>
+        {t('Más formatos…')}
+      </button>
+      {moreOpen && <ExportMoreDialog onClose={() => setMoreOpen(false)} />}
+      <button className="dl-go" onClick={openBatchShare}>
+        {t('Lote y compartir…')}
+      </button>
 
       <button className="primary dl-go" onClick={onDownload}>
         ⬇ {t('Descargar')} {format.toUpperCase()}

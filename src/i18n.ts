@@ -3,14 +3,29 @@
 // principal de la UI. t() devuelve la cadena en el idioma activo.
 import { useSyncExternalStore } from 'react';
 
-export type Lang = 'es' | 'en';
+// 'es' y 'en' vienen de fábrica; cualquier otro código es un idioma importado
+// por el usuario desde un JSON (ver importLangPack).
+export type Lang = string;
 
 const LS_KEY = 'chamva.lang';
+const PACKS_KEY = 'chamva.langPacks';
+
+export type LangPack = Record<string, string>;
+
+function loadPacks(): Record<string, LangPack> {
+  try {
+    const v = JSON.parse(localStorage.getItem(PACKS_KEY) ?? '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+let packs: Record<string, LangPack> = loadPacks();
 
 let current: Lang = (() => {
   try {
     const saved = localStorage.getItem(LS_KEY);
-    if (saved === 'es' || saved === 'en') return saved;
+    if (saved === 'es' || saved === 'en' || (saved && packs[saved])) return saved;
     return navigator.language?.startsWith('en') ? 'en' : 'es';
   } catch {
     return 'es';
@@ -115,6 +130,7 @@ const EN: Record<string, string> = {
   'Invítame un café': 'Buy me a coffee',
   'Sobre el autor': 'About the author',
   'Reglas': 'Rulers',
+  'Vista': 'View',
   'Buscar': 'Search',
   'Guardar como plantilla': 'Save as template',
   'Tema': 'Theme',
@@ -169,6 +185,7 @@ const EN: Record<string, string> = {
   'Previsualizar animaciones': 'Preview animations',
   'Modo presentación': 'Presentation mode',
   'Usar sin internet': 'Use offline',
+  'Instalar ChamVa': 'Install ChamVa',
   'Editar': 'Edit',
   '¿Qué vas a crear hoy?': 'What will you create today?',
   'Redes sociales': 'Social media',
@@ -235,9 +252,218 @@ const EN: Record<string, string> = {
   'Dividir aquí': 'Split here',
   'Exportando': 'Exporting',
   'Cancelar': 'Cancel',
+  // Interfaz y accesibilidad
+  'Modo concentración': 'Focus mode',
+  'Salir': 'Exit',
+  'Alto contraste': 'High contrast',
+  'Tamaño de la interfaz': 'Interface size',
+  'Vista previa': 'Preview',
+  'Atajos': 'Shortcuts',
+  'Cambiar': 'Change',
+  'Sin atajo': 'None',
+  'Pulsa la combinación…': 'Press the combination…',
+  'ya lo usa': 'already used by',
+  'Teclas fijas': 'Fixed keys',
+  'Restablecer todos los atajos': 'Reset all shortcuts',
+  'Puedes cambiar estos atajos en Ajustes → Atajos.': 'You can change these shortcuts in Settings → Shortcuts.',
+  'Exportar idioma actual (JSON)': 'Export current language (JSON)',
+  'Importar idioma': 'Import language',
+  'Idioma importado': 'Language imported',
+  'Quitar este idioma': 'Remove this language',
+  'Todo local': 'All local',
+  'Procesado en tu dispositivo': 'Processed on your device',
+  'sin conexión': 'offline',
+  'Descargando modelo…': 'Downloading model…',
+  'Algo salió mal': 'Something went wrong',
+  'Copiar informe del error': 'Copy error report',
+  'Informe copiado': 'Report copied',
+  'Abrir incidencia en GitHub': 'Open GitHub issue',
+  'El informe no incluye tu diseño ni datos personales.': 'The report does not include your design or personal data.',
+  'Tu diseño nunca sale de este dispositivo. Solo se usa internet para descargar modelos de IA, iconos y actualizaciones, y solo cuando tú lo pides.':
+    'Your design never leaves this device. The internet is only used to download AI models, icons and updates, and only when you ask.',
+  // Herramientas de texto
+  'Buscar fuente': 'Find font',
+  'Fuentes': 'Fonts',
+  'Cerrar': 'Close',
+  'Buscar fuente…': 'Search fonts…',
+  '★ Favoritas': '★ Favorites',
+  'Mía': 'Mine',
+  'Mis fuentes': 'My fonts',
+  'Manuscrita': 'Handwriting',
+  'Monoespaciada': 'Monospace',
+  'Ninguna fuente coincide.': 'No matching fonts.',
+  'Aún no has usado ninguna fuente.': "You haven't used any font yet.",
+  'Marca fuentes con la estrella para verlas aquí.': 'Star fonts to see them here.',
+  'Quitar de favoritas': 'Remove from favorites',
+  'Añadir a favoritas': 'Add to favorites',
+  '↑ ↓ para moverte · Intro para elegir · Esc para cerrar': '↑ ↓ to move · Enter to pick · Esc to close',
+  'Buscar y elegir fuente': 'Find and pick a font',
+  'Falta la fuente': 'Missing font',
+  'Se usa una genérica: puedes sustituirla desde el panel de texto.': 'A generic one is used: replace it from the text panel.',
+  'Fuente sustituida por': 'Font replaced by',
+  'La fuente': 'The font',
+  'no está disponible; se dibuja con una genérica.': 'is not available; a generic one is drawn instead.',
+  'Sustituir por': 'Replace with',
+  'Sustituir por…': 'Replace with…',
+  'Usa una fuente parecida': 'Uses a similar font',
+  'Buscar y reemplazar': 'Find and replace',
+  'Buscar…': 'Find…',
+  'Reemplazar por…': 'Replace with…',
+  'Mayúsculas': 'Match case',
+  'Palabra completa': 'Whole word',
+  'Todas las páginas': 'All pages',
+  'Escribe lo que buscas.': 'Type what to find.',
+  'de': 'of',
+  'Sin resultados': 'No results',
+  'Anterior': 'Previous',
+  'Siguiente': 'Next',
+  'Reemplazar': 'Replace',
+  'Reemplazar todo': 'Replace all',
+  'reemplazo': 'replacement',
+  'reemplazos': 'replacements',
+  'en otras páginas no se puede deshacer': "can't be undone on other pages",
+  'Insertar símbolo': 'Insert symbol',
+  'Flechas': 'Arrows',
+  'Matemáticos': 'Math',
+  'Monedas': 'Currency',
+  'Viñetas': 'Bullets',
+  'Estrellas': 'Stars',
+  'Marcas': 'Marks',
+  'Texto de ejemplo': 'Sample text',
+  'Texto de ejemplo…': 'Sample text…',
+  '1 párrafo': '1 paragraph',
+  '3 párrafos': '3 paragraphs',
+  'Lista': 'List',
+  'Capa de ejemplo': 'Sample layer',
+  'Crear una capa nueva con texto de ejemplo': 'Create a new layer with sample text',
+  'palabras': 'words',
+  'caracteres': 'characters',
+  'lectura': 'reading',
+  'Sans serif': 'Sans serif',
+  // Biblioteca de diseños, plantillas, formatos e instantáneas
+  'Todos': 'All',
+  'Carpeta': 'Folder',
+  'Crear carpeta': 'Create folder',
+  'Papelera': 'Trash',
+  'Nombre de la carpeta': 'Folder name',
+  'Renombrar carpeta': 'Rename folder',
+  'Borrar carpeta': 'Delete folder',
+  'Vaciar papelera': 'Empty trash',
+  'Sí, borrar': 'Yes, delete',
+  'Sí, vaciar': 'Yes, empty',
+  'No': 'No',
+  'Guardar': 'Save',
+  'Buscar diseños…': 'Search designs…',
+  'La papelera está vacía.': 'The trash is empty.',
+  'Ningún diseño coincide.': 'No design matches.',
+  'Aún no hay diseños guardados.': 'No saved designs yet.',
+  'Borrar para siempre': 'Delete forever',
+  'Carpeta y etiquetas': 'Folder and tags',
+  'Quitar de recientes (va a la papelera)': 'Remove from recent (goes to trash)',
+  'Sin carpeta': 'No folder',
+  'Carpeta nueva': 'New folder',
+  '(opcional)': '(optional)',
+  'Etiquetas': 'Tags',
+  'Buscar plantillas…': 'Search templates…',
+  'Color dominante': 'Dominant color',
+  'Limpiar': 'Clear',
+  'Ninguna coincide.': 'None match.',
+  'Redimensionar a varios formatos…': 'Resize to several formats…',
+  'Redimensionar a varios formatos': 'Resize to several formats',
+  'Marcar todos': 'Select all',
+  'Ninguno': 'None',
+  'tamaño actual': 'current size',
+  'copias': 'copies',
+  'Versiones…': 'Versions…',
+  'Versiones del diseño': 'Design versions',
+  'Guardar versión': 'Save version',
+  'Versión guardada': 'Version saved',
+  'Versión restaurada': 'Version restored',
+  'Aún no hay versiones de este diseño.': 'No versions of this design yet.',
+  'página(s)': 'page(s)',
 };
 
 export function t(es: string): string {
   if (current === 'es') return es;
-  return EN[es] ?? es;
+  if (current === 'en') return EN[es] ?? es;
+  return packs[current]?.[es] ?? es;
+}
+
+// ---- idiomas por archivo JSON ----
+
+/** Idiomas disponibles: los de fábrica y los importados. */
+export function listLangs(): { code: string; name: string; custom: boolean }[] {
+  return [
+    { code: 'es', name: 'Español', custom: false },
+    { code: 'en', name: 'English', custom: false },
+    ...Object.entries(packs).map(([code, p]) => ({ code, name: p.__nombre || code, custom: true })),
+  ];
+}
+
+/** Diccionario del idioma activo como JSON: clave = texto en español. */
+export function exportLangJson(lang: Lang = current): string {
+  let dict: LangPack;
+  if (lang === 'en') dict = { __nombre: 'English', ...EN };
+  else if (lang !== 'es' && packs[lang]) dict = { ...packs[lang] };
+  else dict = { __nombre: 'Mi idioma' };
+  // En español (o paquetes vacíos) se ofrece la plantilla: clave → mismo texto.
+  if (lang === 'es') for (const k of Object.keys(EN)) dict[k] = k;
+  return JSON.stringify(dict, null, 2);
+}
+
+export function slugLang(name: string): string {
+  const s = name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return 'x-' + (s || 'idioma');
+}
+
+/** Valida un JSON clave→texto; devuelve el paquete o el motivo del fallo. */
+export function parseLangPack(text: string): { ok: true; code: string; pack: LangPack } | { ok: false; error: string } {
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return { ok: false, error: 'El archivo no es un JSON válido.' };
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: 'Se esperaba un objeto clave → texto.' };
+  const pack: LangPack = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === 'string') pack[k] = val;
+  }
+  if (Object.keys(pack).filter((k) => k !== '__nombre').length === 0) return { ok: false, error: 'No hay traducciones en el archivo.' };
+  pack.__nombre = (pack.__nombre || 'Importado').trim().slice(0, 40) || 'Importado';
+  let code = slugLang(pack.__nombre);
+  if (code === 'x-english' || code === 'x-espanol') code += '-2';
+  return { ok: true, code, pack };
+}
+
+/** Guarda el idioma importado y lo activa. Devuelve su código. */
+export function importLangPack(text: string): { ok: true; code: string; name: string } | { ok: false; error: string } {
+  const r = parseLangPack(text);
+  if (!r.ok) return r;
+  packs = { ...packs, [r.code]: r.pack };
+  try {
+    localStorage.setItem(PACKS_KEY, JSON.stringify(packs));
+  } catch {
+    /* sin almacenamiento: vale para esta sesión */
+  }
+  setLang(r.code);
+  return { ok: true, code: r.code, name: r.pack.__nombre };
+}
+
+export function removeLangPack(code: string) {
+  if (!packs[code]) return;
+  const { [code]: _drop, ...rest } = packs;
+  packs = rest;
+  try {
+    localStorage.setItem(PACKS_KEY, JSON.stringify(packs));
+  } catch {
+    /* noop */
+  }
+  if (current === code) setLang('es');
+  else listeners.forEach((fn) => fn());
 }

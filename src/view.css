@@ -277,3 +277,78 @@
 .ruler-left {
   cursor: ew-resize;
 }
+
+/* Menú «Vista» de la barra inferior: agrupa lo que antes eran 8 botones sueltos. */
+.view-menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+.view-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 80;
+  min-width: 250px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.view-menu button {
+  display: grid;
+  grid-template-columns: 18px auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.view-menu button:hover {
+  background: var(--panel-2);
+}
+.view-menu button i {
+  font-style: normal;
+  text-align: center;
+}
+.view-menu button small {
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: right;
+}
+.view-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+/* Móvil: la barra inferior se desplaza en vez de encoger y encimar sus botones. */
+@media (max-width: 768px) {
+  .page-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .page-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .page-bar > *,
+  .page-bar .view-toggles,
+  .page-bar .zoom-controls {
+    flex: none;
+    white-space: nowrap;
+  }
+  .page-bar .page-add {
+    min-width: max-content;
+  }
+}

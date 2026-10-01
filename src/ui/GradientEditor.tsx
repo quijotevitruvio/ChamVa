@@ -1,9 +1,11 @@
 import type { Gradient } from '../editor/core/types';
+import { GradientExtras } from './GradientExtras';
 import { PRESET_GRADIENTS } from '../editor/core/palette';
 import {
   addStop,
   gradientCss,
   gradientFromColor,
+  isConicGradient,
   isRadial,
   parseColor,
   reverseGradient,
@@ -15,6 +17,7 @@ import {
 // opacidad, invertir y degradados listos. Sirve para el fondo y para formas.
 export function GradientEditor({ value, onChange }: { value: Gradient; onChange: (g: Gradient) => void }) {
   const radial = isRadial(value);
+  const conic = isConicGradient(value);
   const setStop = (i: number, patch: Partial<{ offset: number; color: string }>) =>
     onChange({ ...value, stops: value.stops.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
 
@@ -22,23 +25,27 @@ export function GradientEditor({ value, onChange }: { value: Gradient; onChange:
     <div className="ge">
       <div
         className="ge-preview"
-        style={{ background: gradientCss({ ...value, kind: 'linear', angle: 0 }) }}
+        style={{ background: gradientCss(conic ? value : { ...value, kind: 'linear', angle: 0 }) }}
         aria-label="Vista previa del degradado"
       />
 
       <div className="seg" role="group" aria-label="Tipo de degradado">
-        <button className={!radial ? 'on' : ''} onClick={() => onChange({ ...value, kind: 'linear' })}>
+        <button className={!radial && !conic ? 'on' : ''} onClick={() => onChange({ ...value, kind: 'linear' })}>
           Lineal
         </button>
         <button className={radial ? 'on' : ''} onClick={() => onChange({ ...value, kind: 'radial' })}>
           Radial
         </button>
+        <button className={conic ? 'on' : ''} onClick={() => onChange({ ...value, kind: 'conic' })} title="El color gira alrededor de un centro">
+          Cónico
+        </button>
       </div>
+      <GradientExtras value={value} onChange={onChange} />
 
       {!radial && (
         <div className="ge-angle">
           <label>
-            <span>Ángulo</span>
+            <span>{conic ? 'Inicio' : 'Ángulo'}</span>
             <input
               type="range"
               min={0}

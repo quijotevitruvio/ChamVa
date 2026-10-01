@@ -1,0 +1,200 @@
+/* Menú de descarga ampliado: ajustes guardados, tamaños, peso, marca de agua,
+   metadatos y nombre. Plano, solo variables del tema. */
+.download-menu.dl2 {
+  width: 292px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.dl2-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dl2-sec {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.dl2-sec > summary {
+  cursor: pointer;
+  padding: 7px 10px;
+  font-size: 13px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.dl2-sec > summary::-webkit-details-marker {
+  display: none;
+}
+.dl2-sec > summary::before {
+  content: '▸';
+  color: var(--muted);
+  font-size: 11px;
+  transition: transform 0.12s;
+}
+.dl2-sec[open] > summary::before {
+  transform: rotate(90deg);
+}
+.dl2-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.dl2-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 10px 10px;
+  min-width: 0;
+}
+.dl2-body input[type='text'],
+.dl2-body input[type='number'],
+.dl2-body select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.dl2-body .dl-row input[type='range'] {
+  max-width: 150px;
+}
+.dl2-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dl2-check,
+.dl2-checks label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.dl2-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.dl2-checks label.is-main {
+  color: var(--muted);
+}
+.dl2-inline {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.dl2-inline input {
+  flex: 1;
+}
+.dl2-presets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dl2-presets li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.dl2-link {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: var(--text);
+  text-decoration: underline;
+  cursor: pointer;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl2-dim {
+  color: var(--muted);
+  font-size: 11px;
+}
+.dl2-x {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 15px;
+}
+.dl2-x:hover {
+  color: var(--danger);
+}
+.dl2-wmimg {
+  max-width: 100%;
+  max-height: 56px;
+  object-fit: contain;
+  align-self: flex-start;
+  background-color: var(--checker-a);
+  border: 1px solid var(--border);
+}
+.dl2-pos {
+  display: grid;
+  grid-template-columns: repeat(3, 22px);
+  grid-template-rows: repeat(3, 22px);
+  gap: 4px;
+}
+.dl2-pos button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.dl2-pos button:hover {
+  background: var(--border);
+}
+.dl2-pos button.on,
+.dl2-pos button.on:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.dl2-tile.on,
+.dl2-tile.on:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.dl2-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dl2-chips button {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.dl2-name {
+  word-break: break-all;
+  opacity: 1;
+  color: var(--muted);
+}

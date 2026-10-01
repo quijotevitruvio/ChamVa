@@ -1,5 +1,7 @@
 import { Shape as KonvaShape } from 'react-konva';
-import { konvaGradientProps } from '../core/gradients';
+import { canvasGradient, konvaGradientProps } from '../core/gradients';
+import { fillCurrentPathConic, isConic } from '../core/conic';
+import { fillDither } from '../core/grain';
 import type Konva from 'konva';
 import type { ShapeLayer } from '../core/types';
 import { isStrokeOnly, shapePath } from '../core/shapes';
@@ -20,6 +22,11 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
 
   const strokeOnly = isStrokeOnly(layer.shape);
   const frame = !!layer.frame && !strokeOnly;
+  // Relleno cónico, contorno con degradado y tramado: Konva no los tiene, se dibujan sobre el canvas nativo.
+  const conicFill = !strokeOnly && isConic(layer.fillGradient);
+  const strokeGrad = layer.strokeGradient && (layer.strokeWidth > 0 || strokeOnly) ? layer.strokeGradient : undefined;
+  const dither = !strokeOnly && !!layer.fillGradient?.dither;
+  const custom = conicFill || !!strokeGrad || dither;
 
   return (
     <KonvaShape
@@ -32,9 +39,9 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
       scaleY={layer.scaleY}
       rotation={layer.rotation}
       opacity={layer.opacity}
-      fill={strokeOnly ? undefined : layer.fill}
-      {...(layer.fillGradient && !strokeOnly ? konvaGradientProps(layer.fillGradient, layer.width, layer.height) : {})}
-      stroke={layer.strokeWidth > 0 || strokeOnly ? layer.stroke : undefined}
+      fill={strokeOnly ? undefined : conicFill ? layer.fillGradient!.stops[0]?.color ?? layer.fill : layer.fill}
+      {...(layer.fillGradient && !strokeOnly && !conicFill ? konvaGradientProps(layer.fillGradient, layer.width, layer.height) : {})}
+      stroke={(layer.strokeWidth > 0 || strokeOnly) && !strokeGrad ? layer.stroke : undefined}
       strokeWidth={strokeOnly ? Math.max(2, layer.strokeWidth) : layer.strokeWidth}
       shadowEnabled={layer.shadow}
       shadowColor={layer.shadowColor}
@@ -47,7 +54,32 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
       }
       sceneFunc={(ctx, node) => {
         shapePath(ctx, layer.shape, layer.width, layer.height, layer.cornerRadius);
-        ctx.fillStrokeShape(node);
+        if (!custom) ctx.fillStrokeShape(node);
+        else {
+          const c = (ctx as any)._context as CanvasRenderingContext2D;
+          if (conicFill) {
+            c.save();
+            if (layer.shadow) (ctx as any)._applyShadow(node);
+            fillCurrentPathConic(c, layer.fillGradient!, layer.width, layer.height);
+            c.restore();
+          } else if (!strokeOnly) ctx.fillShape(node);
+          if (dither) {
+            const k = Math.max(1, viewScale * (window.devicePixelRatio || 1) * Math.max(layer.scaleX, layer.scaleY));
+            shapePath(c, layer.shape, layer.width, layer.height, layer.cornerRadius);
+            c.save();
+            c.clip();
+            fillDither(c, layer.width, layer.height, k);
+            c.restore();
+          }
+          if (strokeGrad) {
+            shapePath(c, layer.shape, layer.width, layer.height, layer.cornerRadius);
+            c.save();
+            c.lineWidth = strokeOnly ? Math.max(2, layer.strokeWidth) : layer.strokeWidth;
+            c.strokeStyle = canvasGradient(c, strokeGrad, layer.width, layer.height);
+            c.stroke();
+            c.restore();
+          } else ctx.strokeShape(node);
+        }
         if (frame) {
           // Solo en el editor: borde discontinuo e indicación de "suelta una foto".
           const c = (ctx as any)._context as CanvasRenderingContext2D;

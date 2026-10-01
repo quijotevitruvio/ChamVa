@@ -1,0 +1,218 @@
+/* «Más formatos»: impresión, paquetes, sprites y rebanadas. Plano, solo variables del tema. */
+.xm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.xm-card {
+  position: relative;
+  width: 620px;
+  max-width: 94vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+.xm-card h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.xm-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 16px;
+}
+.xm-card .seg {
+  flex-wrap: wrap;
+}
+.xm-card .seg button {
+  flex: 1 1 25%;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.xm-desc {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 10px;
+  line-height: 1.45;
+}
+.xm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+.xm-grid label,
+.xm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.xm-grid input[type='number'],
+.xm-grid input[type='text'],
+.xm-grid select,
+.xm-field input,
+.xm-field select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 13px;
+}
+.xm-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+  color: var(--text) !important;
+}
+.xm-check input {
+  accent-color: var(--accent);
+}
+.xm-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.xm-actions button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.xm-actions button.primary {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+  border-color: var(--accent);
+}
+.xm-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.xm-code {
+  width: 100%;
+  min-height: 118px;
+  box-sizing: border-box;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  resize: vertical;
+}
+.xm-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+.xm-partial {
+  font-size: 11px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: var(--muted);
+  margin: 6px 0;
+}
+.xm-plat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 10px;
+}
+
+/* Editor de rebanadas */
+.sl-wrap {
+  margin: 6px 0;
+}
+.sl-stage {
+  position: relative;
+  padding: 14px 0 0 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  justify-content: center;
+}
+.sl-ruler-x {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 0;
+  height: 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: crosshair;
+}
+.sl-ruler-y {
+  position: absolute;
+  top: 14px;
+  left: 0;
+  bottom: 0;
+  width: 14px;
+  border-right: 1px solid var(--border);
+  cursor: crosshair;
+}
+.sl-box {
+  position: relative;
+  max-width: 100%;
+  line-height: 0;
+  background-image: conic-gradient(var(--checker-a) 25%, var(--checker-b) 0 50%, var(--checker-a) 0 75%, var(--checker-b) 0);
+  background-size: 16px 16px;
+}
+.sl-box img {
+  display: block;
+  max-width: 100%;
+  max-height: 340px;
+  user-select: none;
+}
+.sl-line {
+  position: absolute;
+  background: var(--accent);
+  mix-blend-mode: difference;
+}
+.sl-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+}
+.sl-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  margin-top: -0.5px;
+}
+/* zona de agarre ampliada */
+.sl-line::after {
+  content: '';
+  position: absolute;
+}
+.sl-v::after {
+  inset: 0 -5px;
+  cursor: col-resize;
+}
+.sl-h::after {
+  inset: -5px 0;
+  cursor: row-resize;
+}

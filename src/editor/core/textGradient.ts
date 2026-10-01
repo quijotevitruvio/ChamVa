@@ -33,7 +33,12 @@ export function textCanvasGradient(
   map: PointMap = (x, y) => ({ x, y }),
 ): CanvasGradient {
   let grad: CanvasGradient;
-  if (g.kind === 'radial') {
+  const conic = (ctx as CanvasRenderingContext2D & { createConicGradient?: (a: number, x: number, y: number) => CanvasGradient })
+    .createConicGradient;
+  if (g.kind === 'conic' && typeof conic === 'function') {
+    const c = map((g.cx ?? 0.5) * w, (g.cy ?? 0.5) * h);
+    grad = conic.call(ctx, (g.angle * Math.PI) / 180, c.x, c.y);
+  } else if (g.kind === 'radial') {
     const c = map(w / 2, h / 2);
     grad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(1, Math.hypot(w, h) / 2));
   } else {
