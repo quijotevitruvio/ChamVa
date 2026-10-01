@@ -7,6 +7,7 @@ import {
 import { needsProcessing, processImage } from '../editor/core/imageProcessing';
 import { isStrokeOnly, shapePath, shapeSvgPath } from '../editor/core/shapes';
 import { baseStyle, runFont, styledLines } from '../editor/core/richText';
+import { hasTextGradient, textGradientId } from '../editor/core/textGradient';
 
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -139,7 +140,12 @@ function textSvg(l: TextLayer, measure: CanvasRenderingContext2D): string {
     l.textEffect === 'background'
       ? `<rect width="${(boxW + pad * 2).toFixed(1)}" height="${(lines.length * l.fontSize * lh + pad * 2).toFixed(1)}" rx="${(l.fontSize * 0.2).toFixed(1)}" fill="${l.effectColor ?? '#000000'}"/>`
       : '';
-  return `${bgRect}<text font-family="${esc(l.fontFamily)}" font-size="${l.fontSize}" fill="${l.fill}"${weight}${style}${deco}${ls}${stroke}${shadow} dominant-baseline="text-before-edge" xml:space="preserve">${tspans}</text>`;
+  const gid = hasTextGradient(l) ? textGradientId(l.id) : null;
+  const gdef = gid
+    ? `<defs>${svgGradientDef(gid, l.fillGradient!, boxW + pad * 2, lines.length * l.fontSize * lh + pad * 2)}</defs>`
+    : '';
+  const baseFill = gid ? `url(#${gid})` : l.fill;
+  return `${gdef}${bgRect}<text font-family="${esc(l.fontFamily)}" font-size="${l.fontSize}" fill="${baseFill}"${weight}${style}${deco}${ls}${stroke}${shadow} dominant-baseline="text-before-edge" xml:space="preserve">${tspans}</text>`;
 }
 
 export async function exportDocToSvg(doc: Doc): Promise<string> {

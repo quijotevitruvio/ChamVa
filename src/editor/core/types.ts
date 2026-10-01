@@ -125,6 +125,7 @@ export interface TextLayer extends LayerBase {
   fontFamily: string;
   fontSize: number;
   fill: string;
+  fillGradient?: Gradient; // si existe, sustituye a `fill` en el texto sin color propio
   align: 'left' | 'center' | 'right';
   bold: boolean;
   italic: boolean;
@@ -317,6 +318,8 @@ export interface Doc {
   background: Background;
   layers: Layer[];
   version: number;
+  // Guías del usuario (px del documento): x = verticales, y = horizontales.
+  guides?: { x: number[]; y: number[] };
 }
 
 // Calcula los puntos inicio/fin de un degradado lineal según el ángulo y el tamaño.

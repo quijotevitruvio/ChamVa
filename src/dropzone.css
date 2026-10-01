@@ -1,0 +1,35 @@
+/* Aviso al arrastrar archivos sobre la ventana. Plano, sin sombras. */
+.drop-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: var(--overlay);
+}
+.drop-hint span {
+  padding: 18px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--panel);
+  border: 2px dashed var(--text);
+  border-radius: 14px;
+}
+
+/* Historial de cambios: desplegable bajo el botón ⏱ */
+.history-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+}
+.palette-btn {
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .palette-btn {
+    display: none;
+  }
+}

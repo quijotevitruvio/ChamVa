@@ -25,7 +25,7 @@ export function TextLayerNode({ layer, registerRef }: Props) {
   // El dibujo propio (KonvaShape) cubre efectos, subrayado y estilo por palabra;
   // el Konva.Text nativo queda para el caso simple (más rápido).
   const custom =
-    (!!layer.textEffect && layer.textEffect !== 'none') || hasSpans(layer) || !!layer.underline;
+    (!!layer.textEffect && layer.textEffect !== 'none') || hasSpans(layer) || !!layer.underline || !!layer.fillGradient;
   const metrics = useMemo(
     () => measureCurved(measureCtx, layer),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -77,7 +77,7 @@ export function TextLayerNode({ layer, registerRef }: Props) {
         width={metrics.width}
         height={metrics.height}
         sceneFunc={(ctx) => {
-          drawCurvedText((ctx as any)._context, layer, metrics.width);
+          drawCurvedText((ctx as any)._context, layer, metrics.width, metrics.height);
         }}
         hitFunc={(ctx, node) => {
           ctx.beginPath();

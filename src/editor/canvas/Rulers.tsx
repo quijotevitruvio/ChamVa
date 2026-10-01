@@ -22,7 +22,10 @@ export function Rulers({
   scale,
   docW,
   docH,
+  onGuideStart,
 }: {
+  // axis 'y' = guía horizontal (regla superior); 'x' = vertical (regla izquierda).
+  onGuideStart?: (axis: 'x' | 'y', e: React.PointerEvent) => void;
   areaRef: React.RefObject<HTMLDivElement | null>;
   stageRef: React.RefObject<Konva.Stage | null>;
   scale: number;
@@ -181,8 +184,18 @@ export function Rulers({
   return (
     <>
       <div className="ruler-corner" />
-      <canvas ref={topRef} className="ruler ruler-top" />
-      <canvas ref={leftRef} className="ruler ruler-left" />
+      <canvas
+        ref={topRef}
+        className="ruler ruler-top"
+        title="Arrastra hacia el lienzo para crear una guía horizontal"
+        onPointerDown={(e) => onGuideStart?.('y', e)}
+      />
+      <canvas
+        ref={leftRef}
+        className="ruler ruler-left"
+        title="Arrastra hacia el lienzo para crear una guía vertical"
+        onPointerDown={(e) => onGuideStart?.('x', e)}
+      />
     </>
   );
 }

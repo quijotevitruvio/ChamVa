@@ -10,6 +10,7 @@ import { TemplateThumb } from './TemplateThumb';
 import { ColorPanel } from './ColorPanel';
 import { Icon } from './Icon';
 import { toast } from './toast';
+import { TextPresetsPanel } from './TextPresetsPanel';
 import { t } from '../i18n';
 
 const TABS = [
@@ -247,6 +248,7 @@ export function RailPanels({
                   {p.label}
                 </button>
               ))}
+              <TextPresetsPanel />
             </>
           )}
 

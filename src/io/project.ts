@@ -18,6 +18,12 @@ function normalizeBackground(doc: Doc): Doc {
   if (typeof bg === 'string') doc.background = { type: 'solid', color: bg };
   else if (!bg || typeof bg !== 'object')
     doc.background = { type: 'transparent' } as Background;
+  const g = (doc as { guides?: unknown }).guides as { x?: unknown; y?: unknown } | undefined;
+  if (g && typeof g === 'object') {
+    const nums = (a: unknown) =>
+      Array.isArray(a) ? a.filter((n): n is number => typeof n === 'number' && isFinite(n)) : [];
+    doc.guides = { x: nums(g.x), y: nums(g.y) };
+  } else delete doc.guides;
   return doc;
 }
 

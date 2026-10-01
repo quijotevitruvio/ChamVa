@@ -1,5 +1,6 @@
 import type { TextLayer } from './types';
 import { runFont, styledLines, type ResolvedStyle } from './richText';
+import { runUsesGradient, textCanvasGradient, type PointMap } from './textGradient';
 
 export interface CurvedMetrics {
   width: number;
@@ -52,6 +53,7 @@ export function drawCurvedText(
   ctx: CanvasRenderingContext2D,
   layer: TextLayer,
   width: number,
+  height: number = measureCurved(ctx, layer).height,
 ) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -60,9 +62,15 @@ export function drawCurvedText(
   const total = widths.reduce((a, b) => a + b, 0) || 1;
   const fs = layer.fontSize;
   const curveDeg = layer.curve ?? 0;
+  // `toLocal`: del cuadro del texto al espacio local de la letra que se dibuja
+  // (cada letra va rotada); así el degradado cubre todo el cuadro.
+  let toLocal: PointMap = (px, py) => ({ x: px, y: py });
+  const grad = layer.fillGradient
+    ? (map: PointMap) => textCanvasGradient(ctx, layer.fillGradient!, width, height, map)
+    : null;
   const drawChar = (ch: CurvedChar, x: number, y: number) => {
     ctx.font = runFont(layer, ch.st);
-    ctx.fillStyle = ch.st.color;
+    ctx.fillStyle = grad && runUsesGradient(layer, ch.st.color) ? grad(toLocal) : ch.st.color;
     if (layer.strokeWidth > 0) {
       ctx.strokeStyle = layer.strokeColor;
       ctx.lineWidth = layer.strokeWidth;
@@ -94,6 +102,17 @@ export function drawCurvedText(
     ctx.translate(cx, centerY);
     ctx.rotate(s * theta);
     ctx.translate(0, -s * R);
+    {
+      // Inversa de translate(cx,centerY)·rotate(sθ)·translate(0,-sR).
+      const a = -s * theta;
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
+      toLocal = (px, py) => {
+        const dx = px - cx;
+        const dy = py - centerY;
+        return { x: dx * cos - dy * sin, y: dx * sin + dy * cos + s * R };
+      };
+    }
     drawChar(chars[i], 0, 0);
     ctx.restore();
     theta += widths[i] / R / 2;

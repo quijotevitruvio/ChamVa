@@ -1,0 +1,17 @@
+/* Panel de propiedades: grupos dentro de «Más opciones». Plano, sin sombras. */
+.prop-section-body .more-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.prop-section-body .more-group:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.prop-section-body .more-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}

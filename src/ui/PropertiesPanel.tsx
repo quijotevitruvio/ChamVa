@@ -2,7 +2,7 @@ import { FillControl } from './GradientEditor';
 import { toHex6 } from '../editor/core/gradients';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useEditor } from '../editor/state/store';
-import { FONT_FAMILIES, SHAPE_OPTIONS, type Layer, type TextLayer } from '../editor/core/types';
+import { FONT_FAMILIES, SHAPE_OPTIONS, type Gradient, type Layer, type TextLayer } from '../editor/core/types';
 import { isStrokeOnly } from '../editor/core/shapes';
 import { toggleTarget, resolveCharStyles } from '../editor/core/richText';
 import { ANIMATIONS } from '../editor/core/animations';
@@ -13,6 +13,7 @@ import { cancelAI, type BgQuality, type EdgeMode } from '../ai/worker-client';
 import { AdjustPanel } from './AdjustPanel';
 import { toast } from './toast';
 import { t } from '../i18n';
+import './props-extra.css';
 
 const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] as const;
 const BLEND_LABEL: Record<(typeof BLEND_MODES)[number], string> = {
@@ -159,6 +160,17 @@ export function PropertiesPanel(p: Props) {
     else setTextStyleAll(l.id, { fill: c });
   };
 
+  // «Color | Degradado» del texto: el degradado aplica a todo el texto; el
+  // color con una palabra seleccionada sigue siendo sólido y solo de ese rango.
+  const onTextFill = (
+    l: TextLayer,
+    patch: { fill?: string; fillGradient?: Gradient | undefined },
+  ) => {
+    if (patch.fillGradient) updateLayer(l.id, { fillGradient: patch.fillGradient });
+    else if ('fillGradient' in patch && !rangeOf(l)) updateLayer(l.id, { fill: patch.fill ?? l.fill, fillGradient: undefined });
+    else if (patch.fill !== undefined) setTextColor(l, patch.fill);
+  };
+
   const range = (
     label: string,
     value: number,
@@ -201,6 +213,113 @@ export function PropertiesPanel(p: Props) {
       </div>
       {l.shadow &&
         range('Desenfoque', l.shadowBlur, 0, 60, 1, (v) => updateLayerLive(l.id, { shadowBlur: v }))}
+    </>
+  );
+
+  // Controles comunes (posición, giro, transparencia, mezcla, animación) para «Más opciones».
+  const commonMore = (
+    <>
+        <div className="more-group">
+          <span className="more-title">{t('Posición, giro y transparencia')}</span>
+          {range(
+            t('Rotación'),
+            ((Math.round(selected.rotation) % 360) + 360) % 360,
+            0,
+            360,
+            1,
+            (v) => setLayerRotation(selected.id, v, true),
+            `${Math.round(((selected.rotation % 360) + 360) % 360)}°`,
+          )}
+          <div className="row">
+            <button onClick={() => setLayerRotation(selected.id, selected.rotation - 90)} title="Girar 90° a la izquierda">
+              ⟲ 90°
+            </button>
+            <button onClick={() => setLayerRotation(selected.id, selected.rotation + 90)} title="Girar 90° a la derecha">
+              ⟳ 90°
+            </button>
+          </div>
+          {range(
+            t('Opacidad'),
+            selected.opacity,
+            0,
+            1,
+            0.01,
+            (v) => updateLayerLive(selected.id, { opacity: v }),
+            `${Math.round(selected.opacity * 100)}%`,
+          )}
+          <label className="prop">
+            Mezcla
+            <select
+              value={selected.blendMode}
+              onChange={(e) =>
+                updateLayer(selected.id, { blendMode: e.target.value as (typeof BLEND_MODES)[number] })
+              }
+            >
+              {BLEND_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {BLEND_LABEL[m]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!multi && (
+            <>
+              <span className="rail-sub">Alinear en la página</span>
+              <div className="align-grid">
+                <button onClick={() => alignLayer(selected.id, 'left')} title="Izquierda">⬅</button>
+                <button onClick={() => alignLayer(selected.id, 'centerH')} title="Centro H">⬌</button>
+                <button onClick={() => alignLayer(selected.id, 'right')} title="Derecha">➡</button>
+                <button onClick={() => alignLayer(selected.id, 'top')} title="Arriba">⬆</button>
+                <button onClick={() => alignLayer(selected.id, 'centerV')} title="Centro V">⬍</button>
+                <button onClick={() => alignLayer(selected.id, 'bottom')} title="Abajo">⬇</button>
+              </div>
+            </>
+          )}
+          <div className="row">
+            <button onClick={() => moveLayer(selected.id, 'up')}>⬆ Subir capa</button>
+            <button onClick={() => moveLayer(selected.id, 'down')}>⬇ Bajar capa</button>
+          </div>
+        </div>
+
+        <div className="more-group">
+          <span className="more-title">{t('Animación')}</span>
+          <label className="prop">
+            Entrada
+            <select
+              value={selected.anim ?? 'none'}
+              onChange={(e) => updateLayer(selected.id, { anim: e.target.value })}
+            >
+              {ANIMATIONS.map((an) => (
+                <option key={an.id} value={an.id}>
+                  {an.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="prop">
+            Salida
+            <select
+              value={selected.animOut ?? 'none'}
+              onChange={(e) => updateLayer(selected.id, { animOut: e.target.value })}
+            >
+              {ANIMATIONS.map((an) => (
+                <option key={an.id} value={an.id}>
+                  {an.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {((selected.anim ?? 'none') !== 'none' || (selected.animOut ?? 'none') !== 'none') &&
+            range(
+              'Duración',
+              selected.animDuration ?? 0.6,
+              0.2,
+              3,
+              0.1,
+              (v) => updateLayerLive(selected.id, { animDuration: v }),
+              `${(selected.animDuration ?? 0.6).toFixed(1)}s`,
+            )}
+        </div>
     </>
   );
 
@@ -338,6 +457,13 @@ export function PropertiesPanel(p: Props) {
                   </button>
                 </p>
               )}
+            </Section>
+
+            <Section id="img-adjust" title="Ajustes de luz y color">
+              <AdjustPanel layer={selected} />
+            </Section>
+
+            <Section id="more-image" title="Más opciones">
               <button className="magic full" onClick={p.onShowFilters}>
                 🎨 Filtros y Duotono
               </button>
@@ -376,10 +502,11 @@ export function PropertiesPanel(p: Props) {
                   />
                 </label>
               )}
-            </Section>
-
-            <Section id="img-adjust" title="Ajustes de luz y color">
-              <AdjustPanel layer={selected} />
+              <div className="more-group">
+                <span className="more-title">{t('Sombra')}</span>
+                {shadowControls(selected)}
+              </div>
+              {commonMore}
             </Section>
           </>
         )}
@@ -462,12 +589,6 @@ export function PropertiesPanel(p: Props) {
                   }
                   title="Tamaño"
                 />
-                <input
-                  type="color"
-                  value={colorOf(selected)}
-                  onChange={(e) => setTextColor(selected, e.target.value)}
-                  title="Color"
-                />
                 <button
                   className={isActive(selected, 'bold') ? 'active' : ''}
                   onClick={() => toggleText(selected, 'bold')}
@@ -490,6 +611,12 @@ export function PropertiesPanel(p: Props) {
                   <u>U</u>
                 </button>
               </div>
+              <span className="rail-label">{t('Color del texto')}</span>
+              <FillControl
+                fill={colorOf(selected)}
+                gradient={rangeOf(selected) ? undefined : selected.fillGradient}
+                onChange={(patch) => onTextFill(selected, patch)}
+              />
               <div className="row">
                 {(['left', 'center', 'right'] as const).map((a) => (
                   <button
@@ -503,7 +630,9 @@ export function PropertiesPanel(p: Props) {
               </div>
             </Section>
 
-            <Section id="txt-space" title="Espaciado, mayúsculas y listas">
+            <Section id="more-text" title="Más opciones">
+            <div className="more-group">
+              <span className="more-title">{t('Espaciado, mayúsculas y listas')}</span>
               <div className="row">
                 {(
                   [
@@ -557,9 +686,10 @@ export function PropertiesPanel(p: Props) {
                   <option value="number">1. Numerada</option>
                 </select>
               </label>
-            </Section>
+            </div>
 
-            <Section id="txt-fx" title="Efectos de texto">
+            <div className="more-group">
+              <span className="more-title">{t('Efectos de texto')}</span>
               <div className="row">
                 <button
                   onClick={() =>
@@ -619,6 +749,8 @@ export function PropertiesPanel(p: Props) {
                 updateLayerLive(selected.id, { strokeWidth: v }),
               )}
               {shadowControls(selected)}
+            </div>
+              {commonMore}
             </Section>
           </>
         )}
@@ -685,115 +817,18 @@ export function PropertiesPanel(p: Props) {
                 1,
                 (v) => updateLayerLive(selected.id, { cornerRadius: v }),
               )}
-            {shadowControls(selected)}
           </Section>
         )}
 
-        {selected.type === 'image' && (
-          <Section id="img-shadow" title="Sombra">
-            {shadowControls(selected)}
+        {selected.type === 'shape' && (
+          <Section id="more-shape" title="Más opciones">
+            <div className="more-group">
+              <span className="more-title">{t('Sombra')}</span>
+              {shadowControls(selected)}
+            </div>
+            {commonMore}
           </Section>
         )}
-
-        <Section id="pos" title="Posición, giro y transparencia">
-          {range(
-            t('Rotación'),
-            ((Math.round(selected.rotation) % 360) + 360) % 360,
-            0,
-            360,
-            1,
-            (v) => setLayerRotation(selected.id, v, true),
-            `${Math.round(((selected.rotation % 360) + 360) % 360)}°`,
-          )}
-          <div className="row">
-            <button onClick={() => setLayerRotation(selected.id, selected.rotation - 90)} title="Girar 90° a la izquierda">
-              ⟲ 90°
-            </button>
-            <button onClick={() => setLayerRotation(selected.id, selected.rotation + 90)} title="Girar 90° a la derecha">
-              ⟳ 90°
-            </button>
-          </div>
-          {range(
-            t('Opacidad'),
-            selected.opacity,
-            0,
-            1,
-            0.01,
-            (v) => updateLayerLive(selected.id, { opacity: v }),
-            `${Math.round(selected.opacity * 100)}%`,
-          )}
-          <label className="prop">
-            Mezcla
-            <select
-              value={selected.blendMode}
-              onChange={(e) =>
-                updateLayer(selected.id, { blendMode: e.target.value as (typeof BLEND_MODES)[number] })
-              }
-            >
-              {BLEND_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {BLEND_LABEL[m]}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!multi && (
-            <>
-              <span className="rail-sub">Alinear en la página</span>
-              <div className="align-grid">
-                <button onClick={() => alignLayer(selected.id, 'left')} title="Izquierda">⬅</button>
-                <button onClick={() => alignLayer(selected.id, 'centerH')} title="Centro H">⬌</button>
-                <button onClick={() => alignLayer(selected.id, 'right')} title="Derecha">➡</button>
-                <button onClick={() => alignLayer(selected.id, 'top')} title="Arriba">⬆</button>
-                <button onClick={() => alignLayer(selected.id, 'centerV')} title="Centro V">⬍</button>
-                <button onClick={() => alignLayer(selected.id, 'bottom')} title="Abajo">⬇</button>
-              </div>
-            </>
-          )}
-          <div className="row">
-            <button onClick={() => moveLayer(selected.id, 'up')}>⬆ Subir capa</button>
-            <button onClick={() => moveLayer(selected.id, 'down')}>⬇ Bajar capa</button>
-          </div>
-        </Section>
-
-        <Section id="anim" title="Animación">
-          <label className="prop">
-            Entrada
-            <select
-              value={selected.anim ?? 'none'}
-              onChange={(e) => updateLayer(selected.id, { anim: e.target.value })}
-            >
-              {ANIMATIONS.map((an) => (
-                <option key={an.id} value={an.id}>
-                  {an.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="prop">
-            Salida
-            <select
-              value={selected.animOut ?? 'none'}
-              onChange={(e) => updateLayer(selected.id, { animOut: e.target.value })}
-            >
-              {ANIMATIONS.map((an) => (
-                <option key={an.id} value={an.id}>
-                  {an.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {((selected.anim ?? 'none') !== 'none' || (selected.animOut ?? 'none') !== 'none') &&
-            range(
-              'Duración',
-              selected.animDuration ?? 0.6,
-              0.2,
-              3,
-              0.1,
-              (v) => updateLayerLive(selected.id, { animDuration: v }),
-              `${(selected.animDuration ?? 0.6).toFixed(1)}s`,
-            )}
-        </Section>
 
         <div className="props-actions">
           <div className="row">

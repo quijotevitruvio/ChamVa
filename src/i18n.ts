@@ -115,6 +115,8 @@ const EN: Record<string, string> = {
   'Invítame un café': 'Buy me a coffee',
   'Sobre el autor': 'About the author',
   'Reglas': 'Rulers',
+  'Buscar': 'Search',
+  'Guardar como plantilla': 'Save as template',
   'Tema': 'Theme',
   'Sistema': 'System',
   'Claro': 'Light',

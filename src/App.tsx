@@ -56,9 +56,16 @@ import { ContextMenu, FloatToolbar } from './ui/SelectionMenus';
 import { PageBar } from './ui/PageBar';
 import { UpdateBanner } from './ui/UpdateBanner';
 import { ChartEditor } from './ui/ChartEditor';
+import { CommandPalette, type Command } from './ui/CommandPalette';
+import { HistoryPopover } from './ui/HistoryPopover';
+import { Tour, shouldShowTour } from './ui/Tour';
+import { setTheme } from './theme';
+import { openExternal } from './io/openExternal';
+import { AUTHOR, SUPPORT } from './branding';
 import type { ChartSpec, TableSpec } from './editor/core/charts';
 import { DEFAULT_ADJUST } from './editor/core/types';
 import './App.css';
+import './dropzone.css';
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -149,6 +156,9 @@ export default function App() {
   const [showRequest, setShowRequest] = useState<LicenseType | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showMore, setShowMore] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   // Móvil: el panel de propiedades es una hoja inferior que se abre a demanda.
   const [sheetOpen, setSheetOpen] = useState(false);
   useEffect(() => {
@@ -274,13 +284,23 @@ export default function App() {
     toast('Copia restaurada', 'success');
   };
 
+  // Recorrido de bienvenida: solo la primera vez, ya dentro del editor.
+  useEffect(() => {
+    if (showHome || !shouldShowTour()) return;
+    const id = setTimeout(() => setShowTour(true), 1200);
+    return () => clearTimeout(id);
+  }, [showHome]);
+
   // ---- atajos globales ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const st = useEditor.getState();
-      if (ctrl && e.key.toLowerCase() === 'g') {
+      if (ctrl && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowPalette((v) => !v);
+      } else if (ctrl && e.key.toLowerCase() === 'g') {
         e.preventDefault();
         if (e.shiftKey) st.ungroupSelected();
         else st.groupSelected();
@@ -668,6 +688,50 @@ export default function App() {
     }
   };
 
+  // Arrastrar imágenes a CUALQUIER parte de la ventana: se añaden al diseño y a
+  // la galería. Las zonas con su propio destino (lienzo/marcos) cortan el evento antes.
+  const [dragFiles, setDragFiles] = useState(false);
+  const importFilesRef = useRef(importFiles);
+  importFilesRef.current = importFiles;
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setDragFiles(true);
+    };
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragFiles(false);
+    };
+    const drop = (e: DragEvent) => {
+      depth = 0;
+      setDragFiles(false);
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      const imgs = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
+      if (imgs.length) importFilesRef.current(imgs, true);
+      else toast('Solo se pueden soltar imágenes aquí.', 'info');
+    };
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragover', over);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', drop);
+    };
+  }, []);
+
   const baseName = (d: { name: string }) => (d.name || 'chamva').replace(/[^\w\-]+/g, '_');
 
   const onDownload = async () => {
@@ -811,6 +875,80 @@ export default function App() {
     }
   };
 
+  // Ajustes de imagen desde la paleta: sobre la imagen seleccionada (null = quitar todos).
+  const adjustSelected = (patch: Partial<typeof DEFAULT_ADJUST> | null) => {
+    if (!selected || selected.type !== 'image') {
+      toast('Selecciona primero una imagen (haz clic sobre ella).', 'info');
+      return;
+    }
+    updateLayer(selected.id, { adjust: patch ? { ...DEFAULT_ADJUST, ...(selected.adjust ?? {}), ...patch } : { ...DEFAULT_ADJUST } });
+  };
+
+  // Comandos de la paleta (Ctrl+K). Un solo sitio: lo que hay aquí se puede buscar.
+  const commands: Command[] = (() => {
+    const st = useEditor.getState();
+    const c = (
+      group: string,
+      id: string,
+      label: string,
+      run: () => void,
+      extra: Partial<Command> = {},
+    ): Command => ({ id, group, label, run, ...extra });
+    const shape = (kind: Parameters<typeof st.addShapeLayer>[0], label: string, kw: string) =>
+      c('Insertar', `shape-${kind}`, label, () => st.addShapeLayer(kind), { keywords: kw });
+    return [
+      c('Archivo', 'download', 'Descargar…', () => setShowDownload(true), { keywords: 'exportar guardar imagen png jpg pdf svg gif' }),
+      c('Archivo', 'copy', 'Copiar al portapapeles', onCopyToClipboard, { keywords: 'imagen' }),
+      c('Archivo', 'save-project', 'Guardar proyecto', onSaveProject, { keywords: 'archivo chamva' }),
+      c('Archivo', 'open-project', 'Abrir proyecto', () => projectRef.current?.click(), { keywords: 'archivo chamva' }),
+      c('Archivo', 'save-template', 'Guardar como plantilla', onSaveTemplate, { keywords: 'plantillas reutilizar' }),
+      c('Archivo', 'home', 'Ir al inicio', () => setShowHome(true), { keywords: 'nuevo diseño tamaño pantalla principal' }),
+      c('Editar', 'undo', 'Deshacer', undo, { shortcut: 'Ctrl+Z' }),
+      c('Editar', 'redo', 'Rehacer', redo, { shortcut: 'Ctrl+Y' }),
+      c('Editar', 'history', 'Historial de cambios', () => setShowHistory(true), { keywords: 'deshacer pasos volver' }),
+      c('Editar', 'duplicate', 'Duplicar elemento', () => selectedId && st.duplicateLayer(selectedId), { shortcut: 'Ctrl+D', keywords: 'copiar clonar' }),
+      c('Editar', 'delete', 'Borrar elemento', () => st.removeSelected(), { shortcut: 'Supr', keywords: 'eliminar quitar' }),
+      c('Editar', 'group', 'Agrupar', () => st.groupSelected(), { shortcut: 'Ctrl+G' }),
+      c('Editar', 'ungroup', 'Desagrupar', () => st.ungroupSelected(), { shortcut: 'Ctrl+Shift+G' }),
+      c('Insertar', 'text', 'Añadir texto', () => st.addTextLayer(), { keywords: 'titulo letra escribir' }),
+      shape('rect', 'Añadir rectángulo', 'cuadro caja forma'),
+      shape('ellipse', 'Añadir círculo', 'elipse forma'),
+      shape('triangle', 'Añadir triángulo', 'forma'),
+      shape('star', 'Añadir estrella', 'forma'),
+      shape('line', 'Añadir línea', 'forma recta'),
+      shape('arrow', 'Añadir flecha', 'forma'),
+      c('Insertar', 'add-page', 'Añadir página', () => st.addPage(), { keywords: 'diapositiva hoja' }),
+      c('Imagen', 'remove-bg', 'Quitar fondo de la imagen', onQuickRemoveBg, { keywords: 'recortar transparente ia' }),
+      c('Imagen', 'adj-invert', 'Invertir colores de la imagen', () => adjustSelected({ invert: !(selected?.type === 'image' && selected.adjust?.invert) }), { keywords: 'negativo' }),
+      c('Imagen', 'adj-bw', 'Imagen en blanco y negro', () => adjustSelected({ grayscale: 100 }), { keywords: 'gris monocromo' }),
+      c('Imagen', 'adj-sepia', 'Imagen en sepia', () => adjustSelected({ sepia: 100 }), { keywords: 'antiguo vintage' }),
+      c('Imagen', 'adj-sharp', 'Dar nitidez a la imagen', () => adjustSelected({ sharpen: 60 }), { keywords: 'enfocar detalle' }),
+      c('Imagen', 'adj-reset', 'Quitar los ajustes de la imagen', () => adjustSelected(null), { keywords: 'restablecer original' }),
+      c('Imagen', 'bg-transparent', 'Hacer transparente el fondo del lienzo', () => setBackground({ type: 'transparent' }), { keywords: 'sin fondo cuadriculado' }),
+      c('Imagen', 'bg-white', 'Fondo blanco', () => setBackground({ type: 'solid', color: '#ffffff' })),
+      c('Imagen', 'bg-black', 'Fondo negro', () => setBackground({ type: 'solid', color: '#000000' })),
+      c('Ver', 'rulers', 'Mostrar u ocultar reglas', () => st.toggleRulers(), { keywords: 'medidas pixeles' }),
+      c('Ver', 'grid', 'Mostrar u ocultar cuadrícula', () => st.toggleGrid(), { keywords: 'rejilla' }),
+      c('Ver', 'guides', 'Mostrar u ocultar guías', () => st.toggleGuides(), { keywords: 'lineas' }),
+      c('Ver', 'snap', 'Activar o desactivar imán a la cuadrícula', () => st.toggleSnapToGrid(), { keywords: 'ajustar alinear' }),
+      c('Ver', 'zoom-in', 'Acercar', () => st.setZoom(st.zoom * 1.2), { keywords: 'zoom aumentar' }),
+      c('Ver', 'zoom-out', 'Alejar', () => st.setZoom(st.zoom / 1.2), { keywords: 'zoom reducir' }),
+      c('Ver', 'zoom-fit', 'Ajustar zoom a la ventana', () => st.setZoom(1), { keywords: 'zoom encajar' }),
+      c('Ver', 'present', 'Modo presentación', () => setShowPresent(true), { keywords: 'pantalla completa diapositivas' }),
+      c('Ver', 'theme-light', 'Tema claro', () => setTheme('light'), { keywords: 'apariencia color' }),
+      c('Ver', 'theme-dark', 'Tema oscuro', () => setTheme('dark'), { keywords: 'apariencia color' }),
+      c('Ver', 'theme-system', 'Tema del sistema', () => setTheme('system'), { keywords: 'apariencia automatico' }),
+      c('Herramientas', 'video', 'Abrir el editor de video', () => setShowVideo(true), { keywords: 'audio clip' }),
+      c('Herramientas', 'preview-anim', 'Previsualizar animaciones', playAnimations),
+      c('Ayuda', 'shortcuts', 'Atajos de teclado', () => setShowShortcuts(true), { shortcut: '?' }),
+      c('Ayuda', 'settings', 'Ajustes y licencia', () => setShowSettings(true), { keywords: 'idioma tema actualizaciones donantes' }),
+      c('Ayuda', 'tour', 'Ver el recorrido de bienvenida', () => setShowTour(true), { keywords: 'tutorial guia ayuda' }),
+      c('Ayuda', 'star', 'Dale una estrella en GitHub', () => openExternal(AUTHOR.repo), { keywords: 'apoyar calificar' }),
+      c('Ayuda', 'sponsors', 'Apoyar en GitHub Sponsors', () => openExternal(SUPPORT.sponsors), { keywords: 'donar donacion' }),
+      c('Ayuda', 'paypal', 'Invítame un café (PayPal)', () => openExternal(AUTHOR.paypal), { keywords: 'donar donacion' }),
+    ];
+  })();
+
   const offlineBusy = !!offlineMsg && !offlineMsg.startsWith('✓') && !offlineMsg.startsWith('✕');
 
   return (
@@ -846,6 +984,15 @@ export default function App() {
               >
                 💾 {t('Guardar proyecto')}
               </button>
+              <button
+                onClick={() => {
+                  onSaveTemplate();
+                  setShowFileMenu(false);
+                }}
+                title="Guarda esta página como plantilla reutilizable (pestaña Plantillas)"
+              >
+                ◫ {t('Guardar como plantilla')}
+              </button>
             </div>
           )}
         </div>
@@ -872,7 +1019,26 @@ export default function App() {
           <button disabled={future.length === 0} onClick={redo} title="Ctrl+Y">
             ↪ {t('Rehacer')}
           </button>
+          <span className="menu-wrap">
+            <button
+              className={showHistory ? 'active' : ''}
+              onClick={() => setShowHistory((v) => !v)}
+              title="Historial de cambios: vuelve a cualquier paso"
+              aria-label="Historial de cambios"
+            >
+              ⏱
+            </button>
+            {showHistory && (
+              <div className="history-pop">
+                <HistoryPopover onClose={() => setShowHistory(false)} />
+              </div>
+            )}
+          </span>
         </div>
+
+        <button onClick={() => setShowPalette(true)} title="Buscar cualquier acción (Ctrl+K)" className="palette-btn">
+          ⌕ {t('Buscar')}
+        </button>
 
         <button className="cut-bg" onClick={onQuickRemoveBg} disabled={bgBusy} title="Quitar el fondo de la imagen y dejarlo transparente">
           {bgBusy ? `✂ ${bgMsg || '…'}` : `✂ ${t('Quitar fondo')}`}
@@ -1106,6 +1272,15 @@ export default function App() {
 
       {showPresent && (
         <Presentation pages={pages.map((p, i) => (i === pageIndex ? doc : p))} start={pageIndex} onClose={() => setShowPresent(false)} />
+      )}
+
+      <CommandPalette open={showPalette} onClose={() => setShowPalette(false)} commands={commands} />
+      {showTour && !showHome && <Tour onDone={() => setShowTour(false)} />}
+
+      {dragFiles && !showHome && (
+        <div className="drop-hint" aria-hidden="true">
+          <span>Suelta la imagen para añadirla al diseño</span>
+        </div>
       )}
 
       {showHome && (

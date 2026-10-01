@@ -1,0 +1,119 @@
+/* Herramientas de color: cuentagotas alternativo, armonías y paleta de foto. Plano, sin sombras. */
+.sp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sp-modal {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 12px;
+  max-width: 96vw;
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sp-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.sp-stage {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: auto;
+}
+.sp-canvas {
+  display: block;
+  max-width: 100%;
+  cursor: crosshair;
+}
+.sp-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.sp-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sp-lupa {
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+  background: var(--panel-2);
+}
+.sp-chip {
+  min-width: 84px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  text-align: center;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.sp-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cp-harm-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cp-harm-pick input[type='color'] {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: none;
+}
+.cp-harm {
+  margin-bottom: 8px;
+}
+.cp-harm-name {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.cp-harm-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.cp-mini {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.cp-mini:hover {
+  color: var(--text);
+  border-color: var(--text);
+}

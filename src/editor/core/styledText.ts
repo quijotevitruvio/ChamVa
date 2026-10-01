@@ -3,6 +3,7 @@
 // para paridad pixel a pixel.
 import type { TextLayer } from './types';
 import { runFont, styledLines, type StyledRun } from './richText';
+import { runUsesGradient, textCanvasGradient } from './textGradient';
 
 const BG_PAD = 0.3; // padding del fondo, relativo a fontSize
 const BG_RADIUS = 0.2; // radio de esquina del fondo, relativo a fontSize
@@ -110,6 +111,10 @@ export function drawStyledText(
     ctx.shadowOffsetY = 0;
   };
   const underlineThickness = Math.max(1, fontSize / 15);
+  // Degradado del color de texto: un solo CanvasGradient sobre todo el cuadro.
+  const grad = layer.fillGradient ? textCanvasGradient(ctx, layer.fillGradient, m.width, m.height) : null;
+  const paintFor = (color: string): string | CanvasGradient =>
+    grad && runUsesGradient(layer, color) ? grad : color;
 
   m.lines.forEach((line, i) => {
     let lx = m.pad;
@@ -148,17 +153,17 @@ export function drawStyledText(
         ctx.lineJoin = 'round';
         ctx.strokeText(run.text, x, y);
         clearShadow();
-        ctx.fillStyle = run.color;
+        ctx.fillStyle = paintFor(run.color);
         ctx.fillText(run.text, x, y);
       } else {
         if (layer.shadow) setShadow();
         else clearShadow();
-        ctx.fillStyle = run.color;
+        ctx.fillStyle = paintFor(run.color);
         ctx.fillText(run.text, x, y);
         clearShadow();
       }
       if (run.underline && run.text.trim()) {
-        ctx.fillStyle = run.color;
+        ctx.fillStyle = paintFor(run.color);
         ctx.fillRect(x, y + fontSize * 0.95, w, underlineThickness);
       }
       x += w;

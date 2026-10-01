@@ -13,6 +13,7 @@ import {
   type UploadedImage,
   type SavedTemplate,
 } from '../core/types';
+import { jumpInHistory } from './historyLogic';
 import { loadStoredFonts } from '../core/fonts';
 import { idbGet, idbSet } from '../../io/idb';
 import {
@@ -28,6 +29,13 @@ import {
   type SpanStyle,
 } from '../core/richText';
 import { measureStyledText } from '../core/styledText';
+import {
+  buildFontPairProps,
+  buildTextLayerProps,
+  getFontPair,
+  getTextPreset,
+  type MeasureFn,
+} from '../core/textPresets';
 
 // Fuentes de marca (nombres de familia) — pocas cadenas, van en localStorage.
 const LS_BRAND_FONTS = 'chamva.brandFonts';
@@ -151,6 +159,8 @@ interface EditorState {
   viewScale: number; // escala aplicada real (para mostrar %)
   showRulers: boolean;
   showGrid: boolean;
+  showGuides: boolean;
+  snapToGrid: boolean;
   pages: Doc[];
   pageIndex: number;
   brandLogos: UploadedImage[];
@@ -209,6 +219,8 @@ interface EditorState {
     fontSize: number;
     bold: boolean;
   }) => void;
+  addTextPreset: (presetId: string) => Promise<void>; // estilo de texto listo (un paso de deshacer)
+  addFontPair: (pairId: string) => Promise<void>; // título + cuerpo (un paso de deshacer)
   addShapeLayer: (kind: ShapeKind) => void;
   reorderLayers: (orderBottomFirst: string[]) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
@@ -261,6 +273,10 @@ interface EditorState {
   setViewScale: (s: number) => void;
   toggleRulers: () => void;
   toggleGrid: () => void;
+  toggleGuides: () => void;
+  toggleSnapToGrid: () => void;
+  // Reemplaza las guías de la página (un paso de deshacer).
+  setGuides: (guides: { x: number[]; y: number[] }) => void;
   moveLayer: (id: string, dir: 'up' | 'down') => void;
   alignLayer: (id: string, kind: AlignKind) => void;
   alignSelected: (kind: AlignKind) => void;
@@ -275,6 +291,7 @@ interface EditorState {
   // historial
   undo: () => void;
   redo: () => void;
+  jumpToHistory: (index: number) => void;
 }
 
 // Helper: aplica un cambio al documento registrándolo en el historial.
@@ -291,21 +308,60 @@ function commit(s: EditorState, newDoc: Doc): Partial<EditorState> {
 
 const FIRST_DOC = emptyDoc();
 
-const VIEW_KEY = 'chamva.view';
-function loadView(): { rulers: boolean; grid: boolean } {
+// Medida real de un texto (para centrar los estilos de texto listos).
+let presetMeasureCtx: CanvasRenderingContext2D | null = null;
+const measureTextProps: MeasureFn = (props) => {
+  presetMeasureCtx ??= document.createElement('canvas').getContext('2d');
+  if (!presetMeasureCtx) return { width: (props.text?.length ?? 1) * (props.fontSize ?? 48) * 0.56, height: (props.fontSize ?? 48) };
+  const m = measureStyledText(presetMeasureCtx, props as TextLayer);
+  return { width: m.width, height: m.height };
+};
+
+// Espera (máx. 800 ms) a que las fuentes empaquetadas estén cargadas antes de medir.
+async function ensureFonts(families: (string | undefined)[], bold?: boolean) {
   try {
-    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
-    return { rulers: !!v.rulers, grid: !!v.grid };
+    const loads = families
+      .filter((f): f is string => !!f)
+      .map((f) => document.fonts.load(`${bold ? 700 : 400} 40px "${f}"`));
+    await Promise.race([Promise.all(loads), new Promise((r) => setTimeout(r, 800))]);
   } catch {
-    return { rulers: false, grid: false };
+    /* sin fuentes: se mide con la de reserva */
   }
 }
-function saveView(v: { rulers: boolean; grid: boolean }) {
+
+// Crea la capa con la lógica de addTextLayer y le aplica el estilo del preset.
+function placeTextProps(props: Partial<TextLayer>) {
+  const st = useEditor.getState();
+  st.addTextLayer({ text: props.text ?? 'Texto', fontSize: props.fontSize ?? 48, bold: props.bold ?? false });
+  const id = useEditor.getState().selectedId;
+  if (id) useEditor.getState().updateLayer(id, props as Partial<Layer>);
+}
+
+const VIEW_KEY = 'chamva.view';
+interface ViewPrefs {
+  rulers: boolean;
+  grid: boolean;
+  guides: boolean;
+  snap: boolean;
+}
+function loadView(): ViewPrefs {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
+    return { rulers: !!v.rulers, grid: !!v.grid, guides: v.guides !== false, snap: !!v.snap };
+  } catch {
+    return { rulers: false, grid: false, guides: true, snap: false };
+  }
+}
+function saveView(v: ViewPrefs) {
   try {
     localStorage.setItem(VIEW_KEY, JSON.stringify(v));
   } catch {
     /* sin almacenamiento: no se recuerda */
   }
+}
+
+function viewPrefs(s: EditorState): ViewPrefs {
+  return { rulers: s.showRulers, grid: s.showGrid, guides: s.showGuides, snap: s.snapToGrid };
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -333,6 +389,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   viewScale: 1,
   showRulers: loadView().rulers,
   showGrid: loadView().grid,
+  showGuides: loadView().guides,
+  snapToGrid: loadView().snap,
   pages: [FIRST_DOC],
   pageIndex: 0,
 
@@ -691,6 +749,35 @@ export const useEditor = create<EditorState>((set, get) => ({
         selectedId: layer.id,
       };
     }),
+
+  addTextPreset: async (presetId) => {
+    const preset = getTextPreset(presetId);
+    if (!preset) return;
+    await ensureFonts([preset.style.fontFamily], preset.style.bold);
+    const doc = get().doc;
+    const props = buildTextLayerProps(preset, doc, measureTextProps);
+    get().beginBatch();
+    try {
+      placeTextProps(props);
+    } finally {
+      get().endBatch();
+    }
+  },
+
+  addFontPair: async (pairId) => {
+    const pair = getFontPair(pairId);
+    if (!pair) return;
+    await ensureFonts([pair.title.fontFamily, pair.body.fontFamily], pair.title.bold);
+    const doc = get().doc;
+    const [title, body] = buildFontPairProps(pair, doc, measureTextProps);
+    get().beginBatch();
+    try {
+      placeTextProps(body);
+      placeTextProps(title); // el título queda seleccionado
+    } finally {
+      get().endBatch();
+    }
+  },
 
   addShapeLayer: (kind) =>
     set((s) => {
@@ -1113,15 +1200,27 @@ export const useEditor = create<EditorState>((set, get) => ({
   setZoom: (z) => set({ zoom: Math.max(0.1, Math.min(5, z)) }),
   setViewScale: (s) => set({ viewScale: s }),
   toggleRulers: () => {
-    const v = !get().showRulers;
-    set({ showRulers: v });
-    saveView({ rulers: v, grid: get().showGrid });
+    set({ showRulers: !get().showRulers });
+    saveView(viewPrefs(get()));
   },
   toggleGrid: () => {
-    const v = !get().showGrid;
-    set({ showGrid: v });
-    saveView({ rulers: get().showRulers, grid: v });
+    set({ showGrid: !get().showGrid });
+    saveView(viewPrefs(get()));
   },
+  toggleGuides: () => {
+    set({ showGuides: !get().showGuides });
+    saveView(viewPrefs(get()));
+  },
+  toggleSnapToGrid: () => {
+    set({ snapToGrid: !get().snapToGrid });
+    saveView(viewPrefs(get()));
+  },
+  setGuides: (guides) =>
+    set((s) => {
+      const cur = s.doc.guides ?? { x: [], y: [] };
+      if (JSON.stringify(cur) === JSON.stringify(guides)) return {};
+      return commit(s, { ...s.doc, guides });
+    }),
 
   moveLayer: (id, dir) =>
     set((s) => {
@@ -1267,4 +1366,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         future: s.future.slice(1),
       };
     }),
+
+  jumpToHistory: (index) =>
+    set((s) => jumpInHistory(s.past, s.doc, s.future, index) ?? {}),
 }));

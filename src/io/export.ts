@@ -107,7 +107,8 @@ export async function renderDocToCanvas(
       ctx.rotate((layer.rotation * Math.PI) / 180);
       ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
       if (layer.curve && layer.curve !== 0) {
-        drawCurvedText(ctx, layer, measureCurved(ctx, layer).width);
+        const cm = measureCurved(ctx, layer);
+        drawCurvedText(ctx, layer, cm.width, cm.height);
         ctx.restore();
         continue;
       }

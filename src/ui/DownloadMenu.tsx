@@ -1,5 +1,6 @@
 import type { ExportFormat } from '../io/export';
 import { t } from '../i18n';
+import { ExportPreview } from './ExportPreview';
 
 export type Fmt = ExportFormat | 'svg' | 'gif' | 'pdf' | 'anim' | 'anim-mp4' | 'ico';
 
@@ -101,6 +102,14 @@ export function DownloadMenu({
         </p>
       )}
       {format === 'anim' && <p className="dl-hint">GIF con las animaciones de entrada de esta página.</p>}
+
+      <ExportPreview
+        format={format}
+        scale={scale}
+        quality={quality}
+        pageCount={pageCount}
+        scope={scope}
+      />
 
       <button className="primary dl-go" onClick={onDownload}>
         ⬇ {t('Descargar')} {format.toUpperCase()}

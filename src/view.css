@@ -266,3 +266,14 @@
 .cp-modes {
   margin: 0 0 12px;
 }
+
+/* Guías: las reglas aceptan arrastre para crearlas */
+.ruler {
+  pointer-events: auto;
+}
+.ruler-top {
+  cursor: ns-resize;
+}
+.ruler-left {
+  cursor: ew-resize;
+}

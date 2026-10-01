@@ -1,8 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
 import { toast } from './toast';
 import { TRANSPARENT_BG, type Gradient } from '../editor/core/types';
 import { GradientEditor } from './GradientEditor';
+import { ScreenPicker } from './ScreenPicker';
+import { extractPalette, harmonies, HARMONY_LABELS } from '../editor/core/colorTools';
+import './colortools.css';
 import { gradientFromColor } from '../editor/core/gradients';
 import {
   PRESET_SOLIDS,
@@ -52,6 +55,10 @@ export function ColorPanel({
   const colorInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [alpha, setAlpha] = useState(1); // 0..1 nivel de transparencia
+  const [picker, setPicker] = useState(false); // cuentagotas alternativo
+  const [harmBase, setHarmBase] = useState<string | null>(null); // null = color del fondo
+  const [photoColors, setPhotoColors] = useState<string[]>([]);
+  const selectedId = useEditor((s) => s.selectedId);
 
   const bg = doc.background;
   const currentSolid = bg.type === 'solid' ? toHex6(bg.color) : '#ffffff';
@@ -91,9 +98,70 @@ export function ColorPanel({
     }
   };
 
+  // Imagen de la que sacar colores: la seleccionada o, si no, la mayor del diseño.
+  const photoSrc = useMemo(() => {
+    const imgs = doc.layers.filter(
+      (l): l is Extract<typeof l, { type: 'image' }> =>
+        l.type === 'image' && !!l.src && !l.chart && !l.table,
+    );
+    if (imgs.length === 0) return null;
+    const sel = imgs.find((l) => l.id === selectedId);
+    if (sel) return sel.src;
+    const area = (l: (typeof imgs)[number]) =>
+      l.naturalWidth * l.scaleX * l.naturalHeight * l.scaleY;
+    return imgs.reduce((a, b) => (area(b) > area(a) ? b : a)).src;
+  }, [doc.layers, selectedId]);
+
+  useEffect(() => {
+    if (!photoSrc) {
+      setPhotoColors([]);
+      return;
+    }
+    let dead = false;
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const k = Math.min(1, 128 / Math.max(img.naturalWidth, img.naturalHeight, 1));
+        const w = Math.max(1, Math.round(img.naturalWidth * k));
+        const h = Math.max(1, Math.round(img.naturalHeight * k));
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d', { willReadFrequently: true })!;
+        ctx.drawImage(img, 0, 0, w, h);
+        if (!dead) setPhotoColors(extractPalette(ctx.getImageData(0, 0, w, h), 6));
+      } catch {
+        if (!dead) setPhotoColors([]);
+      }
+    };
+    img.onerror = () => !dead && setPhotoColors([]);
+    img.src = photoSrc;
+    return () => {
+      dead = true;
+    };
+  }, [photoSrc]);
+
+  const harmSeed =
+    harmBase ??
+    (bg.type === 'solid'
+      ? toHex6(bg.color)
+      : bg.type === 'gradient'
+        ? toHex6(bg.gradient.stops[0].color)
+        : '#3366cc');
+  const harm = useMemo(() => harmonies(harmSeed), [harmSeed]);
+
+  const copyHex = async (hex: string) => {
+    try {
+      await navigator.clipboard.writeText(hex);
+      toast(`Copiado ${hex}`, 'info');
+    } catch {
+      toast('No se pudo copiar.', 'error');
+    }
+  };
+
   const useEyedropper = async () => {
     if (!window.EyeDropper) {
-      toast('El cuentagotas no está disponible en este entorno.', 'error');
+      setPicker(true);
       return;
     }
     try {
@@ -106,6 +174,16 @@ export function ColorPanel({
 
   return (
     <div className={embedded ? 'color-panel embedded' : 'color-panel'}>
+      {picker && (
+        <ScreenPicker
+          doc={doc}
+          onClose={() => setPicker(false)}
+          onPick={(hex) => {
+            pickSolid(hex);
+            setPicker(false);
+          }}
+        />
+      )}
       <div className="cp-head">
         <h3>Color</h3>
         <button className="cp-x" onClick={onClose}>
@@ -188,6 +266,7 @@ export function ColorPanel({
           {bg.type === 'solid' && (
             <span
               className="cp-swatch big sel"
+              title={toHex6(bg.color)}
               style={{ background: bg.color }}
             />
           )}
@@ -272,6 +351,73 @@ export function ColorPanel({
           </div>
         )}
       </section>
+
+      <section className="cp-sec">
+        <h4>Armonías</h4>
+        <label className="cp-harm-pick">
+          <span>Partir de</span>
+          <input
+            type="color"
+            value={harmSeed}
+            onChange={(e) => setHarmBase(e.target.value)}
+          />
+          <span>{harmSeed}</span>
+          {harmBase && (
+            <button className="cp-mini" onClick={() => setHarmBase(null)} type="button">
+              Usar fondo
+            </button>
+          )}
+        </label>
+        {(Object.keys(harm) as (keyof typeof harm)[]).map((k) => (
+          <div className="cp-harm" key={k}>
+            <div className="cp-harm-name">{HARMONY_LABELS[k]}</div>
+            <div className="cp-harm-row">
+              {harm[k].map((c, i) => (
+                <button
+                  key={i}
+                  className="cp-swatch"
+                  style={{ background: c }}
+                  title={`${c} — clic derecho para copiar`}
+                  onClick={() => pickSolid(c)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    copyHex(c);
+                  }}
+                />
+              ))}
+              <button
+                className="cp-mini"
+                type="button"
+                title="Copiar los hex de esta familia"
+                onClick={() => copyHex(harm[k].join(' '))}
+              >
+                copiar hex
+              </button>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {photoColors.length > 0 && (
+        <section className="cp-sec">
+          <h4>Colores de tu foto</h4>
+          <div className="cp-grid">
+            {photoColors.map((c) => (
+              <button
+                key={c}
+                className="cp-swatch"
+                style={{ background: c }}
+                title={c}
+                onClick={() => pickSolid(c)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  copyHex(c);
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="cp-sec">
         <h4>Colores sólidos predeterminados</h4>

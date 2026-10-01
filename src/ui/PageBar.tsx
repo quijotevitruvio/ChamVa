@@ -20,6 +20,10 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const showGrid = useEditor((s) => s.showGrid);
   const toggleRulers = useEditor((s) => s.toggleRulers);
   const toggleGrid = useEditor((s) => s.toggleGrid);
+  const showGuides = useEditor((s) => s.showGuides);
+  const snapToGrid = useEditor((s) => s.snapToGrid);
+  const toggleGuides = useEditor((s) => s.toggleGuides);
+  const toggleSnapToGrid = useEditor((s) => s.toggleSnapToGrid);
   const [dragPage, setDragPage] = useState<number | null>(null);
 
   return (
@@ -81,6 +85,22 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
           title="Mostrar u ocultar la cuadrícula"
         >
           {t('Cuadrícula')}
+        </button>
+        <button
+          className={`view-toggle${showGuides ? ' on' : ''}`}
+          onClick={toggleGuides}
+          aria-pressed={showGuides}
+          title="Mostrar u ocultar las guías (arrástralas desde las reglas)"
+        >
+          {t('Guías')}
+        </button>
+        <button
+          className={`view-toggle${snapToGrid ? ' on' : ''}`}
+          onClick={toggleSnapToGrid}
+          aria-pressed={snapToGrid}
+          title="Al mover una capa, su esquina superior izquierda salta a la cuadrícula"
+        >
+          {t('Imán')}
         </button>
       </div>
 

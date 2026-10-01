@@ -20,6 +20,7 @@ import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
 import { InlineTextEditor } from './InlineTextEditor';
 import { Rulers } from './Rulers';
+import { computeSnap, gridStepFor, snapToStep } from './snap';
 import { loadImageFile } from '../../io/import';
 import type { Layer as DocLayer } from '../core/types';
 
@@ -62,6 +63,9 @@ export function EditorCanvas() {
   const setViewScale = useEditor((s) => s.setViewScale);
   const showRulers = useEditor((s) => s.showRulers);
   const showGrid = useEditor((s) => s.showGrid);
+  const showGuides = useEditor((s) => s.showGuides);
+  const snapToGrid = useEditor((s) => s.snapToGrid);
+  const setGuidesDoc = useEditor((s) => s.setGuides);
   const animPlayNonce = useEditor((s) => s.animPlayNonce);
   const textEditNonce = useEditor((s) => s.textEditNonce);
   const editingTextId = useEditor((s) => s.editingTextId);
@@ -167,9 +171,6 @@ export function EditorCanvas() {
       return;
     }
     const box = node.getClientRect({ relativeTo: stage });
-    const thr = 6 / scale;
-    const vx: number[] = [];
-    const hy: number[] = [];
     // Objetivos: bordes/centro del lienzo + bordes/centro de las demás capas.
     const tX = [0, doc.width / 2, doc.width];
     const tY = [0, doc.height / 2, doc.height];
@@ -179,22 +180,19 @@ export function EditorCanvas() {
       tX.push(b.x, b.x + b.width / 2, b.x + b.width);
       tY.push(b.y, b.y + b.height / 2, b.y + b.height);
     });
-    const edgesX = [box.x, box.x + box.width / 2, box.x + box.width];
-    outerX: for (const p of tX)
-      for (const edge of edgesX)
-        if (Math.abs(p - edge) < thr) {
-          node.x(node.x() + (p - edge));
-          vx.push(p);
-          break outerX;
-        }
-    const edgesY = [box.y, box.y + box.height / 2, box.y + box.height];
-    outerY: for (const p of tY)
-      for (const edge of edgesY)
-        if (Math.abs(p - edge) < thr) {
-          node.y(node.y() + (p - edge));
-          hy.push(p);
-          break outerY;
-        }
+    const snap = computeSnap({
+      box,
+      targetsX: tX,
+      targetsY: tY,
+      guidesX: showGuides ? doc.guides?.x : undefined,
+      guidesY: showGuides ? doc.guides?.y : undefined,
+      scale,
+      gridStep: snapToGrid ? gridStepFor(scale) : undefined,
+    });
+    if (snap.dx) node.x(node.x() + snap.dx);
+    if (snap.dy) node.y(node.y() + snap.dy);
+    const vx = snap.vx;
+    const hy = snap.hy;
     setGuides({ vx, hy });
     setDists(computeDistances(node));
     updateSelRect();
@@ -467,7 +465,7 @@ export function EditorCanvas() {
   }, [cropMode, cropRect]);
 
   // Cuadrícula: el paso más pequeño de la lista que deja ≥ 18 px en pantalla.
-  const gridStep = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find((g) => g * scale >= 18) ?? 1000;
+  const gridStep = gridStepFor(scale);
   const drawGrid = (major: boolean) => (ctx: Konva.Context, shape: Konva.Shape) => {
     ctx.beginPath();
     const every = major ? gridStep * 5 : gridStep;
@@ -484,10 +482,79 @@ export function EditorCanvas() {
     ctx.strokeShape(shape);
   };
 
+  const setStageCursor = (c: string) => {
+    const el = stageRef.current?.container();
+    if (el) el.style.cursor = c;
+  };
+  // Guías del usuario: crear desde las reglas, mover o borrar arrastrando.
+  const [draft, setDraft] = useState<{
+    axis: 'x' | 'y';
+    pos: number;
+    index: number | null;
+    remove: boolean;
+  } | null>(null);
+  const startGuideDrag = (axis: 'x' | 'y', index: number | null) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (!useEditor.getState().showGuides) useEditor.setState({ showGuides: true });
+    const base = useEditor.getState().doc.guides ?? { x: [], y: [] };
+    const max = axis === 'x' ? doc.width : doc.height;
+    const step = gridStepFor(scale);
+    let armed = index !== null; // una guía nueva solo se borra tras entrar al lienzo
+    let moved = false;
+    let cur = { pos: index !== null ? base[axis][index] : NaN, remove: false };
+    const onMove = (ev: PointerEvent) => {
+      const r = stage.container().getBoundingClientRect();
+      const area = containerRef.current?.getBoundingClientRect();
+      let pos = (axis === 'x' ? ev.clientX - r.left : ev.clientY - r.top) / scale;
+      pos = useEditor.getState().snapToGrid ? snapToStep(pos, step) : Math.round(pos);
+      const inside = pos >= 0 && pos <= max;
+      if (inside) armed = true;
+      const overRuler = !!area && (axis === 'x' ? ev.clientX < area.left : ev.clientY < area.top);
+      cur = { pos, remove: armed && (!inside || overRuler) };
+      moved = true;
+      setDraft({ axis, pos, index, remove: cur.remove });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setDraft(null);
+      if (!moved) return;
+      const g = useEditor.getState().doc.guides ?? { x: [], y: [] };
+      const list = [...g[axis]];
+      if (cur.remove) {
+        if (index === null) return;
+        list.splice(index, 1);
+      } else if (!armed) return;
+      else if (index !== null) list[index] = cur.pos;
+      else list.push(cur.pos);
+      setGuidesDoc({ ...g, [axis]: [...new Set(list)] });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
+  // Desde una regla: si hay una guía junto al puntero se mueve, si no se crea.
+  const onRulerGuideStart = (axis: 'x' | 'y', e: React.PointerEvent) => {
+    const stage = stageRef.current;
+    if (!stage || e.button !== 0) return;
+    e.preventDefault();
+    const r = stage.container().getBoundingClientRect();
+    const pos = (axis === 'x' ? e.clientX - r.left : e.clientY - r.top) / scale;
+    const list = doc.guides?.[axis] ?? [];
+    const i = list.findIndex((g) => Math.abs(g - pos) <= 4 / scale);
+    startGuideDrag(axis, i >= 0 ? i : null);
+  };
+  const removeGuide = (axis: 'x' | 'y', index: number) => {
+    const g = useEditor.getState().doc.guides ?? { x: [], y: [] };
+    setGuidesDoc({ ...g, [axis]: g[axis].filter((_, i) => i !== index) });
+  };
+
   return (
     <div className={`canvas-wrap${showRulers ? ' with-rulers' : ''}`}>
       {showRulers && (
-        <Rulers areaRef={containerRef} stageRef={stageRef} scale={scale} docW={doc.width} docH={doc.height} />
+        <Rulers areaRef={containerRef} stageRef={stageRef} scale={scale} docW={doc.width} docH={doc.height} onGuideStart={onRulerGuideStart} />
       )}
       {doc.background.type === 'transparent' && (
         <span
@@ -778,6 +845,55 @@ export function EditorCanvas() {
           <Layer listening={false}>
             <Shape sceneFunc={drawGrid(false)} stroke="rgba(128,128,128,0.35)" strokeWidth={1} strokeScaleEnabled={false} />
             <Shape sceneFunc={drawGrid(true)} stroke="rgba(128,128,128,0.7)" strokeWidth={1} strokeScaleEnabled={false} />
+          </Layer>
+        )}
+        {showGuides && (
+          <Layer>
+            {(['x', 'y'] as const).flatMap((axis) =>
+              (doc.guides?.[axis] ?? []).map((pos, i) =>
+                draft && draft.axis === axis && draft.index === i ? null : (
+                  <Line
+                    key={`g${axis}${i}`}
+                    points={axis === 'x' ? [pos, 0, pos, doc.height] : [0, pos, doc.width, pos]}
+                    stroke="#808080"
+                    strokeWidth={1 / scale}
+                    hitStrokeWidth={10 / scale}
+                    onMouseDown={(e) => {
+                      if (e.evt.button !== 0) return;
+                      e.cancelBubble = true;
+                      startGuideDrag(axis, i);
+                    }}
+                    onDblClick={() => removeGuide(axis, i)}
+                    onMouseEnter={() => setStageCursor(axis === 'x' ? 'ew-resize' : 'ns-resize')}
+                    onMouseLeave={() => setStageCursor('')}
+                  />
+                ),
+              ),
+            )}
+            {draft && !draft.remove && (
+              <>
+                <Line
+                  points={
+                    draft.axis === 'x'
+                      ? [draft.pos, 0, draft.pos, doc.height]
+                      : [0, draft.pos, doc.width, draft.pos]
+                  }
+                  stroke="#111111"
+                  strokeWidth={1 / scale}
+                  listening={false}
+                />
+                <Label
+                  x={draft.axis === 'x' ? draft.pos + 4 / scale : 4 / scale}
+                  y={draft.axis === 'x' ? 4 / scale : draft.pos + 4 / scale}
+                  scaleX={1 / scale}
+                  scaleY={1 / scale}
+                  listening={false}
+                >
+                  <Tag fill="#111111" cornerRadius={3} />
+                  <Text text={`${Math.round(draft.pos)} px`} fontSize={11} padding={2} fill="#ffffff" />
+                </Label>
+              </>
+            )}
           </Layer>
         )}
       </Stage>

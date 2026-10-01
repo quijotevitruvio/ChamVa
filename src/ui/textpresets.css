@@ -1,0 +1,21 @@
+/* Estilos de texto y pares de fuentes: cromado plano; el color vive solo en las muestras. */
+.tp-root { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.tp-title { font-size: 12px; font-weight: 600; color: var(--text); margin-top: 4px; }
+.tp-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.tp-tabs button {
+  background: transparent; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+}
+.tp-tabs button:hover { color: var(--text); }
+.tp-tabs button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.tp-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.tp-card, .tp-pair {
+  background: #fff; border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; padding: 6px; min-width: 0; overflow: hidden;
+}
+.tp-card { height: 64px; display: flex; align-items: center; justify-content: center; }
+.tp-card:hover, .tp-pair:hover { border-color: var(--text); }
+.tp-sample { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; }
+.tp-pairs { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.tp-pair { display: flex; flex-direction: column; gap: 3px; text-align: left; }
+.tp-pair-name { color: #777; font-size: 10px; margin-top: 2px; font-family: inherit; }
