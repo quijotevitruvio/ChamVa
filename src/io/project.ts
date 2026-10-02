@@ -3,6 +3,7 @@ import { downloadBlob } from './export';
 import { normalizeLayoutFields } from '../editor/core/layout';
 import { normalizePattern } from '../editor/core/patterns';
 import { normalizeOrganization } from '../editor/core/organize';
+import { isUnit, isValidDpi } from '../editor/core/units';
 
 // Extensión propia (JSON por dentro). Permite asociar la app a estos archivos
 // en Windows (doble clic → abrir en ChamVa). Los .chamva.json antiguos siguen
@@ -16,6 +17,12 @@ export interface Project {
   pages: Doc[];
 }
 
+// Unidad y dpi opcionales: se descartan los valores inválidos (el diseño se ve igual, en px).
+function normalizeUnits(doc: Doc) {
+  if (!isUnit(doc.unit)) delete doc.unit;
+  if (!isValidDpi(doc.dpi)) delete doc.dpi;
+}
+
 function normalizeBackground(doc: Doc): Doc {
   const bg = doc.background as unknown;
   if (typeof bg === 'string') doc.background = { type: 'solid', color: bg };
@@ -24,6 +31,7 @@ function normalizeBackground(doc: Doc): Doc {
   if (doc.background.type === 'pattern')
     doc.background = { type: 'pattern', pattern: normalizePattern(doc.background.pattern) };
   normalizeLayoutFields(doc);
+  normalizeUnits(doc);
   const g = (doc as { guides?: unknown }).guides as { x?: unknown; y?: unknown } | undefined;
   if (g && typeof g === 'object') {
     const nums = (a: unknown) =>

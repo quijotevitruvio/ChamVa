@@ -1,0 +1,112 @@
+/* Campos de tamaño con unidades y dpi: plano, solo variables del tema. */
+.size-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  min-width: 0;
+}
+.size-fields .sf-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.size-fields .sf-grow {
+  flex: 1;
+  min-width: 0;
+}
+.size-fields .sf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.size-fields .sf-field > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.size-fields .sf-unit {
+  flex: 0 0 64px;
+}
+.size-fields input,
+.size-fields .sf-select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 12px;
+  transition: border-color 0.12s;
+}
+.size-fields input:focus,
+.size-fields .sf-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.size-fields .sf-btn {
+  flex: 0 0 auto;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.size-fields .sf-btn:hover {
+  border-color: var(--accent);
+}
+.size-fields .sf-btn.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+/* Icono de hoja: rectángulo vertical u horizontal */
+.size-fields .sf-orient {
+  display: block;
+  width: 9px;
+  height: 13px;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+}
+.size-fields .sf-orient.land {
+  width: 13px;
+  height: 9px;
+}
+.size-fields .sf-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.size-fields.compact {
+  gap: 4px;
+}
+.size-fields.compact .sf-field > span {
+  font-size: 10px;
+}
+
+/* La tarjeta de tamaño personalizado del inicio ocupa dos celdas para que los campos
+   (ancho, alto, unidad, DPI y resumen) quepan sin invadir a la tarjeta vecina. */
+.purpose-grid .purpose-card.purpose-custom {
+  grid-column: span 2;
+  min-width: 0;
+  overflow: hidden;
+}
+@media (max-width: 520px) {
+  .purpose-grid .purpose-card.purpose-custom {
+    grid-column: 1 / -1;
+  }
+}

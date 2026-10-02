@@ -45,6 +45,7 @@ import {
   type SpanStyle,
 } from '../core/richText';
 import { measureStyledText } from '../core/styledText';
+import type { Unit } from '../core/units';
 import {
   buildFontPairProps,
   buildTextLayerProps,
@@ -241,7 +242,7 @@ interface EditorState {
   textSel: { id: string; start: number; end: number } | null; // selección dentro del texto
 
   // documento / lienzo
-  setCanvasSize: (width: number, height: number) => void;
+  setCanvasSize: (width: number, height: number, meta?: { unit?: Unit; dpi?: number }) => void;
   // Organización (carpetas, estilos compartidos, maestra, clasificador): la lógica vive en core/*.ts.
   editDoc: (fn: (doc: Doc) => Doc) => void; // un paso de deshacer
   editPages: (fn: (pages: Doc[], currentId: string) => { pages: Doc[]; currentId: string }) => void;
@@ -252,7 +253,7 @@ interface EditorState {
   // páginas
   addPage: () => void;
   duplicatePage: () => void;
-  newDesign: (size?: { width: number; height: number; name?: string }) => void;
+  newDesign: (size?: { width: number; height: number; name?: string; unit?: Unit; dpi?: number }) => void;
   addResizedPage: (width: number, height: number) => void;
   // Biblioteca: crea páginas en varios formatos / restaura una instantánea
   // (ambas se deshacen con un solo Ctrl+Z, ver structUndo).
@@ -529,14 +530,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   pages: [FIRST_DOC],
   pageIndex: 0,
 
-  setCanvasSize: (width, height) =>
+  setCanvasSize: (width, height, meta) =>
     set((s) => {
       // Las capas con restricciones se recolocan según su anclaje (constraints.ts).
       const from = { width: s.doc.width, height: s.doc.height };
       const layers = s.doc.layers.some((l) => l.constraints)
         ? s.doc.layers.map((l) => applyConstraints(l, from, { width, height }, layerBox2))
         : s.doc.layers;
-      return commit(s, { ...s.doc, width, height, layers });
+      return commit(s, { ...s.doc, width, height, layers, ...(meta?.unit ? { unit: meta.unit, dpi: meta.dpi } : {}) });
     }),
 
   editDoc: (fn) => set((s) => commit(s, fn(s.doc))),
@@ -781,6 +782,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       blank.width = size.width;
       blank.height = size.height;
       if (size.name) blank.name = size.name;
+      if (size.unit && size.unit !== 'px') {
+        blank.unit = size.unit;
+        if (size.dpi) blank.dpi = size.dpi;
+      } else if (size.dpi && size.dpi !== 96) blank.dpi = size.dpi;
     }
     set({
       doc: blank,

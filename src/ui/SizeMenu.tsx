@@ -1,14 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditor } from '../editor/state/store';
 import { CANVAS_PRESETS } from '../editor/core/types';
 import { toast } from './toast';
 import { MultiResizeDialog } from './MultiResizeDialog';
 import { t } from '../i18n';
+import { SizeFields } from './SizeFields';
+import { DEFAULT_DPI, isValidDpi, isUnit, type Unit } from '../editor/core/units';
+import type { SizeValue } from './sizeFieldsLogic';
 
 interface CustomSize {
   label: string;
   width: number;
   height: number;
+  unit?: Unit; // opcionales: los tamaños guardados antes siguen valiendo
+  dpi?: number;
 }
 
 const SIZES_LS = 'chamva.customSizes';
@@ -30,27 +35,36 @@ interface Props {
 }
 
 // Menú "Tamaño del lienzo": presets, medida libre, tamaños propios y Magic Resize.
-export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: Props) {
+export function SizeMenu({ setCustomW, setCustomH, onClose }: Props) {
   const doc = useEditor((s) => s.doc);
   const setCanvasSize = useEditor((s) => s.setCanvasSize);
   const addResizedPage = useEditor((s) => s.addResizedPage);
   const [customSizes, setCustomSizes] = useState<CustomSize[]>(loadSizes);
   const [sizeName, setSizeName] = useState('');
   const [showMulti, setShowMulti] = useState(false);
+  // Medida en edición (px + unidad + dpi); parte del diseño actual.
+  const fromDoc = (): SizeValue => ({
+    width: doc.width,
+    height: doc.height,
+    unit: isUnit(doc.unit) ? doc.unit : 'px',
+    dpi: isValidDpi(doc.dpi) ? doc.dpi : DEFAULT_DPI,
+  });
+  const [sv, setSv] = useState<SizeValue>(fromDoc);
+  useEffect(() => {
+    setSv(fromDoc());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.width, doc.height, doc.unit, doc.dpi]);
 
   const saveSizes = (list: CustomSize[]) => {
     setCustomSizes(list);
     localStorage.setItem(SIZES_LS, JSON.stringify(list));
   };
-  const apply = (w: number, h: number) => {
-    setCanvasSize(w, h);
+  const apply = (w: number, h: number, unit?: Unit, dpi?: number) => {
+    setCanvasSize(w, h, unit ? { unit, dpi } : undefined);
     setCustomW(String(w));
     setCustomH(String(h));
   };
-  const parsed = () => ({
-    w: Math.max(1, Math.round(Number(customW) || doc.width)),
-    h: Math.max(1, Math.round(Number(customH) || doc.height)),
-  });
+  const parsed = () => ({ w: sv.width, h: sv.height });
   const all = [...CANVAS_PRESETS, ...customSizes];
 
   return (
@@ -65,7 +79,7 @@ export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: 
           }
           onChange={(e) => {
             const p = all.find((x) => `${x.width}x${x.height}` === e.target.value);
-            if (p) apply(p.width, p.height);
+            if (p) apply(p.width, p.height, (p as CustomSize).unit, (p as CustomSize).dpi);
           }}
         >
           {customSizes.length > 0 && (
@@ -85,19 +99,12 @@ export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: 
           <option value="custom">Personalizado…</option>
         </select>
       </label>
-      <label className="dl-row">
-        Medida
-        <span className="custom-size">
-          <input type="number" value={customW} onChange={(e) => setCustomW(e.target.value)} />
-          ×
-          <input type="number" value={customH} onChange={(e) => setCustomH(e.target.value)} />
-        </span>
-      </label>
+      <SizeFields value={sv} onChange={setSv} />
       <button
         className="primary dl-go"
         onClick={() => {
           const { w, h } = parsed();
-          setCanvasSize(w, h);
+          apply(w, h, sv.unit, sv.dpi);
           onClose();
         }}
       >
@@ -128,7 +135,7 @@ export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: 
           onClick={() => {
             const { w, h } = parsed();
             const label = sizeName.trim() ? `${sizeName.trim()} (${w}×${h})` : `${w}×${h}`;
-            saveSizes([...customSizes.filter((s) => s.label !== label), { label, width: w, height: h }]);
+            saveSizes([...customSizes.filter((s) => s.label !== label), { label, width: w, height: h, unit: sv.unit, dpi: sv.dpi }]);
             setSizeName('');
             toast(`Tamaño guardado: ${label}`, 'success');
           }}
@@ -143,7 +150,7 @@ export function SizeMenu({ customW, customH, setCustomW, setCustomH, onClose }: 
               <li key={s.label}>
                 <span
                   onClick={() => {
-                    apply(s.width, s.height);
+                    apply(s.width, s.height, s.unit, s.dpi);
                     onClose();
                   }}
                 >

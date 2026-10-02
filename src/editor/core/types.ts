@@ -538,6 +538,9 @@ export interface Doc {
   // Ayudas de maquetación (solo editor, nunca se exportan).
   margins?: { top: number; right: number; bottom: number; left: number };
   bleed?: number; // sangrado en px, fuera del lienzo
+  // Unidad y resolución con que el usuario piensa este tamaño (los px siguen siendo la verdad).
+  unit?: import('./units').Unit;
+  dpi?: number;
   columns?: { count: number; gutter: number; margin: number };
   notes?: StickyNote[];
   speakerNotes?: string; // notas del orador de esta página

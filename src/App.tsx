@@ -56,6 +56,7 @@ import { maybeSaveAutoVersion } from './io/autoVersions';
 import { restoreUndoFor, startUndoPersistence, type UndoStoreApi } from './io/undoStore';
 import { checkBackupReminder } from './io/backup';
 import { SizeMenu } from './ui/SizeMenu';
+import { sizeLabel } from './ui/sizeFieldsLogic';
 import { DownloadMenu, type Fmt } from './ui/DownloadMenu';
 import { ContextMenu, FloatToolbar } from './ui/SelectionMenus';
 import { PageBar } from './ui/PageBar';
@@ -1231,7 +1232,7 @@ export default function App() {
 
         <div className="menu-wrap">
           <button className={showSizeMenu ? 'active' : ''} onClick={() => setShowSizeMenu((v) => !v)} title="Tamaño del lienzo">
-            📐 {doc.width}×{doc.height}
+            📐 {sizeLabel(doc)}
           </button>
           {showSizeMenu && (
             <SizeMenu
@@ -1534,7 +1535,7 @@ export default function App() {
           designs={designs}
           hasLicense={!!license}
           onNewDesign={(size) => {
-            newDesign(size);
+            newDesign(size); // lleva unit/dpi opcionales
             setCustomW(String(size.width));
             setCustomH(String(size.height));
             setShowHome(false);

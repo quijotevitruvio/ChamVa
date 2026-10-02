@@ -6,11 +6,14 @@ import { PURPOSES } from '../editor/core/purposes';
 import { Icon } from './Icon';
 import { DesignFolders } from './DesignFolders';
 import { t } from '../i18n';
+import { SizeFields } from './SizeFields';
+import { DEFAULT_DPI, type Unit } from '../editor/core/units';
+import type { SizeValue } from './sizeFieldsLogic';
 
 interface Props {
   designs: SavedDesign[];
   hasLicense: boolean;
-  onNewDesign: (size: { width: number; height: number; name: string }) => void;
+  onNewDesign: (size: { width: number; height: number; name: string; unit?: Unit; dpi?: number }) => void;
   onContinue: () => void;
   onEditVideo: () => void;
   onOpenDesign: (d: SavedDesign) => void;
@@ -34,8 +37,7 @@ export function HomeScreen({
   onSettings,
 }: Props) {
   const [group, setGroup] = useState<(typeof GROUPS)[number]>('Redes sociales');
-  const [cw, setCw] = useState('1080');
-  const [ch, setCh] = useState('1080');
+  const [sv, setSv] = useState<SizeValue>({ width: 1080, height: 1080, unit: 'px', dpi: DEFAULT_DPI });
 
   return (
     <div className="home-overlay">
@@ -58,7 +60,15 @@ export function HomeScreen({
             <button
               key={p.id}
               className="purpose-card"
-              onClick={() => onNewDesign({ width: p.width, height: p.height, name: p.label })}
+              onClick={() =>
+                onNewDesign({
+                  width: p.width,
+                  height: p.height,
+                  name: p.label,
+                  // Impresión: los tamaños están a 300 ppp, el diseño se piensa en cm.
+                  ...(p.group === 'Impresión' ? { unit: 'cm' as Unit, dpi: 300 } : {}),
+                })
+              }
               title={`${p.label} — ${p.hint}`}
             >
               <span className="purpose-shape" style={{ width: w, height: h }}>
@@ -71,18 +81,16 @@ export function HomeScreen({
         })}
         <div className="purpose-card purpose-custom">
           <span className="purpose-label">{t('Tamaño personalizado')}</span>
-          <span className="custom-size">
-            <input type="number" min={1} value={cw} onChange={(e) => setCw(e.target.value)} aria-label="Ancho" />
-            ×
-            <input type="number" min={1} value={ch} onChange={(e) => setCh(e.target.value)} aria-label="Alto" />
-          </span>
+          <SizeFields value={sv} onChange={setSv} showPresets={false} compact />
           <button
             className="primary"
             onClick={() =>
               onNewDesign({
-                width: Math.max(1, Math.round(Number(cw) || 1080)),
-                height: Math.max(1, Math.round(Number(ch) || 1080)),
+                width: sv.width,
+                height: sv.height,
                 name: 'Diseño sin título',
+                unit: sv.unit,
+                dpi: sv.dpi,
               })
             }
           >
