@@ -258,3 +258,171 @@
 .plan-info {
   text-align: left;
 }
+
+/* ===== Paleta de marca Tr3sC3rb3r0: cian, dorado y verde =====
+   Dorado = acción y selección; cian = información, enlaces y herramientas;
+   verde = éxito y activado. Sin sombras ni brillos: la profundidad son bordes
+   de color pleno. En alto contraste todos los tokens valen blanco. */
+body {
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+.toolbar .brand,
+.home-brand,
+.rail-head h3,
+.panel h3,
+.settings-card h3,
+.settings-label {
+  font-family: 'Bebas Neue', 'Inter', system-ui, sans-serif;
+  text-transform: uppercase;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+.toolbar .brand {
+  font-size: 24px;
+  line-height: 1;
+}
+.home-brand {
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+.rail-head h3,
+.panel h3 {
+  font-size: 19px;
+}
+.settings-card h3 {
+  font-size: 26px;
+}
+.settings-label {
+  font-size: 15px;
+}
+.lg-c {
+  color: var(--c-cyan-text);
+}
+.lg-v {
+  color: var(--c-gold-text);
+}
+.lg-a {
+  color: var(--c-green-text);
+}
+
+/* Foco de teclado: contorno cian de 2 px en todo control */
+:focus-visible {
+  outline: 2px solid var(--c-cyan-text);
+  outline-offset: 2px;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--c-green);
+}
+
+/* Riel: pestaña activa con barra dorada, hover con borde cian */
+.rail button {
+  border-left: 3px solid transparent;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.rail button:hover {
+  border-left-color: var(--c-cyan-text);
+}
+.rail button.active,
+.rail button.active:hover {
+  border-left-color: var(--c-gold-text);
+}
+
+/* Estados: éxito en verde, información en cian */
+.local-badge i {
+  background: var(--c-green);
+}
+.local-badge.busy i {
+  background: var(--c-cyan);
+}
+.goal-track > div {
+  background: var(--c-green);
+}
+.vt-progress-fill {
+  background: var(--c-cyan);
+}
+.toolbar button.cut-bg {
+  color: var(--on-accent);
+}
+.toolbar .download-wrap > button.cut-bg {
+  background: var(--c-gold);
+  border-color: var(--c-gold);
+}
+.author-links a:hover,
+.dl-hint a,
+.update-banner a {
+  color: var(--c-cyan-text);
+}
+
+/* Inicio: tres tarjetas con borde pleno de 2 px; hover = borde más grueso */
+.home-card {
+  border-width: 2px;
+  transition: border-color 0.15s;
+}
+.home-card:hover {
+  border-color: var(--border);
+  transform: none;
+  outline: 1px solid var(--border);
+}
+.home-card.home-photo,
+.home-card.home-photo:hover {
+  border-color: var(--c-gold-text);
+}
+.home-cards.small .home-card:nth-child(1),
+.home-cards.small .home-card:nth-child(1):hover {
+  border-color: var(--c-cyan-text);
+}
+.home-cards.small .home-card:nth-child(2),
+.home-cards.small .home-card:nth-child(2):hover {
+  border-color: var(--c-green-text);
+}
+.home-card.home-photo:hover {
+  outline-color: var(--c-gold-text);
+}
+.home-cards.small .home-card:nth-child(1):hover {
+  outline-color: var(--c-cyan-text);
+}
+.home-cards.small .home-card:nth-child(2):hover {
+  outline-color: var(--c-green-text);
+}
+.home-card.home-photo .home-ico {
+  color: var(--c-gold-text);
+}
+.home-cards.small .home-card:nth-child(1) .home-ico {
+  color: var(--c-cyan-text);
+}
+.home-cards.small .home-card:nth-child(2) .home-ico {
+  color: var(--c-green-text);
+}
+.home-card.home-photo .home-title {
+  font-family: 'Bebas Neue', 'Inter', system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 28px;
+}
+
+/* Licencias y apoyo */
+.plan-row.featured {
+  outline: 2px solid var(--c-gold-text);
+  outline-offset: -2px;
+}
+.plan-price {
+  color: var(--accent-text);
+}
+.pay-grid > .pay-btn:first-child {
+  background: var(--c-gold);
+  border-color: var(--c-gold);
+  color: var(--on-accent);
+}
+.pay-grid > .pay-btn:first-child span {
+  color: var(--on-accent);
+}
+.pay-grid > .pay-btn:first-child:hover {
+  background: var(--c-gold);
+  outline: 1px solid var(--c-gold);
+}
+.pay-btn:not(:first-child) {
+  border-color: var(--muted);
+}

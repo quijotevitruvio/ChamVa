@@ -46,7 +46,10 @@ export function HomeScreen({
 
   return (
     <div className="home-overlay">
-      <div className="home-brand">ChamVa</div>
+      <div className="home-brand">
+        <span className="lg-c">C</span>ham<span className="lg-v">V</span>
+        <span className="lg-a">a</span>
+      </div>
       <div className="home-cards home-photo-row">
         <button className="home-card home-photo" onClick={() => photoInput.current?.click()}>
           <span className="home-ico">

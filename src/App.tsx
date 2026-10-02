@@ -1188,7 +1188,8 @@ export default function App() {
 
       <header className="toolbar">
         <span className="brand" style={{ cursor: 'pointer' }} onClick={() => setShowHome(true)} title="Inicio">
-          ChamVa
+          <span className="lg-c">C</span>ham<span className="lg-v">V</span>
+          <span className="lg-a">a</span>
         </span>
 
         <div className="menu-wrap">

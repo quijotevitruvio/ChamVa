@@ -23,3 +23,9 @@
   color: var(--muted);
   text-align: center;
 }
+
+/* En pantallas bajas el inicio se desplaza; ninguno de sus bloques debe encogerse
+   hasta quedar aplastado (la fila de tamaños se veía como una tira). */
+.home-overlay > * {
+  flex-shrink: 0;
+}

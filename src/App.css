@@ -5,8 +5,15 @@
   --border: #e3e3e0;
   --text: #141414;
   --muted: #6e6e6a;
-  --accent: #141414;
-  --on-accent: #ffffff;
+  --accent: #FFB300;
+  --on-accent: #111111;
+  --accent-text: #8c5e00;
+  --c-cyan: #00C8FF;
+  --c-gold: #FFB300;
+  --c-green: #39FF14;
+  --c-cyan-text: #006e92;
+  --c-gold-text: #8c5e00;
+  --c-green-text: #187500;
   --canvas-bg: #ecece9;
   --danger: #c0392b;
   --checker-a: #ffffff;
@@ -23,8 +30,15 @@
   --border: #2d2d2d;
   --text: #ececec;
   --muted: #8e8e8a;
-  --accent: #ececec;
+  --accent: #FFB300;
   --on-accent: #111111;
+  --accent-text: #FFB300;
+  --c-cyan: #00C8FF;
+  --c-gold: #FFB300;
+  --c-green: #39FF14;
+  --c-cyan-text: #00C8FF;
+  --c-gold-text: #FFB300;
+  --c-green-text: #39FF14;
   --canvas-bg: #0d0d0d;
   --danger: #e5604f;
   --checker-a: #ffffff;
@@ -42,8 +56,15 @@
     --border: #2d2d2d;
     --text: #ececec;
     --muted: #8e8e8a;
-    --accent: #ececec;
+    --accent: #FFB300;
     --on-accent: #111111;
+    --accent-text: #FFB300;
+    --c-cyan: #00C8FF;
+    --c-gold: #FFB300;
+    --c-green: #39FF14;
+    --c-cyan-text: #00C8FF;
+    --c-gold-text: #FFB300;
+    --c-green-text: #39FF14;
     --canvas-bg: #0d0d0d;
     --danger: #e5604f;
     --checker-a: #ffffff;
@@ -96,7 +117,7 @@ body {
 .toolbar .brand {
   font-weight: 700;
   font-size: 18px;
-  color: var(--accent);
+  color: var(--text);
   margin-right: 6px;
 }
 
@@ -270,8 +291,8 @@ body {
 }
 
 .toolbar button.cut-bg {
-  background: var(--accent);
-  border-color: transparent;
+  background: var(--c-cyan);
+  border-color: var(--c-cyan);
   color: var(--on-accent);
   font-weight: 600;
 }
@@ -342,7 +363,7 @@ body {
 
 .rail button.active {
   opacity: 1;
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--panel-2);
 }
 
@@ -967,7 +988,7 @@ ul.layers .name {
 .home-brand {
   font-size: 44px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text);
 }
 
 .home-sub {
@@ -1007,7 +1028,7 @@ ul.layers .name {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .home-title {
@@ -1088,7 +1109,7 @@ ul.layers .name {
 .link-btn {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--c-cyan-text);
   cursor: pointer;
   font-size: 13px;
   text-decoration: underline;
@@ -1180,7 +1201,7 @@ ul.layers .name {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--c-cyan);
   border-radius: 8px;
   padding: 11px 16px;
   font-size: 13px;
@@ -1191,7 +1212,7 @@ ul.layers .name {
 }
 
 .toast.success {
-  border-left-color: var(--text);
+  border-left-color: var(--c-green);
 }
 
 .download-wrap > button {
@@ -1762,7 +1783,7 @@ ul.layers .name {
 
 .mask-title {
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-right: 6px;
 }
 
@@ -2003,7 +2024,7 @@ ul.layers .name {
 .cp-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--c-cyan-text);
   font-size: 12px;
   cursor: pointer;
 }
@@ -2441,7 +2462,7 @@ button.mini {
 }
 .update-progress > div {
   height: 100%;
-  background: var(--accent);
+  background: var(--c-cyan);
   transition: width 0.2s;
 }
 
@@ -3156,6 +3177,13 @@ button.primary:hover:not(:disabled) {
   --muted: #ffffff;
   --accent: #ffffff;
   --on-accent: #000000;
+  --accent-text: #ffffff;
+  --c-cyan: #ffffff;
+  --c-gold: #ffffff;
+  --c-green: #ffffff;
+  --c-cyan-text: #ffffff;
+  --c-gold-text: #ffffff;
+  --c-green-text: #ffffff;
   --canvas-bg: #000000;
   --danger: #ff6b5e;
   --checker-a: #ffffff;
@@ -3175,6 +3203,13 @@ button.primary:hover:not(:disabled) {
     --muted: #ffffff;
     --accent: #ffffff;
     --on-accent: #000000;
+    --accent-text: #ffffff;
+    --c-cyan: #ffffff;
+    --c-gold: #ffffff;
+    --c-green: #ffffff;
+    --c-cyan-text: #ffffff;
+    --c-gold-text: #ffffff;
+    --c-green-text: #ffffff;
     --canvas-bg: #000000;
     --danger: #ff6b5e;
     --overlay: rgba(0, 0, 0, 0.85);
