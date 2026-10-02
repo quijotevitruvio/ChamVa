@@ -785,6 +785,28 @@ export default function App() {
     }
   };
 
+  // «Editar una foto» desde el inicio: diseño nuevo con el lienzo del tamaño de la foto.
+  const startFromPhoto = async (file: File | null | undefined) => {
+    if (!file) return;
+    try {
+      const img = await loadImageFile(file);
+      useEditor.getState().newDesignFromImage(img);
+      useEditor.getState().setZoom(1);
+      const d = useEditor.getState().doc;
+      setCustomW(String(d.width));
+      setCustomH(String(d.height));
+      setShowVideo(false);
+      setShowHome(false);
+      if (Math.max(img.naturalWidth, img.naturalHeight) > 8000)
+        toast('La foto es muy grande: el lienzo se ajustó a 8000 px', 'info');
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo abrir esa foto.', 'error');
+    }
+  };
+  const startFromPhotoRef = useRef(startFromPhoto);
+  startFromPhotoRef.current = startFromPhoto;
+
   // Arrastrar imágenes a CUALQUIER parte de la ventana: se añaden al diseño y a
   // la galería. Las zonas con su propio destino (lienzo/marcos) cortan el evento antes.
   const [dragFiles, setDragFiles] = useState(false);
@@ -814,7 +836,8 @@ export default function App() {
       if (!hasFiles(e)) return;
       e.preventDefault();
       const imgs = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
-      if (imgs.length) importFilesRef.current(imgs, true);
+      if (imgs.length && showHomeRef.current) startFromPhotoRef.current(imgs[0]);
+      else if (imgs.length) importFilesRef.current(imgs, true);
       else toast('Solo se pueden soltar imágenes aquí.', 'info');
     };
     window.addEventListener('dragenter', enter);
@@ -1526,6 +1549,11 @@ export default function App() {
           <span>Suelta la imagen para añadirla al diseño</span>
         </div>
       )}
+      {dragFiles && showHome && (
+        <div className="drop-hint" aria-hidden="true">
+          <span>{t('Suelta la foto para editarla')}</span>
+        </div>
+      )}
 
       {showSnapshots && <SnapshotsDialog onClose={() => setShowSnapshots(false)} />}
       {showAutoVersions && <AutoVersionsDialog onClose={() => setShowAutoVersions(false)} />}
@@ -1540,6 +1568,7 @@ export default function App() {
             setCustomH(String(size.height));
             setShowHome(false);
           }}
+          onEditPhoto={startFromPhoto}
           onContinue={() => {
             setShowVideo(false);
             setShowHome(false);

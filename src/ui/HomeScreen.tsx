@@ -1,5 +1,6 @@
 import { SupportCorner } from './SupportCorner';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import './homephoto.css';
 import { APP_VERSION } from '../branding';
 import type { SavedDesign } from '../io/designs';
 import { PURPOSES } from '../editor/core/purposes';
@@ -14,6 +15,8 @@ interface Props {
   designs: SavedDesign[];
   hasLicense: boolean;
   onNewDesign: (size: { width: number; height: number; name: string; unit?: Unit; dpi?: number }) => void;
+  // Abre la foto como diseño nuevo con el lienzo a su medida (sin elegir tamaño).
+  onEditPhoto: (file: File) => void;
   onContinue: () => void;
   onEditVideo: () => void;
   onOpenDesign: (d: SavedDesign) => void;
@@ -30,18 +33,40 @@ export function HomeScreen({
   designs,
   hasLicense,
   onNewDesign,
+  onEditPhoto,
   onContinue,
   onEditVideo,
   onOpenDesign,
   onDesignsChange,
   onSettings,
 }: Props) {
+  const photoInput = useRef<HTMLInputElement>(null);
   const [group, setGroup] = useState<(typeof GROUPS)[number]>('Redes sociales');
   const [sv, setSv] = useState<SizeValue>({ width: 1080, height: 1080, unit: 'px', dpi: DEFAULT_DPI });
 
   return (
     <div className="home-overlay">
       <div className="home-brand">ChamVa</div>
+      <div className="home-cards home-photo-row">
+        <button className="home-card home-photo" onClick={() => photoInput.current?.click()}>
+          <span className="home-ico">
+            <Icon name="image" size={28} />
+          </span>
+          <span className="home-title">{t('Editar una foto')}</span>
+          <span className="home-photo-hint">{t('Sin elegir medidas: el lienzo mide lo mismo que la foto')}</span>
+        </button>
+        <input
+          ref={photoInput}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) onEditPhoto(f);
+          }}
+        />
+      </div>
       <p className="home-sub">{t('¿Qué vas a crear hoy?')}</p>
 
       <div className="purpose-tabs">

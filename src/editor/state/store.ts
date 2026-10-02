@@ -46,6 +46,7 @@ import {
 } from '../core/richText';
 import { measureStyledText } from '../core/styledText';
 import type { Unit } from '../core/units';
+import { photoCanvas } from '../core/photoCanvas';
 import {
   buildFontPairProps,
   buildTextLayerProps,
@@ -254,6 +255,8 @@ interface EditorState {
   addPage: () => void;
   duplicatePage: () => void;
   newDesign: (size?: { width: number; height: number; name?: string; unit?: Unit; dpi?: number }) => void;
+  // Lienzo = medidas de la foto (ver photoCanvas), foto en 0,0 seleccionada.
+  newDesignFromImage: (img: { src: string; naturalWidth: number; naturalHeight: number; name: string }) => void;
   addResizedPage: (width: number, height: number) => void;
   // Biblioteca: crea páginas en varios formatos / restaura una instantánea
   // (ambas se deshacen con un solo Ctrl+Z, ver structUndo).
@@ -793,6 +796,50 @@ export const useEditor = create<EditorState>((set, get) => ({
       pageIndex: 0,
       selectedId: null,
       selectedIds: [],
+      past: [],
+      future: [],
+      cropMode: false,
+      cropRect: null,
+    });
+  },
+
+  // Diseño nuevo cuyo lienzo mide lo mismo que la foto (límite 16–8000 px), fondo
+  // transparente, foto en 0,0 y seleccionada. Es un solo estado inicial (sin deshacer previo).
+  newDesignFromImage: (img) => {
+    const { canvasW, canvasH, scale } = photoCanvas(img.naturalWidth, img.naturalHeight);
+    const blank = emptyDoc();
+    blank.width = canvasW;
+    blank.height = canvasH;
+    blank.name = (img.name || '').replace(/\.[^./\\]+$/, '').trim() || 'Foto';
+    const layer: ImageLayer = {
+      id: uid(),
+      type: 'image',
+      name: blank.name,
+      src: img.src,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      x: 0,
+      y: 0,
+      scaleX: scale,
+      scaleY: scale,
+      rotation: 0,
+      opacity: 1,
+      blendMode: 'normal',
+      visible: true,
+      locked: false,
+      adjust: { ...DEFAULT_ADJUST },
+      filter: 'none',
+      flipX: false,
+      flipY: false,
+      ...NO_SHADOW,
+    };
+    blank.layers = [layer];
+    set({
+      doc: blank,
+      pages: [blank],
+      pageIndex: 0,
+      selectedId: layer.id,
+      selectedIds: [layer.id],
       past: [],
       future: [],
       cropMode: false,

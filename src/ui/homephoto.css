@@ -1,0 +1,25 @@
+/* Inicio: tarjeta principal «Editar una foto». Plano, sin sombras. */
+.home-photo-row {
+  margin-bottom: 20px;
+}
+.home-card.home-photo {
+  width: min(420px, 100%);
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  padding: 18px 28px;
+  border: 2px solid var(--text);
+}
+.home-card.home-photo .home-title {
+  font-size: 22px;
+}
+.home-card.home-photo .home-ico {
+  color: var(--text);
+}
+.home-photo-hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
