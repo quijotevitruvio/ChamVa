@@ -102,7 +102,7 @@ Más de 120 mejoras (detalle en [`docs/estado-ideas.md`](docs/estado-ideas.md)):
 - Capas de texto/imagen superpuestas con tiempos de aparición.
 - Audio: grabación de micrófono, **filtros de voz**, EQ, normalizado, **efectos por pista simultáneos**,
   **reducción de ruido** (compuerta) y **forma de onda**.
-- Exportar a **WebM / MP4** (ffmpeg.wasm) con **resolución (720/1080), fps** y barra de progreso.
+- Exportar a **WebM / MP4** (WebCodecs, sin ffmpeg) con **resolución (720/1080), fps** y barra de progreso.
 
 ## Stack
 - **Tauri 2** (Rust) para empaquetar Windows (.exe/.msi), Linux (.AppImage/.deb/.rpm), macOS (.dmg universal) y Android (APK).
@@ -110,7 +110,7 @@ Más de 120 mejoras (detalle en [`docs/estado-ideas.md`](docs/estado-ideas.md)):
 - **Konva / react-konva** para el lienzo; render y exportación comparten funciones puras sobre el documento.
 - IA local: **@huggingface/transformers** (ONNX Runtime, en Web Worker) y **@techstark/opencv-js** (empaquetado).
 - **Auto-actualizador** en la app instalada de escritorio: avisa, descarga e instala la nueva versión.
-- Otros: ffmpeg.wasm, jsPDF, gifenc, qrcode, OpenCV.js, Iconify.
+- Otros: jsPDF, gifenc, qrcode, OpenCV.js, Iconify.
 
 ## Requisitos de desarrollo
 - Node 18+ y **pnpm**.
