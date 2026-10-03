@@ -352,3 +352,11 @@
     min-width: max-content;
   }
 }
+
+/* Envoltorio de una página del lienzo: referencia (offsetParent) del editor de
+   texto en línea, las notas y el comparador; centrado como antes el Stage. */
+.page-stage {
+  position: relative;
+  margin: auto;
+  flex: none;
+}

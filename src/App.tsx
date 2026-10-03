@@ -1449,6 +1449,8 @@ export default function App() {
           onExportTemplates={onExportTemplates}
           onImportTemplates={onImportTemplates}
           onApplyTemplate={onApplyTemplate}
+          onOpenDesign={openDesign}
+          onGoHome={() => setShowHome(true)}
         />
 
         {showFilters && selected && selected.type === 'image' && (

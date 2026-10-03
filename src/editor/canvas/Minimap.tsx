@@ -36,7 +36,7 @@ export function Minimap({
 
   const stageBox = useCallback(() => {
     const el = areaRef.current;
-    const c = el?.querySelector('.konvajs-content') as HTMLElement | null;
+    const c = el?.querySelector('.page-stage') as HTMLElement | null;
     if (!el || !c) return null;
     return { el, ox: c.offsetLeft, oy: c.offsetTop, w: c.offsetWidth, h: c.offsetHeight };
   }, [areaRef]);

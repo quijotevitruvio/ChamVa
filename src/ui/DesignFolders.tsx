@@ -22,6 +22,7 @@ import {
   trashDaysLeft,
   TRASH_DAYS,
 } from '../editor/core/libraryMeta';
+import { projectSummary } from '../editor/core/projectsList';
 import { t } from '../i18n';
 import './library.css';
 
@@ -29,11 +30,13 @@ interface Props {
   designs: SavedDesign[];
   onChange: (list: SavedDesign[]) => void;
   onOpen: (d: SavedDesign) => void;
+  // Solo el riel Proyectos: marca el diseño abierto y muestra páginas y fecha en cada tarjeta.
+  currentId?: string;
 }
 
 // Biblioteca de la pantalla de inicio: pestañas «Todos» / carpetas / «Papelera»,
 // búsqueda por texto, filtro por etiqueta y gestión (mover, etiquetar, papelera).
-export function DesignFolders({ designs, onChange, onOpen }: Props) {
+export function DesignFolders({ designs, onChange, onOpen, currentId }: Props) {
   const [savedFolders, setSavedFolders] = useState<string[]>([]);
   const [view, setView] = useState<LibraryView>({ kind: 'all' });
   const [query, setQuery] = useState('');
@@ -232,13 +235,19 @@ export function DesignFolders({ designs, onChange, onOpen }: Props) {
           return (
             <div
               key={d.id}
-              className="lib-card"
+              className={`lib-card${d.id === currentId ? ' current' : ''}`}
               onClick={() => !trashed && onOpen(d)}
               title={`${d.name} — ${new Date(d.updatedAt).toLocaleString()}`}
               style={trashed ? { cursor: 'default' } : undefined}
             >
               <img src={d.thumb} alt={d.name} />
               <span className="lib-card-name">{d.name}</span>
+              {currentId !== undefined && !trashed && (
+                <span className="lib-card-meta">
+                  {d.id === currentId ? `${t('Abierto')} · ` : ''}
+                  {projectSummary(d)}
+                </span>
+              )}
               <span className="lib-card-meta">
                 {trashed
                   ? t('Quedan {n} días').replace('{n}', String(trashDaysLeft(d)))

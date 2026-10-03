@@ -42,7 +42,7 @@ export function startAutosave(api: AutosaveApi): () => void {
   let version = 0; // sube con cada cambio: un guardado solo marca «guardado» si nadie cambió nada mientras tanto
   let lastGallery = 0;
 
-  const run = async () => {
+  const run = async (force = false) => {
     const mine = version;
     markSaving();
     try {
@@ -60,7 +60,7 @@ export function startAutosave(api: AutosaveApi): () => void {
       if (!ok) markError();
       else if (version === mine) markSaved();
       else markPending();
-      if (Date.now() - lastGallery < GALLERY_EVERY_MS) return;
+      if (!force && Date.now() - lastGallery < GALLERY_EVERY_MS) return;
       lastGallery = Date.now();
       pushBackup(light, st.pageIndex, { designId, designName: ownName });
       if (snapshot[0]?.layers.length || snapshot.length > 1) {
@@ -68,7 +68,7 @@ export function startAutosave(api: AutosaveApi): () => void {
           const first = snapshot[0];
           const s = Math.min(1, 160 / Math.max(first.width, first.height));
           const thumb = (await renderDocToCanvas(first, s, '#ffffff')).toDataURL('image/jpeg', 0.6);
-          upsertDesign({
+          const entry = {
             id: designId, // estable: reordenar o borrar la primera página no crea otro diseño
             name: designTitle(ownName, snapshot),
             ...(ownName ? { designName: ownName } : {}),
@@ -76,7 +76,10 @@ export function startAutosave(api: AutosaveApi): () => void {
             pageIndex: st.pageIndex,
             pages: light,
             thumb,
-          });
+          };
+          // «Guardar ya» (abrir otro diseño) espera a la galería: el riel Proyectos la lee enseguida.
+          if (force) await upsertDesign(entry);
+          else void upsertDesign(entry);
           maybeSaveAutoVersion(designId, light, st.pageIndex, thumb); // versión automática (cada ~10 min)
         } catch {
           /* miniatura opcional */
@@ -100,7 +103,7 @@ export function startAutosave(api: AutosaveApi): () => void {
   const flush = async () => {
     if (timer) clearTimeout(timer);
     timer = undefined;
-    await run();
+    await run(true);
   };
 
   const unsub = api.subscribe((s, prev) => {

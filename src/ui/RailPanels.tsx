@@ -13,8 +13,11 @@ import { TextPresetsPanel } from './TextPresetsPanel';
 import { LayersTree } from './LayersTree';
 import { t } from '../i18n';
 import { BrandKitPanel } from './BrandKitPanel';
+import { ProjectsPanel } from './ProjectsPanel';
+import type { SavedDesign } from '../io/designs';
 
 const TABS = [
+  { id: 'proyectos', icon: 'templates', label: 'Proyectos' },
   { id: 'subir', icon: 'upload', label: 'Subir' },
   { id: 'texto', icon: 'text', label: 'Texto' },
   { id: 'elementos', icon: 'shapes', label: 'Elementos' },
@@ -43,6 +46,8 @@ interface Props {
   onExportTemplates: () => void;
   onImportTemplates: (files: FileList | null) => void;
   onApplyTemplate: (doc: Doc) => void;
+  onOpenDesign: (d: SavedDesign) => void | Promise<void>;
+  onGoHome: () => void;
 }
 
 // Riel izquierdo (pestañas) + su panel desplegable.
@@ -54,6 +59,8 @@ export function RailPanels({
   onExportTemplates,
   onImportTemplates,
   onApplyTemplate,
+  onOpenDesign,
+  onGoHome,
 }: Props) {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [iconQuery, setIconQuery] = useState('');
@@ -124,6 +131,13 @@ export function RailPanels({
 
       {activeTab && (
         <div className="rail-panel">
+          {activeTab === 'proyectos' && (
+            <>
+              {head('Proyectos')}
+              <ProjectsPanel onOpenDesign={onOpenDesign} onGoHome={onGoHome} />
+            </>
+          )}
+
           {activeTab === 'subir' && (
             <>
               {head('Subir')}

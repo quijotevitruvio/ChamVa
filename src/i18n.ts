@@ -354,6 +354,14 @@ const EN: Record<string, string> = {
   'caracteres': 'characters',
   'lectura': 'reading',
   'Sans serif': 'Sans serif',
+  // Riel Proyectos
+  'Proyectos': 'Projects',
+  'Abierto': 'Open',
+  'Cargando…': 'Loading…',
+  'Abrir de todos modos': 'Open anyway',
+  'El diseño actual no se pudo guardar. Si abres otro, se pierden sus últimos cambios.': 'The current design could not be saved. If you open another one, its latest changes are lost.',
+  'Se guardó «{a}» y se abrió «{b}».': '«{a}» was saved and «{b}» was opened.',
+  'Abierto «{n}». Ojo: el diseño anterior no se pudo guardar.': 'Opened «{n}». Careful: the previous design could not be saved.',
   // Biblioteca de diseños, plantillas, formatos e instantáneas
   'Todos': 'All',
   'Carpeta': 'Folder',

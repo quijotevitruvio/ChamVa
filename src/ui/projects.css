@@ -1,0 +1,59 @@
+/* Riel «Proyectos»: reutiliza la biblioteca de Inicio (library.css) en columna estrecha. */
+.proj {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.proj .lib {
+  width: 100%;
+  margin-top: 0;
+}
+.proj .lib-tabs {
+  justify-content: flex-start;
+}
+.proj .lib-bar {
+  flex-wrap: wrap;
+}
+.proj .lib-bar .lib-input[type='search'] {
+  width: 100% !important;
+}
+.proj .lib-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+.proj .lib-card {
+  width: auto;
+  min-width: 0;
+}
+.proj .lib-card.current {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+.proj .lib-card.current .lib-card-name {
+  font-weight: 600;
+}
+.proj-warn {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--text);
+}
+.proj-warn p {
+  margin: 0 0 8px;
+}
+.proj-warn-acts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  .proj .lib-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
