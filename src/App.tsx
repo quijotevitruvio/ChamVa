@@ -1253,6 +1253,7 @@ export default function App() {
       c('Archivo', 'snapshots', 'Versiones del diseño…', () => setShowSnapshots(true), { keywords: 'instantaneas guardar version restaurar historial' }),
       c('Archivo', 'auto-versions', 'Versiones automáticas…', () => setShowAutoVersions(true), { keywords: 'autoguardado copias recuperar restaurar historial tiempo' }),
       c('Archivo', 'save-template', 'Guardar como plantilla', onSaveTemplate, { keywords: 'plantillas reutilizar' }),
+      ...(showVideo ? [c('Video', 'video-autosubs', 'Subtítulos automáticos (transcribir voz)…', () => window.dispatchEvent(new CustomEvent('chamva:video-autosubs')), { shortcut: 'T', keywords: 'transcribir whisper voz ia subtitular subtitulos automaticos dictado' })] : []),
       c('Archivo', 'home', 'Ir al inicio', () => openHome(false), { keywords: 'nuevo diseño tamaño pantalla principal' }),
       c('Editar', 'undo', 'Deshacer', undo, { shortcut: getShortcut('undo') }),
       c('Editar', 'redo', 'Rehacer', redo, { shortcut: getShortcut('redo') }),

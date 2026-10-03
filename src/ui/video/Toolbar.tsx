@@ -2,6 +2,7 @@ import { ASPECTS, QUALITIES, type Aspect, type Container, type Quality } from '.
 import type { ExportSupport } from '../../video/engine/encoderConfig';
 import type { Fit } from '../../video/engine/timeline';
 import { t } from '../../i18n';
+import { ModelManager } from './ModelManager';
 
 interface Props {
   onClose: () => void;
@@ -104,6 +105,7 @@ export function Toolbar(p: Props) {
               <button type="button" onClick={() => p.onExportSubs('srt')} disabled={!p.hasSubs} title="Guardar los subtítulos en un archivo .srt aparte">⬇ .srt</button>
               <button type="button" onClick={() => p.onExportSubs('vtt')} disabled={!p.hasSubs} title="Guardar los subtítulos en un archivo .vtt aparte">⬇ .vtt</button>
             </span>
+            <ModelManager />
             <button type="button" onClick={() => p.onExport('webm')} disabled={!p.canExport || p.exporting || (!!support && support.webcodecs && !support.webm)} title="Exportar a WebM (VP9 + Opus)">
               ⬇ WebM
             </button>

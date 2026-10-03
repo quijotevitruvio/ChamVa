@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import * as VM from '../../video/model';
 import { moveClips } from './editing';
 import type { MediaCache } from './mediaCache';
@@ -31,6 +31,10 @@ interface Props {
   onDropMedia: (mediaId: string, trackId: string | null, t: number) => void;
   onDropFiles: (files: File[], trackId: string | null, t: number) => void;
   onAddTrack: (kind: VM.TrackKind) => void;
+  /** marcas de entrada/salida (s): se dibujan en la regla */
+  marks?: { in: number | null; out: number | null };
+  /** menú contextual de un clip de audio/video */
+  onClipMenu?: (clipId: string, x: number, y: number) => void;
 }
 
 type Drag =
@@ -64,7 +68,7 @@ function release(el: HTMLElement, id: number) {
   }
 }
 
-export function Timeline({ project, engine, cache, selection, setSelection, pps, setPps, commit, endGroup, snapOn, compact, apiRef, onDropMedia, onDropFiles, onAddTrack }: Props) {
+export function Timeline({ project, engine, cache, selection, setSelection, pps, setPps, commit, endGroup, snapOn, compact, apiRef, onDropMedia, onDropFiles, onAddTrack, marks, onClipMenu }: Props) {
   const headerW = compact ? T.HEADER_W_COMPACT : T.HEADER_W;
   const scroller = useRef<HTMLDivElement>(null);
   const lineRef = useRef<HTMLDivElement>(null);
@@ -312,6 +316,17 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     pinch.current = { d0: Math.max(1, d0), pps0: pps, anchorT: (el.scrollLeft + Math.max(0, cx)) / pps };
   };
 
+  const onContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!onClipMenu) return;
+    if ((e.target as HTMLElement).closest('.vx-th, .vx-tl-corner, [data-ruler]')) return;
+    const hit = T.hitTest(project, T.rowLayout(project), pps, contentX(e.clientX), contentY(e.clientY));
+    const loc = hit ? VM.findClip(project, hit.clipId) : null;
+    if (!hit || !loc || (loc.clip.kind !== 'video' && loc.clip.kind !== 'audio')) return;
+    e.preventDefault();
+    setSelection([hit.clipId]);
+    onClipMenu(hit.clipId, e.clientX, e.clientY);
+  };
+
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = scroller.current!;
     const target = e.target as HTMLElement;
@@ -468,6 +483,9 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
   const ticks = T.rulerTicks(pps, win.t0, win.t1);
   const step = T.rulerStep(pps);
   const ruleW = laneW;
+  const mi = marks?.in ?? null;
+  const mo = marks?.out ?? null;
+  const markBand = mi === null && mo === null ? null : mi !== null && mo !== null ? { l: Math.min(mi, mo), w: Math.abs(mo - mi), title: 'Rango entre marcas (I / O)' } : { l: (mi ?? mo)!, w: 0, title: mi !== null ? 'Marca de entrada (I)' : 'Marca de salida (O)' };
   const empty = tracks.length === 0;
 
   return (
@@ -478,6 +496,7 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
         style={{ ['--hw' as string]: `${headerW}px`, ['--rh' as string]: `${T.RULER_H}px` }}
         onScroll={onScroll}
         onPointerDown={onPointerDown}
+        onContextMenu={onContextMenu}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
@@ -501,6 +520,7 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
                   {k.major && <span>{T.formatRuler(k.t, step)}</span>}
                 </div>
               ))}
+              {markBand && <div className="vx-marks" style={{ left: markBand.l * pps, width: Math.max(2, markBand.w * pps) }} title={markBand.title} />}
               <div ref={headRef} className="vx-ph-head" data-ph role="slider" aria-label="Cabezal" aria-valuemin={0} aria-valuemax={Math.round(dur * 10) / 10} aria-valuenow={Math.round(engine.time * 10) / 10} tabIndex={-1} />
             </div>
           </div>

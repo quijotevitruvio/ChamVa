@@ -6,6 +6,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as VM from '../video/model';
 import { toast } from './toast';
+import { AutoSubsDialog } from './video/AutoSubsDialog';
+import * as AS from './video/autoSubs';
 import { Inspector } from './video/Inspector';
 import { MediaBin, type BinTab } from './video/MediaBin';
 import { SubtitlePanel } from './video/SubtitlePanel';
@@ -54,6 +56,9 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [binOpen, setBinOpen] = useState(false);
   const [binTab, setBinTab] = useState<BinTab>('media');
   const [recording, setRecording] = useState(false);
+  const [marks, setMarks] = useState<AS.Marks>({ in: null, out: null });
+  const [auto, setAuto] = useState<AS.AutoScope | null>(null);
+  const [clipMenu, setClipMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const apiRef = useRef<TimelineApi | null>(null);
   const clipboard = useRef<E.ClipboardItem[]>([]);
   const micRec = useRef<MediaRecorder | null>(null);
@@ -222,6 +227,37 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     engine.seek(0);
   };
 
+  // ---------- subtítulos automáticos (V5b) ----------
+  const openAuto = (scope?: AS.AutoScope) => {
+    const pr = vp.histRef.current.present;
+    if (!pr.tracks.some((t) => t.clips.length)) {
+      toast('Añade primero un video o un audio con voz', 'info');
+      return;
+    }
+    engine.pause();
+    setClipMenu(null);
+    setAuto(scope ?? (AS.selectedMediaClip(pr, selection) ? 'clip' : AS.marksRange(marks) ? 'marks' : 'project'));
+  };
+  // el comando de la paleta (Ctrl+K) vive en App y avisa por un evento
+  useEffect(() => {
+    const on = () => openAuto();
+    window.addEventListener('chamva:video-autosubs', on);
+    return () => window.removeEventListener('chamva:video-autosubs', on);
+  });
+  useEffect(() => {
+    if (!clipMenu) return;
+    const off = () => setClipMenu(null);
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && off();
+    window.addEventListener('pointerdown', off);
+    window.addEventListener('keydown', key);
+    window.addEventListener('blur', off);
+    return () => {
+      window.removeEventListener('pointerdown', off);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('blur', off);
+    };
+  }, [clipMenu]);
+
   // ---------- atajos ----------
   // En fase de CAPTURA y sin propagar: el editor de diseño (App) escucha las mismas teclas
   // en window y, si no, deshacía/borraba en el diseño que queda detrás. Se re-registra en
@@ -230,6 +266,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (isTyping(target)) return;
+      if (auto) return; // con el diálogo abierto, el teclado es suyo
       // flechas sobre una pestaña del panel: cambian de pestaña (las atiende MediaBin), no mueven el cabezal
       if (target?.getAttribute('role') === 'tab' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
       const mod = e.ctrlKey || e.metaKey;
@@ -262,6 +299,14 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       } else if (mod && k === 'a') {
         handled();
         setSelection(project.tracks.flatMap((t) => t.clips.map((c) => c.id)));
+      } else if (!mod && !e.altKey && k === 't') {
+        handled();
+        openAuto();
+      } else if (!mod && !e.altKey && (k === 'i' || k === 'o')) {
+        handled();
+        const t = Math.round(engine.time * 1000) / 1000;
+        setMarks((m) => (k === 'i' ? { ...m, in: t } : { ...m, out: t }));
+        toast(k === 'i' ? `Marca de entrada en ${AS.fmtMark(t)}` : `Marca de salida en ${AS.fmtMark(t)}`, 'info');
       } else if (e.code === 'Space') {
         handled();
         engine.toggle();
@@ -375,7 +420,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             tab={binTab}
             onTab={setBinTab}
             textPanel={<TextPanel canApply={canApplyStyle} onAdd={addTitle} onApply={applyTitle} onAddPair={addPair} onAddPlain={addText} />}
-            subtitlePanel={<SubtitlePanel project={project} engine={engine} selection={selection} setSelection={select} commit={commit} />}
+            subtitlePanel={<SubtitlePanel project={project} engine={engine} selection={selection} setSelection={select} commit={commit} onAutoSubs={() => openAuto()} />}
           />
         )}
         <PreviewPanel engine={engine} project={project} selectedId={selection.length === 1 ? selection[0] : null} aspect={exporter.aspect} fit={exporter.fit} commit={commit} endGroup={endGroup} empty={!hasClips} />
@@ -409,8 +454,38 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           onDropMedia={(id, trackId, t) => addMediaAt(id, trackId, t)}
           onDropFiles={onDropFiles}
           onAddTrack={addTrack}
+          marks={marks}
+          onClipMenu={(id, x, y) => setClipMenu({ id, x, y })}
         />
       </div>
+      {clipMenu && (
+        <ul className="vx-ctxmenu" role="menu" style={{ left: Math.min(clipMenu.x, window.innerWidth - 250), top: Math.min(clipMenu.y, window.innerHeight - 60) }} onPointerDown={(e) => e.stopPropagation()}>
+          <li role="none">
+            <button type="button" role="menuitem" autoFocus onClick={() => openAuto('clip')}>✨ Subtítulos automáticos de este clip…</button>
+          </li>
+        </ul>
+      )}
+      {auto && (
+        <AutoSubsDialog
+          getProject={() => vp.histRef.current.present}
+          commit={commit}
+          engine={engine}
+          selection={selection}
+          marks={marks}
+          setMarks={setMarks}
+          initialScope={auto}
+          onClose={() => setAuto(null)}
+          onApplied={(firstId) => {
+            setBinTab('subs');
+            setBinOpen(true);
+            if (firstId) {
+              setSelection([firstId]);
+              const l = VM.findClip(vp.histRef.current.present, firstId);
+              if (l) engine.seek(l.clip.start);
+            }
+          }}
+        />
+      )}
       <div className="vx-side">
         <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} />
       </div>

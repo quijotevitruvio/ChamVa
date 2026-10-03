@@ -18,6 +18,8 @@ interface Props {
   selection: string[];
   setSelection: (ids: string[]) => void;
   commit: Commit;
+  /** abre «Subtítulos automáticos» */
+  onAutoSubs?: () => void;
 }
 
 /** «mm:ss.mmm» (con horas solo si hacen falta): se puede volver a leer con `parseTimestamp`. */
@@ -83,6 +85,7 @@ interface RowProps {
   locked: boolean;
   onSelect: (id: string, additive: boolean) => void;
   onSeek: (t: number) => void;
+  onPlay: (t: number) => void;
   onText: (id: string, text: string) => void;
   onTimes: (id: string, o: { start?: number; end?: number }) => void;
   onSplit: (id: string, caret: number) => void;
@@ -134,6 +137,7 @@ const CueRow = memo(function CueRow(p: RowProps) {
         onKeyDown={onKey}
       />
       <div className="vx-cue-act" role="cell">
+        <button type="button" className="mini" onClick={() => p.onPlay(c.start)} aria-label={`Reproducir desde el subtítulo ${index + 1}`} title="Reproducir desde aquí">▶</button>
         <button type="button" className="mini" disabled={locked} onClick={() => p.onSplit(c.id, -1)} aria-label={`Dividir el subtítulo ${index + 1} por la mitad o por su salto de línea`} title="Dividir por el salto de línea (o por la mitad). Con el cursor: Alt+Intro">✂</button>
         <button type="button" className="mini" disabled={locked} onClick={() => p.onRemove(c.id)} aria-label={`Quitar el subtítulo ${index + 1}`} title="Quitar">✕</button>
         {(cps > 21 || lines > 2) && (
@@ -147,7 +151,7 @@ const CueRow = memo(function CueRow(p: RowProps) {
 });
 
 /** Pestaña «Subtítulos»: lista editable tipo hoja, importar/exportar SRT·VTT·TXT, desplazar, ajustar a escenas y estilo global. */
-export function SubtitlePanel({ project, engine, selection, setSelection, commit }: Props) {
+export function SubtitlePanel({ project, engine, selection, setSelection, commit, onAutoSubs }: Props) {
   const tracks = S.subtitleTracks(project);
   const [pick, setPick] = useState<string | null>(null);
   const selTrack = useMemo(() => {
@@ -279,6 +283,10 @@ export function SubtitlePanel({ project, engine, selection, setSelection, commit
       locked={locked}
       onSelect={onSelect}
       onSeek={(t) => engine.seek(t)}
+      onPlay={(t) => {
+        engine.seek(t);
+        engine.play();
+      }}
       onText={(id, text) => commit((p) => S.setCueText(p, id, text), 'cuetext:' + id)}
       onTimes={(id, o) => commit((p) => S.setCueTimes(p, id, o), 'cuetime:' + id)}
       onSplit={doSplit}
@@ -300,6 +308,11 @@ export function SubtitlePanel({ project, engine, selection, setSelection, commit
 
   return (
     <div className="vx-tabbody vx-subs">
+      {onAutoSubs && (
+        <div className="vx-tabbar-row">
+          <button type="button" className="primary vx-auto-btn" onClick={onAutoSubs} title="Transcribe la voz con IA en tu equipo y crea los subtítulos (T)">✨ Subtítulos automáticos</button>
+        </div>
+      )}
       <div className="vx-tabbar-row">
         <button type="button" className="primary" onClick={() => addAt(engine.time)} disabled={locked} title="Añade un subtítulo en la posición del cabezal">＋ En el cabezal</button>
         <button type="button" onClick={() => file.current?.click()} title="Importar SRT, VTT o TXT con tiempos (si la pista ya tiene subtítulos, va a una pista nueva)">⬆ Importar</button>

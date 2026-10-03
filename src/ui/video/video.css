@@ -353,3 +353,51 @@
   .vx-root.bin-wide { grid-template-columns: 340px minmax(0, 1fr) 270px; }
 }
 .vx-tabbody > * { flex-shrink: 0; }
+
+/* ---------- subtítulos automáticos (V5b) ---------- */
+.vx-auto-btn { width: 100%; }
+.vx-marks { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 35%, transparent); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); pointer-events: none; z-index: 1; }
+.vx-ctxmenu { position: fixed; z-index: 120; margin: 0; padding: 4px; list-style: none; min-width: 230px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.vx-ctxmenu button { width: 100%; text-align: left; border: 0 !important; background: transparent !important; }
+.vx-ctxmenu button:hover, .vx-ctxmenu button:focus-visible { background: var(--panel-2) !important; }
+.vx-as-overlay { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 8px; background: var(--overlay, rgba(0, 0, 0, 0.55)); }
+.vx-as { width: min(560px, 100%); max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); }
+.vx-as-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vx-as-head h3 { margin: 0; font-size: 15px; }
+.vx-as h4 { margin: 0; font-size: 14px; }
+.vx-as p { margin: 0; }
+.vx-as-local, .vx-as-note, .vx-as small { color: var(--muted); font-size: 12px; }
+.vx-as-body { display: flex; flex-direction: column; gap: 10px; }
+.vx-as fieldset { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 8px 10px 10px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.vx-as legend { padding: 0 4px; font-size: 12px; color: var(--muted); }
+.vx-as-opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.vx-as-opt.on { border-color: var(--accent); background: var(--panel-2); }
+.vx-as-opt.off { opacity: 0.55; cursor: not-allowed; }
+.vx-as-opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vx-as-opt b { font-size: 13px; font-weight: 600; }
+.vx-as-opt small { overflow-wrap: anywhere; }
+.vx-as-grid { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.vx-as-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vx-as label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.vx-as label.vx-as-check { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.vx-as label.vx-as-opt { display: flex; color: var(--text); }
+.vx-as input[type='number'], .vx-as select { width: 100%; min-height: 32px; padding: 4px 6px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+.vx-as-marks { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.vx-as-warn { padding: 6px 8px; font-size: 12px; border-left: 3px solid var(--c-yellow, #e0a800); background: var(--panel-2); border-radius: 4px; }
+.vx-as-err { padding: 8px 10px; font-size: 13px; border-left: 3px solid var(--c-red, #d33); background: var(--panel-2); border-radius: 4px; }
+.vx-as-ok { font-size: 13px; }
+.vx-as-consent { padding: 10px; font-size: 14px; font-weight: 600; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; }
+.vx-as-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.vx-as-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 480px) {
+  .vx-as { padding: 10px; }
+  .vx-as-grid { grid-template-columns: 1fr; }
+  .vx-as-actions { justify-content: stretch; }
+  .vx-as-actions button { flex: 1 1 auto; }
+}
+.vx-models { border-top: 1px solid var(--border); padding-top: 6px; }
+.vx-models summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.vx-models-body { display: grid; gap: 6px; padding-top: 6px; }
+.vx-models-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.vx-models-row span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.vx-models-row small { color: var(--muted); }
