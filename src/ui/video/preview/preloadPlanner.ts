@@ -9,6 +9,7 @@
 //    reutiliza el elemento que ya suena: no necesita precarga.
 import { clipDuration, clipEnd, clipsAt, effectiveEnd, projectDuration, sourceTimeAt } from '../../../video/model/query';
 import { extendedSourceTime } from '../../../video/fx/transitions';
+import { isTimeSpecial, layersAt, rateAt } from '../../../video/speed/clipTime';
 import type { Clip, VideoProject } from '../../../video/model/types';
 
 export interface PlanItem {
@@ -52,6 +53,7 @@ export function continuesFrom(p: VideoProject, b: Clip): Clip | null {
     for (const a of tr.clips) {
       if (a.id === b.id || a.kind !== b.kind || a.mediaId !== b.mediaId) continue;
       if ((a.speed || 1) !== (b.speed || 1)) continue;
+      if (isTimeSpecial(a) || isTimeSpecial(b)) continue; // V8: curva, invertido, congelado o bucle: nunca continúa el elemento del anterior
       if (Math.abs(clipEnd(a) - b.start) > 1e-3) continue;
       if (Math.abs(a.outP - b.inP) > EPS) continue;
       best = a;
@@ -69,7 +71,7 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
   const mediaDur = (c: Clip) => (c.mediaId ? p.media[c.mediaId]?.duration ?? 0 : 0);
   const add = (c: Clip, patch: Partial<PlanItem>) => {
     const prev = items.get(c.id);
-    const speed = c.speed || 1;
+    const speed = Math.abs(rateAt(c, 0)) || c.speed || 1;
     const startsIn = c.start - t;
     const base: PlanItem = {
       clip: c,
@@ -92,6 +94,10 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
     } else if (it.active) {
       it.seekTo = Math.min(c.outP, Math.max(c.inP, sourceTimeAt(c, t)));
       it.play = true;
+    } else if (isTimeSpecial(c)) {
+      // V8: el elemento espera en el primer fotograma (el invertido y el congelado no corren en hacia delante)
+      it.seekTo = Math.min(c.outP, Math.max(c.inP, sourceTimeAt(c, c.start)));
+      it.play = !c.reverse && !c.freeze && startsIn <= lead;
     } else {
       const lag = Math.min(lead, c.inP / speed);
       it.play = startsIn <= lag;
@@ -113,6 +119,16 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
       const startsIn = c.start - t;
       if (startsIn > 0 && startsIn <= horizon && clipDuration(c) > 0) up.push(c);
     }
+  // V8: bucle con fundido cruzado: la pasada saliente necesita su propio elemento mientras dure el fundido
+  for (const v of visual) {
+    const c = v.clip;
+    if (c.kind !== 'video' || !c.loop?.xf || !c.mediaId || v.ext) continue;
+    const ls = layersAt(c, t - c.start);
+    const main = items.get(c.id);
+    if (ls.length !== 2 || !main) continue;
+    const vc: Clip = { ...c, id: `${c.id}~x`, xlayer: true };
+    items.set(vc.id, { ...main, clip: vc, clipId: vc.id, visible: true, audible: false, active: true, play: true, seekTo: ls[0].s, continuesFrom: undefined });
+  }
   up.sort((x, y) => x.start - y.start);
   for (const c of up.slice(0, maxUp)) add(c, {});
   // quién continúa a quién (para reutilizar el elemento al cortar)

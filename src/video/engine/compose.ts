@@ -3,7 +3,7 @@
 // llamadas de dibujo que V1 (drawVideoFrame / texto / imagen), para que un
 // proyecto migrado salga idéntico píxel a píxel.
 import { clipAudioFx } from '../model/effects';
-import { clipEnd, clipFadeAlpha, clipsAt, effectiveEnd, isIdentityTransform, videoTracksBottomUp } from '../model/query';
+import { clipDuration, clipEnd, clipFadeAlpha, clipsAt, effectiveEnd, isIdentityTransform, videoTracksBottomUp } from '../model/query';
 import type { BlendMode, Clip, Track, VideoProject } from '../model/types';
 import { activeFx } from '../fx/effects';
 import { applyFxStack, type Box } from '../fx/fxDraw';
@@ -11,6 +11,8 @@ import { fxAt, transformAt, volumeAt } from '../fx/keyframes';
 import { getScratch, type Scratch } from '../fx/scratch';
 import { drawTransition } from '../fx/transitionDraw';
 import { resolveTransitions, transitionAt, type ResolvedTransition, type TransitionState } from '../fx/transitions';
+import { ClipTimeSource, needsTimeSource, type OpenAt } from './timeAudio';
+import { layersAt } from '../speed/clipTime';
 import type { MixEntry, PcmSource } from './mixer';
 import { OVERLAY_FONT, type Fit, drawVideoFrame, fitRect, overlayFontPx } from './timeline';
 import { drawTitleClip } from './titleDraw';
@@ -27,27 +29,36 @@ const DEG = Math.PI / 180;
 export function buildProjectMixEntries(
   p: VideoProject,
   duration: number,
-  open: (clip: Clip) => () => Promise<PcmSource | null>,
+  open: (clip: Clip, startAt?: number) => () => Promise<PcmSource | null>,
   playable: (clip: Clip) => boolean = (c) => !!c.mediaId && !!p.media[c.mediaId] && !p.media[c.mediaId].missing,
 ): MixEntry[] {
   const out: MixEntry[] = [];
   const add = (c: Clip) => {
     if (!playable(c) || c.start >= duration) return;
     const volKeys = !!c.keys?.volume?.length;
+    // V8: curva de velocidad, invertido, bucle, congelado o tono conservado: el mezclador ve un clip normal en TIEMPO LOCAL
+    // (inP 0, velocidad 1) y `ClipTimeSource` traduce con el mismo mapa de tiempo que la imagen.
+    const special = needsTimeSource(c);
+    const dur = special ? clipDuration(c) : 0;
     out.push({
       start: c.start,
       // Como V1: el sonido de un clip de video no se recorta a `duration` (que redondea a
       // fotogramas y puede quedar 1e-15 por debajo); el de las pistas de audio sí.
       end: c.kind === 'video' ? clipEnd(c) : Math.min(duration, clipEnd(c)),
-      inP: c.inP,
-      outP: c.outP,
-      speed: c.speed || 1,
+      inP: special ? 0 : c.inP,
+      outP: special ? dur + 1 : c.outP,
+      speed: special ? 1 : c.speed || 1,
       // con fotogramas clave de volumen la ganancia va como envolvente (el volumen de la cadena queda en 1)
       fx: volKeys ? { ...clipAudioFx(c), volume: 1 } : clipAudioFx(c),
       ...(volKeys ? { gain: (tt: number) => volumeAt(c, tt) } : {}),
       ...(c.audioFadeIn > 0 ? { fadeIn: c.audioFadeIn } : {}),
       ...(c.audioFadeOut > 0 ? { fadeOut: c.audioFadeOut } : {}),
-      open: open(c),
+      open: special
+        ? async () => {
+            const at: OpenAt = (startAt) => open(c, startAt)();
+            return new ClipTimeSource(c, at, { pitch: c.pitch });
+          }
+        : open(c),
     });
   };
   for (const { track } of videoTracksBottomUp(p)) if (!track.muted) for (const c of track.clips) if (c.kind === 'video') add(c);
@@ -235,7 +246,15 @@ function drawContent(g: FrameCtx, ctx: CanvasRenderingContext2D, clip: Clip, tra
   const alpha = clipFadeAlpha(clip, tt, g.duration);
   if (clip.kind === 'video') {
     const f = src.video(ac, ext);
-    if (f) drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, ac, alpha);
+    if (f) {
+      // V8: bucle con fundido cruzado: la pasada saliente se dibuja entera y la entrante encima con su opacidad
+      const ls = clip.loop?.xf ? layersAt(clip, tt - clip.start) : null;
+      const f0 = ls && ls.length === 2 ? src.video({ ...ac, id: `${ac.id}~x`, xlayer: true }, ext) : null;
+      if (f0 && ls) {
+        drawVideoClip(ctx, f0.image, f0.width, f0.height, w, h, fit, f0.rotation, ac, alpha * ls[0].a);
+        drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, ac, alpha * ls[1].a);
+      } else drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, ac, alpha);
+    }
     return clipBox(ac, w, h, fit, f, null);
   }
   const img = clip.kind === 'image' ? src.image(clip) : null;

@@ -2,6 +2,7 @@ import { ASPECTS, QUALITIES, type Aspect, type Container, type Quality } from '.
 import type { ExportSupport } from '../../video/engine/encoderConfig';
 import type { Fit } from '../../video/engine/timeline';
 import { t } from '../../i18n';
+import type { AudioFormat, AudioFormatInfo } from '../../video/engine/audioExport';
 import { ModelManager } from './ModelManager';
 
 interface Props {
@@ -40,6 +41,13 @@ interface Props {
   burnSubs: boolean;
   setBurnSubs: (b: boolean) => void;
   onExportSubs: (f: 'srt' | 'vtt') => void;
+  /** audio (V7): exportar solo el audio */
+  audioFormat: AudioFormat;
+  setAudioFormat: (f: AudioFormat) => void;
+  audioFormats: AudioFormatInfo[];
+  audioSupport: Record<AudioFormat, boolean> | null;
+  canExportAudio: boolean;
+  onExportAudio: () => void;
 }
 
 export function Toolbar(p: Props) {
@@ -104,6 +112,22 @@ export function Toolbar(p: Props) {
             <span className="vx-pop-row">
               <button type="button" onClick={() => p.onExportSubs('srt')} disabled={!p.hasSubs} title="Guardar los subtítulos en un archivo .srt aparte">⬇ .srt</button>
               <button type="button" onClick={() => p.onExportSubs('vtt')} disabled={!p.hasSubs} title="Guardar los subtítulos en un archivo .vtt aparte">⬇ .vtt</button>
+            </span>
+            <span className="vx-pop-row">
+              <label>
+                Solo audio
+                <select value={p.audioFormat} onChange={(e) => p.setAudioFormat(e.target.value as AudioFormat)} disabled={p.exporting} aria-label="Formato del audio">
+                  {p.audioFormats.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.label}
+                      {p.audioSupport && !p.audioSupport[f.id] ? ' (se guarda como WAV)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" onClick={p.onExportAudio} disabled={!p.canExportAudio || p.exporting} title="Exportar solo el audio de la mezcla, con la sonoridad y el limitador del proyecto">
+                ⬇ Audio
+              </button>
             </span>
             <ModelManager />
             <button type="button" onClick={() => p.onExport('webm')} disabled={!p.canExport || p.exporting || (!!support && support.webcodecs && !support.webm)} title="Exportar a WebM (VP9 + Opus)">

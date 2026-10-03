@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banco de V8: velocidad, invertir, bucle y reencuadre</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; background: #fafafa; color: #111; }
+      canvas { width: 640px; height: 360px; background: #000; display: block; }
+      pre { background: #fff; border: 1px solid #ccc; padding: 8px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Banco de V8 (solo desarrollo)</h1>
+    <p>Comprueba con el motor real (exportación y vista previa) las curvas de velocidad, invertir, bucle y reencuadre sobre clips sintéticos con el número de fotograma en cada imagen. Resultados en <code>window.__sp</code>.</p>
+    <canvas id="cv"></canvas>
+    <pre id="out"></pre>
+    <script type="module" src="/src/video/bench/speedBench.ts"></script>
+  </body>
+</html>

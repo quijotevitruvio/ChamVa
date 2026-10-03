@@ -14,12 +14,18 @@ import { sequenceToProject, type SeqOverlay } from '../model/migrate';
 import { makeClip } from '../model/ops';
 import { clipsAt, isStill, projectDuration, sourceTimeAt, videoTracksBottomUp } from '../model/query';
 import { extendedSourceTime } from '../fx/transitions';
+import { isTimeSpecial, layersAt } from '../speed/clipTime';
+import { ReverseFrameSource, maxGopFrames, reverseCheck } from './reverse';
 import { IDENTITY_TRANSFORM, type Clip, type MediaAsset, type VideoProject } from '../model/types';
 import { BufferAudioSource, DecoderAudioSource, audioDecoderConfig } from './audioSource';
 import { ensureTitleFonts } from './titleFonts';
-import { buildProjectMixEntries, composeFrame, type ComposedFrame, type StillImage } from './compose';
+import { composeFrame, type ComposedFrame, type StillImage } from './compose';
+import { planProjectMix, resolveTrackPlan } from './audioPlan';
+import { LoudnessMeter } from '../audio/loudness';
+import { codecCorrection, measureViaCodec } from './codecProbe';
+import { solveLoudnessGain, type LoudnessSolve } from './loudnessPass';
 import { type DemuxedFile, demux } from './demux';
-import type { ClipAudioFx } from './dsp';
+import { TRUE_PEAK_LOSSY_CEILING_DB, type ClipAudioFx } from './dsp';
 import { findAudioConfig, negotiateVideo, type AudioChoice, type VideoChoice } from './encoderConfig';
 import { AUDIO_SAMPLE_RATE, type Container } from './formats';
 import { TimelineMixer, type PcmSource } from './mixer';
@@ -94,6 +100,10 @@ export interface RenderResult {
   fallbackFrames: number;
   peakIn: number;
   peakOut: number;
+  /** V7: medida del audio ya mezclado (lo que se codificó): sonoridad integrada (LUFS), pico real (dBTP), ganancia aplicada */
+  audioStats?: { integrated: number; truePeak: number; samplePeak: number; gainDb: number; measuredBefore: number | null; passes: number } | null;
+  /** V7: picos y menor ganancia de ducking (dB) de las pistas con cadena de mezclador */
+  trackStats?: Record<string, { peak: number; minDuckDb: number }>;
 }
 
 export class ExportUnsupportedError extends Error {
@@ -196,7 +206,8 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
       else if (isStill(c) && !track.hidden) stills.push(c);
     }
   const audioOnly: Clip[] = [];
-  for (const t of p.tracks) if (t.kind === 'audio' && !t.muted) audioOnly.push(...t.clips);
+  const trackPlan = resolveTrackPlan(p); // V7: silencio y solo (también en la exportación)
+  for (const t of p.tracks) if (t.kind === 'audio' && trackPlan.get(t.id)?.active) audioOnly.push(...t.clips);
   const byKey = new Map<Blob | string, Promise<Probe>>();
   const probeOf = new Map<string, Probe>(); // id de medio → sondeo
   for (const c of [...visualVideo, ...audioOnly]) {
@@ -223,12 +234,12 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
 
   const frames = frameCount(timelineDur, fps);
   const duration = frames / fps;
-  const openPcm = (clip: Clip) => async (): Promise<PcmSource | null> => {
+  const openPcm = (clip: Clip, startAt?: number) => async (): Promise<PcmSource | null> => {
     const pr = probeOf.get(clip.mediaId!)!;
     if (pr.file) {
       if (!pr.file.audio) return null;
       const cfg = await audioDecoderConfig(pr.file.audio);
-      if (cfg) return new DecoderAudioSource(pr.file.audio, pr.blob, cfg, clip.inP);
+      if (cfg) return new DecoderAudioSource(pr.file.audio, pr.blob, cfg, startAt ?? clip.inP);
     }
     // Respaldo: decodificar el archivo entero (solo formatos que el motor no sabe trocear).
     try {
@@ -238,9 +249,9 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
       return null;
     }
   };
-  const mixEntries = buildProjectMixEntries(p, duration, openPcm, playable);
+  const mixPlan = planProjectMix(p, duration, openPcm, playable);
   // ¿Hace falta pista de audio? Como V1: si algún archivo que puede sonar tiene audio (o no se sabe).
-  const audible = [...videoTracksBottomUp(p).filter(({ track }) => !track.muted).flatMap(({ track }) => track.clips.filter((c) => c.kind === 'video')), ...audioOnly];
+  const audible = [...videoTracksBottomUp(p).filter(({ track }) => trackPlan.get(track.id)?.active).flatMap(({ track }) => track.clips.filter((c) => c.kind === 'video')), ...audioOnly];
   const anyAudio = audible.some((c) => {
     const pr = playable(c) ? probeOf.get(c.mediaId!) : undefined;
     return !!pr && (!pr.file || !!pr.file.audio);
@@ -278,6 +289,7 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
   // Una fuente por «ranura»: la de la pista (clip activo) y la `#x` (clip que solo se ve por una transición de unión).
   const current = new Map<string, { src: FrameSource; clip: Clip; blob: Blob }>();
   const slotKey = (trackId: string, ext: boolean) => (ext ? `${trackId}#x` : trackId);
+  const src2 = new Map<string, FrameSource>(); // V8: fuentes de la 2.ª capa de un bucle (solo para no perder la referencia)
   let fallbackFrames = 0;
   const openFrameSource = async (key: string, clip: Clip, ext: boolean, want: number): Promise<FrameSource> => {
     const pr = probeOf.get(clip.mediaId!)!;
@@ -287,6 +299,8 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     if (
       !ext &&
       cur &&
+      !isTimeSpecial(clip) &&
+      !isTimeSpecial(cur.clip) &&
       cur.blob === pr.blob &&
       (cur.clip.speed || 1) === (clip.speed || 1) &&
       clip.inP >= cur.src.lastTime &&
@@ -299,7 +313,12 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     let src: FrameSource | null = null;
     if (pr.file?.video) {
       const cfg = await videoDecoderConfig(pr.file.video);
-      if (cfg) src = new DecoderFrameSource(pr.file.video, pr.blob, cfg, ext ? Math.min(clip.inP, want) : clip.inP);
+      if (cfg && clip.reverse && !clip.freeze) {
+        // V8: invertir por bloques de GOP (memoria acotada); con avisos si el tramo es muy largo
+        const chk = reverseCheck(clip.outP - clip.inP, maxGopFrames(pr.file.video.samples), pr.file.video.codedWidth, pr.file.video.codedHeight);
+        chk.warnings.forEach(notice);
+        src = new ReverseFrameSource(pr.file.video, pr.blob, cfg);
+      } else if (cfg) src = new DecoderFrameSource(pr.file.video, pr.blob, cfg, ext ? Math.min(clip.inP, want) : clip.inP);
       else notice(`El códec de video «${pr.file.video.codec}» no se puede decodificar por trozos aquí; se usa la ruta lenta.`);
     }
     if (!src) src = new ElementFrameSource(urlOf(p.media[clip.mediaId!]));
@@ -323,7 +342,23 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     return openFrameSource(key, clip, ext, want);
   };
 
-  const mixer = ac ? new TimelineMixer(mixEntries, { eq: p.eq, normalize: p.normalize }, duration) : null;
+  // V7: normalización de sonoridad (LUFS): mezcla de medida antes de codificar (mismo mezclador y cadena que la salida)
+  // el audio del video siempre va con códec con pérdida (AAC u Opus): techo de pico real con margen para lo que sube al decodificar
+  const makeMixer = (gainDb: number) => new TimelineMixer(mixPlan.entries, { ...mixPlan.master, gainDb, ceilingDb: TRUE_PEAK_LOSSY_CEILING_DB }, duration, AUDIO_SAMPLE_RATE, mixPlan.tracks);
+  let loudSolve: LoudnessSolve | null = null;
+  if (ac && p.audio?.loud?.on) {
+    opts.onProgress?.({ ratio: 0.01, stage: 'preparando', frame: 0, frames: 0 });
+    loudSolve = await solveLoudnessGain(makeMixer, p.audio.loud.target, { signal, ceilingDb: TRUE_PEAK_LOSSY_CEILING_DB, onProgress: (r) => opts.onProgress?.({ ratio: 0.01 + r * 0.03, stage: 'preparando', frame: 0, frames: 0 }) });
+    if (loudSolve.silent) notice('El audio no tiene sonoridad medible: no se aplica la normalización a LUFS.');
+  }
+  // el códec con pérdida (AAC, Opus) cambia el nivel: se mide con ese mismo AudioEncoder y se compensa
+  let codecDb = 0;
+  if (ac && loudSolve && !loudSolve.silent && p.audio?.loud) {
+    const mc = await measureViaCodec(makeMixer, loudSolve.gainDb, ac.config, { signal, onProgress: (r) => opts.onProgress?.({ ratio: 0.04 + r * 0.01, stage: 'preparando', frame: 0, frames: 0 }) });
+    codecDb = codecCorrection(p.audio.loud.target, mc);
+  }
+  const mixer = ac ? makeMixer((loudSolve && !loudSolve.silent ? loudSolve.gainDb : 0) + codecDb) : null;
+  const outMeter = mixer ? new LoudnessMeter(AUDIO_SAMPLE_RATE) : null;
 
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -362,6 +397,18 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
         const f = await src.frameAt(want);
         if (src instanceof ElementFrameSource) fallbackFrames++;
         got.set(clip.id, f ? { image: f.image, width: f.width, height: f.height, rotation: f.rotation } : null);
+        // V8: bucle con fundido cruzado: la pasada saliente tiene su propia fuente (un decodificador más)
+        const xl = clip.loop?.xf && !ext ? layersAt(clip, t - clip.start) : null;
+        if (xl && xl.length === 2) {
+          const vc: Clip = { ...clip, id: `${clip.id}~x`, xlayer: true };
+          const slot = `${track.id}#l`;
+          seen.add(slot);
+          let cur = current.get(slot);
+          if (!cur || cur.clip.id !== vc.id) src2.set(slot, await openFrameSource(slot, vc, false, xl[0].s));
+          cur = current.get(slot)!;
+          const f2 = await cur.src.frameAt(xl[0].s);
+          got.set(vc.id, f2 ? { image: f2.image, width: f2.width, height: f2.height, rotation: f2.rotation } : null);
+        }
       }
       composeFrame(
         ctx,
@@ -377,7 +424,7 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
       // Cerrar los decodificadores de pistas sin clip ahora ni en el próximo segundo.
       for (const [key, cur] of current) {
         if (seen.has(key)) continue;
-        const track = p.tracks.find((x) => x.id === key.replace(/#x$/, ''));
+        const track = p.tracks.find((x) => x.id === key.replace(/#[xl]$/, ''));
         if (track?.clips.some((c) => c.kind === 'video' && c.start >= t && c.start - t < 1)) continue;
         cur.src.close();
         current.delete(key);
@@ -394,6 +441,7 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
           const blk = await mixer.render(Math.min(AUDIO_BLOCK, until - mixer.position));
           if (!blk.frames) break;
           opts.tap?.audio?.(blk.L, blk.R, blk.frames);
+          outMeter?.process(blk.L, blk.R, blk.frames);
           const planar = new Float32Array(blk.frames * 2);
           planar.set(blk.L, 0);
           planar.set(blk.R, blk.frames);
@@ -430,6 +478,10 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     finalizeMux();
     const peakIn = mixer?.master.limiter.peakIn ?? 0;
     const peakOut = mixer?.master.limiter.peakOut ?? 0;
+    const audioStats = outMeter
+      ? { integrated: outMeter.integrated(), truePeak: outMeter.truePeakDb(), samplePeak: outMeter.samplePeakDb(), gainDb: (loudSolve && !loudSolve.silent ? loudSolve.gainDb : 0) + codecDb, measuredBefore: loudSolve?.measured ?? null, passes: loudSolve?.passes ?? 0 }
+      : null;
+    const trackStats = mixer?.trackStats() ?? {};
     cleanup();
     const blob = await sink.close();
     opts.onProgress?.({ ratio: 1, stage: 'listo', frame: frames, frames });
@@ -447,6 +499,8 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
       fallbackFrames,
       peakIn,
       peakOut,
+      audioStats,
+      trackStats,
     };
   } catch (e) {
     cleanup();

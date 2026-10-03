@@ -31,9 +31,15 @@ export function effectById(id: string | undefined): VoiceEffect {
 }
 
 /** Parámetros de audio de un clip: el efecto (o los valores a medida de `voice`) + el volumen. */
-export function clipAudioFx(c: { effect: string; volume: number; voice?: Omit<ClipAudioFx, 'volume'>; keys?: Record<string, Keyframe[]>; start?: number }, t?: number): ClipAudioFx {
+export function clipAudioFx(c: { effect: string; volume: number; voice?: Omit<ClipAudioFx, 'volume'>; keys?: Record<string, Keyframe[]>; start?: number; pan?: number; gainDb?: number; eq?: ClipAudioFx['eq']; denoise?: number }, t?: number): ClipAudioFx {
   const v = c.voice ?? effectById(c.effect);
   // V6: con fotogramas clave de volumen y un instante, el volumen animado (la vista previa lo pide en cada fotograma)
   const volume = t !== undefined && c.keys?.volume?.length ? volumeAt({ keys: c.keys, start: c.start ?? 0, volume: c.volume }, t) : c.volume;
-  return { volume, hp: v.hp, lp: v.lp, echo: v.echo, gate: !!v.gate };
+  const fx: ClipAudioFx = { volume, hp: v.hp, lp: v.lp, echo: v.echo, gate: !!v.gate };
+  // V7 (solo si el clip los tiene: un clip de V6 produce exactamente lo de antes)
+  if (c.pan) fx.pan = c.pan;
+  if (c.gainDb) fx.gainDb = c.gainDb;
+  if (c.eq?.length) fx.eq = c.eq;
+  if (c.denoise) fx.denoise = c.denoise;
+  return fx;
 }

@@ -57,7 +57,7 @@ export class DecoderFrameSource implements FrameSource {
   lastTime = -Infinity;
   decodedCount = 0;
 
-  constructor(private track: VideoTrackInfo, blob: Blob, config: VideoDecoderConfig, startTime: number) {
+  constructor(private track: VideoTrackInfo, blob: Blob, private config: VideoDecoderConfig, startTime: number) {
     this.reader = new BlobReader(blob, 8 << 20);
     this.decoder = new VideoDecoder({
       output: (f) => {
@@ -111,10 +111,34 @@ export class DecoderFrameSource implements FrameSource {
     );
   }
 
+  /**
+   * V8: reposiciona el decodificador en el fotograma clave anterior a `t` (bucles que vuelven al principio, rampas de velocidad
+   * muy rápidas que saltan segundos de archivo): evita decodificar todo lo que hay en medio.
+   */
+  private reposition(t: number) {
+    for (const f of this.frames) if (f !== this.current) f.close();
+    this.frames = [];
+    this.current?.close();
+    this.current = null;
+    try {
+      this.decoder.reset();
+      this.decoder.configure(this.config);
+    } catch (e) {
+      this.error = e instanceof Error ? e : new Error(String(e));
+    }
+    this.next = keyIndexBefore(this.track.samples, t);
+    this.flushed = false;
+    this.repositions++;
+  }
+
+  repositions = 0;
+
   async frameAt(t: number): Promise<DrawableFrame | null> {
+    const s = this.track.samples;
+    // V8: salto atrás (bucle) o salto adelante de más de 2 s (rampa muy rápida): se reposiciona en vez de decodificar de más
+    if (this.lastTime !== -Infinity && (t < this.lastTime - 0.02 || (this.next < s.count && s.pts[this.next] < t - 2 && keyIndexBefore(s, t) > this.next))) this.reposition(t);
     this.lastTime = t;
     const tUs = Math.round(t * 1e6) + 500; // tolerancia de medio milisegundo
-    const s = this.track.samples;
     // Decodificar hasta tener un fotograma posterior a t (o el final).
     for (;;) {
       if (this.error) throw this.error;

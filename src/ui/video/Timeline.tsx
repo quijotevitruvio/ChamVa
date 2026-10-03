@@ -8,6 +8,7 @@ import { KeyRow } from './KeyRow';
 import { resolveTransitions } from '../../video/fx/transitions';
 import { applyPayload, decodePayload, dragKind, FX_MIME, fxDropTarget, junctionMarks, type FxDropTarget, type FxKind, type JunctionMark } from './fxUi';
 import { TrackHeader } from './TrackHeader';
+import { projectBeatMarks } from '../../video/audio/beatMarks';
 import * as T from './timelineMath';
 
 export interface TimelineApi {
@@ -529,6 +530,10 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
   const selSet = useMemo(() => new Set(selection), [selection]);
   const always = activeIds;
   const ticks = T.rulerTicks(pps, win.t0, win.t1);
+  // V7: marcas de ritmo en la regla (solo las de la ventana visible)
+  const showBeats = !!project.audio?.showBeats;
+  const beatMarks = useMemo(() => (showBeats ? projectBeatMarks(project) : []), [showBeats, project]);
+  const beatsShown = showBeats ? beatMarks.filter((b) => b >= win.t0 - 1 && b <= win.t1 + 1) : [];
   const step = T.rulerStep(pps);
   const ruleW = laneW;
   const mi = marks?.in ?? null;
@@ -571,6 +576,9 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
                 <div key={k.t} className={`vx-tick${k.major ? ' major' : ''}`} style={{ left: k.t * pps }}>
                   {k.major && <span>{T.formatRuler(k.t, step)}</span>}
                 </div>
+              ))}
+              {beatsShown.map((b, i) => (
+                <div key={`b${b}-${i}`} className="vx-beat" style={{ left: b * pps }} aria-hidden="true" />
               ))}
               {markBand && <div className="vx-marks" style={{ left: markBand.l * pps, width: Math.max(2, markBand.w * pps) }} title={markBand.title} />}
               <div ref={headRef} className="vx-ph-head" data-ph role="slider" aria-label="Cabezal" aria-valuemin={0} aria-valuemax={Math.round(dur * 10) / 10} aria-valuenow={Math.round(engine.time * 10) / 10} tabIndex={-1} />

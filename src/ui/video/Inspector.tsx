@@ -8,6 +8,11 @@ import { Field } from './Field';
 import { AnimField, AnimSection, EffectsSection, TransitionSection, type FxCtx, type KeyClipboard } from './FxInspector';
 import type { PreviewEngine } from './previewEngine';
 import { StyleControls } from './StyleControls';
+import { ClipAudioPanel, ProjectAudioPanel } from './AudioPanels';
+import { SpeedSection } from './SpeedPanel';
+import { ReframeSection } from './ReframePanel';
+import type { Aspect } from '../../video/engine/formats';
+import type { Fit } from '../../video/engine/timeline';
 import { DEFAULT_TITLE_STYLE } from '../../video/title/style';
 import { setCueText, setCueTimes } from '../../video/title/subtitles';
 
@@ -27,9 +32,13 @@ interface Props {
   keyClip: KeyClipboard;
   setKeyClip: (v: KeyClipboard) => void;
   onSelect: (ids: string[]) => void;
+  /** V8: proporción y encaje de la salida (el reencuadre cambia la proporción del proyecto) */
+  aspect?: Aspect;
+  setAspect?: (a: Aspect) => void;
+  fit?: Fit;
 }
 
-export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles, engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect }: Props) {
+export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles, engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect, aspect = '16:9', setAspect, fit = 'contain' }: Props) {
   // el cabezal: el inspector se repinta al moverlo (cuantizado mientras se reproduce, para no repintar 60 veces por segundo)
   const t = useSyncExternalStore(engine.subscribeTime, () => (engine.isPlaying ? Math.round(engine.getTime() * 15) / 15 : engine.getTime()));
   const loc = selection.length === 1 ? VM.findClip(project, selection[0]) : null;
@@ -50,6 +59,7 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
         <label className="vx-check">
           <input type="checkbox" checked={project.normalize} onChange={(e) => commit((p) => VM.updateProject(p, { normalize: e.target.checked }))} /> Normalizar volumen
         </label>
+        <ProjectAudioPanel project={project} commit={commit} engine={engine} />
         <p className="vx-note">Selecciona un clip para editar su transformación, velocidad, volumen y fundidos.</p>
       </div>
     );
@@ -83,6 +93,7 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
   const ctx: FxCtx = { project, clip: c, track, engine, t, commit, locked, autoKey, setAutoKey, keyClip, setKeyClip, onSelect };
   const dur = VM.clipDuration(c);
   const maxLen = timed && media ? Math.max(0.1, (media.duration - c.inP) / (c.speed || 1)) : 600;
+  const special = !!(c.curve || c.reverse || c.freeze || c.loop);
   const KIND = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo', adjust: 'Capa de ajuste' }[c.kind];
 
   return (
@@ -137,10 +148,9 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
 
       <h4>Tiempo</h4>
       <Field label="Inicio" value={c.start} min={0} max={Math.max(60, VM.projectDuration(project) + 30)} step={0.1} unit=" s" digits={2} disabled={locked} onChange={(v) => commit((p) => (sub ? setCueTimes(p, c.id, { start: v, end: v + dur }) : VM.moveClip(p, c.id, { start: v })), 'start:' + c.id)} />
-      <Field label="Duración" value={dur} min={0.1} max={maxLen} step={0.1} unit=" s" digits={2} disabled={locked || !!c.toEnd} onChange={(v) => commit((p) => (sub ? setCueTimes(p, c.id, { end: c.start + v }) : VM.trimClip(p, c.id, 'out', c.start + v)), 'dur:' + c.id)} />
-      {timed && (
-        <Field label="Velocidad" value={c.speed || 1} min={0.25} max={3} step={0.05} unit="×" digits={2} disabled={locked} onChange={(v) => upd({ speed: v }, 'speed')} />
-      )}
+      <Field label="Duración" value={dur} min={0.1} max={special ? Math.max(maxLen, dur, 600) : maxLen} step={0.1} unit=" s" digits={2} disabled={locked || !!c.toEnd} onChange={(v) => commit((p) => (sub ? setCueTimes(p, c.id, { end: c.start + v }) : VM.trimClip(p, c.id, 'out', c.start + v)), 'dur:' + c.id)} />
+      {timed && <SpeedSection project={project} clip={c} engine={engine} t={t} commit={commit} locked={locked} />}
+      {c.kind === 'video' && setAspect && <ReframeSection project={project} clip={c} engine={engine} t={t} commit={commit} locked={locked} aspect={aspect} setAspect={setAspect} fit={fit} />}
 
       {visual && !adjust && (
         <>
@@ -199,6 +209,7 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
               ))}
             </select>
           </div>
+          <ClipAudioPanel project={project} clip={c} track={track} commit={commit} />
         </>
       )}
 

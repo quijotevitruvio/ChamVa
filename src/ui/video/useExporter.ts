@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { downloadBlob } from '../../io/export';
 import { canUseWebCodecs, probeExportSupport, type ExportSupport } from '../../video/engine/encoderConfig';
+import { AUDIO_FORMATS, audioDuration, audioFormatInfo, probeAudioFormats, renderAudioOnly, resolveAudioFormat, type AudioFormat } from '../../video/engine/audioExport';
+import { rememberSaved } from '../../io/nativeSave';
 import { lowerQuality, outputSize, type Aspect, type Container, type Quality } from '../../video/engine/formats';
 import { ExportUnsupportedError, renderProject } from '../../video/engine/render';
 import { openSink } from '../../video/engine/sink';
@@ -26,9 +28,13 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
   const [progress, setProgress] = useState(0); // 0..1
   const [label, setLabel] = useState('');
   const [support, setSupport] = useState<ExportSupport | null>(null);
+  /** V7: exportar solo el audio */
+  const [audioFormat, setAudioFormat] = useState<AudioFormat>('wav16');
+  const [audioSupport, setAudioSupport] = useState<Record<AudioFormat, boolean> | null>(null);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => {
     probeExportSupport().then(setSupport).catch(() => setSupport(null));
+    probeAudioFormats().then(setAudioSupport).catch(() => setAudioSupport(null));
   }, []);
 
   const recordFallback = async (mime: string, signal: AbortSignal): Promise<Blob> => {
@@ -150,6 +156,61 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
     }
   };
 
+  /** V7: exporta solo el audio (WAV 16/24, OGG/Opus o M4A/AAC) con la misma mezcla que el video. */
+  const runAudio = async () => {
+    const project = getProject();
+    if (exporting) return;
+    if (!(audioDuration(project) > 0)) {
+      toast('No hay audio que exportar: añade clips de video o de audio con sonido', 'info');
+      return;
+    }
+    const ac = new AbortController();
+    abort.current = ac;
+    setProgress(0);
+    setLabel('');
+    const { format, notice } = await resolveAudioFormat(audioFormat);
+    if (notice) toast(notice, 'info');
+    const info = audioFormatInfo(format);
+    const filename = `chamva-audio.${info.ext}`;
+    let sink;
+    try {
+      sink = await openSink({ filename, mime: info.mime });
+    } catch (e) {
+      toast('No se pudo abrir el archivo de destino: ' + (e as Error).message, 'error');
+      return;
+    }
+    if (!sink) return; // cancelado
+    setExporting(true);
+    try {
+      const r = await renderAudioOnly(project, {
+        format,
+        sink,
+        signal: ac.signal,
+        onNotice: (m) => toast(m, 'info'),
+        onProgress: (ratio, stage) => {
+          setProgress(ratio);
+          setLabel(stage);
+        },
+      });
+      const lu = Number.isFinite(r.stats.integrated) ? `${r.stats.integrated.toFixed(1).replace('.', ',')} LUFS` : 'sin sonido medible';
+      const tp = Number.isFinite(r.stats.truePeak) ? ` · pico ${r.stats.truePeak.toFixed(1).replace('.', ',')} dBTP` : '';
+      if (r.blob) downloadBlob(r.blob, filename);
+      else if (sink.path) rememberSaved(sink.path);
+      toast(`Audio guardado${sink.path ? ': ' + sink.path : ''} (${lu}${tp})`, 'success');
+    } catch (e) {
+      if ((e as DOMException)?.name === 'AbortError') toast('Exportación cancelada', 'info');
+      else {
+        console.error(e);
+        toast('No se pudo exportar el audio: ' + (e as Error).message, 'error');
+      }
+    } finally {
+      setExporting(false);
+      setProgress(0);
+      setLabel('');
+      abort.current = null;
+    }
+  };
+
   /** Guarda los subtítulos de la primera pista con subtítulos en un archivo aparte. */
   const exportSubs = (format: SubFormat) => {
     const tr = subtitleTracks(getProject()).find((t) => t.clips.length > 0);
@@ -161,5 +222,5 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
     void downloadBlob(new Blob([text], { type: SUB_FILE[format].mime + ';charset=utf-8' }), `chamva-video.${SUB_FILE[format].ext}`);
   };
 
-  return { exporting, res, setRes, aspect, setAspect, fit, setFit, fps, setFps, burnSubs, setBurnSubs, exportSubs, progress, label, support, run, cancel: () => abort.current?.abort() };
+  return { exporting, res, setRes, aspect, setAspect, fit, setFit, fps, setFps, burnSubs, setBurnSubs, exportSubs, progress, label, support, run, audioFormat, setAudioFormat, audioSupport, audioFormats: AUDIO_FORMATS, runAudio, cancel: () => abort.current?.abort() };
 }

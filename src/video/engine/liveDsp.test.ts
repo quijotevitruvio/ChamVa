@@ -64,13 +64,19 @@ async function exportPath(fx: ClipAudioFx, fadeIn: number, fadeOut: number, norm
 
 /** Camino de la vista previa: ganancia de fundido (GainNode) → LiveClipProcessor → mezcla → LiveMasterProcessor, en bloques de 128. */
 function livePath(fx: ClipAudioFx, fadeIn: number, fadeOut: number, normalize: boolean, block = 128) {
-  const { L, R } = synth();
-  const clip = new LiveClipProcessor(SR, fx);
+  const s0 = synth();
   const master = new LiveMasterProcessor(SR, { eq: { low: 0, mid: 0, high: 0 }, normalize });
-  const outL = new Float32Array(N);
-  const outR = new Float32Array(N);
-  for (let o = 0; o < N; o += block) {
-    const n = Math.min(block, N - o);
+  // el limitador de pico real retrasa `latency` muestras: la vista previa las deja; para comparar se alimenta con ceros al final y se descartan las primeras
+  const lat = master.latency;
+  const L = new Float32Array(N + lat);
+  const R = new Float32Array(N + lat);
+  L.set(s0.L);
+  R.set(s0.R);
+  const clip = new LiveClipProcessor(SR, fx);
+  const outL = new Float32Array(N + lat);
+  const outR = new Float32Array(N + lat);
+  for (let o = 0; o < N + lat; o += block) {
+    const n = Math.min(block, N + lat - o);
     const inL = L.slice(o, o + n);
     const inR = R.slice(o, o + n);
     for (let i = 0; i < n; i++) {
@@ -89,7 +95,7 @@ function livePath(fx: ClipAudioFx, fadeIn: number, fadeOut: number, normalize: b
     outL.set(out[0], o);
     outR.set(out[1], o);
   }
-  return { L: outL, R: outR, master };
+  return { L: outL.subarray(lat), R: outR.subarray(lat), master };
 }
 
 const maxDiff = (a: Float32Array, b: Float32Array) => {

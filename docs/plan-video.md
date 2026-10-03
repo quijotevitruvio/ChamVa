@@ -258,7 +258,7 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   transiciones por píxeles (borde de la cortina circular a 367 px = ¼ de la diagonal), croma, fusión, ajuste, máscaras,
   escala 1→2 = 1,5 a mitad, exportación real con márgenes de recorte y vista previa = exportación (diferencia 0).
   Rendimiento 720p, 3 capas + 2 efectos: 13,6 ms/fotograma (p95 18,5; con transición 14,2; 540p 8 ms; 360p 4 ms).
-  No hecho: importar `.cube`, congelar fotograma, fotograma a imagen, fundido cruzado de audio, GPU.
+  No hecho: importar `.cube`, congelar fotograma, fotograma a imagen, GPU (el fundido cruzado de audio llegó en V7).
 
 ### V7 · Audio de verdad — **sonnet, esfuerzo alto**
 
@@ -267,11 +267,27 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   marcas de ritmo, exportar solo audio (WAV, Opus/OGG, AAC/M4A; MP3 solo si la librería es
   compatible con MIT).
 - **Prueba:** numérica: medir LUFS del archivo exportado (±0,5 LU), reducción de ganancia en ducking.
+- **Hecho (V7, 2026-10-03):** normalización a LUFS (BS.1770-4: K-weighting, puertas, M/S/I y pico real; −14/−16/−23/personalizado, de proyecto o de clip),
+  limitador de pico real con anticipación, ducking por sidechain, reducción de ruido espectral propia, mezclador por pista (dB, solo, silencio,
+  panorámica de potencia constante, medidores), ecualizador paramétrico de 7 bandas con curva (clip, pista y maestra), marcas de ritmo con imán,
+  fundido cruzado de audio, y exportar solo audio (WAV 16/24, OGG/Opus, M4A/AAC). Ver `src/video/model/README.md` (sección V7) y el banco
+  `/dev/audio-bench.html`. Medido en Chromium sobre el archivo exportado y decodificado: WAV −14,00 / −16,00 / −23,00 LUFS; Opus ±0,1 LU y AAC ±0,4 LU
+  (se compensa lo que el códec cambia el nivel: se codifica, decodifica y mide); pico real ≤ −1 dBTP en todos; ducking −12,0 dB con X = 12;
+  reducción de ruido −20 dB sin tocar la voz (nivel −0,15 dB); vista previa en vivo = exportación (cociente RMS 1,0000, diferencia máxima 1e-7).
+- **Desviaciones:** RNNoise (BSD-3, COPYING de xiph/rnnoise verificado) NO se integra: sus puertos wasm de npm añaden una dependencia y un wasm dentro del
+  AudioWorklet sin paridad probada con la exportación (`@jitsi/rnnoise-wasm` ni declara licencia en npm); se usa sustracción espectral propia, sin
+  dependencias. MP3 se omite: no hay codificador JS con licencia permisiva verificada (lamejs es LGPL).
 
 ### V8 · Velocidad avanzada y reencuadre — **sonnet, esfuerzo medio**
 
 - Curvas de velocidad, invertir (por bloques de GOP para no agotar memoria), reencuadre 16:9 → 9:16
   con zona elegida y seguimiento automático de cara (OpenCV.js, ya en dependencias).
+- **Hecho (V8):** curvas de velocidad editables con 6 preajustes (mapeo ∫ds/v exacto; duración, exportación, vista previa y audio
+  comparten el mismo mapa), velocidad constante 0,1×–100×, invertir por bloques de GOP (memoria acotada, aviso a 5 min, tope 1 h), congelar
+  fotograma, fotograma a imagen, bucle con fundido cruzado y reencuadre 9:16 / 1:1 / 4:5 con marco arrastrable, fotogramas del marco y
+  seguimiento automático propio (plantilla ZNCC; OpenCV.js no se usa: sin clasificadores de caras offline). Ver `src/video/model/README.md`
+  (sección V8) y el banco `/dev/speed-bench.html`. No hecho: seguimiento de caras con modelo, estabilización (V9), vista previa de audio
+  invertido y fundido cruzado de audio en la vista previa.
 
 ### V9 · IA de video — **opus alto** (licencias de modelos) + **sonnet medio**
 

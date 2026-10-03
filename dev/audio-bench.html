@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banco de audio de video (V7)</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; background: #fafafa; color: #111; }
+      pre { background: #fff; border: 1px solid #ccc; padding: 8px; white-space: pre-wrap; }
+      button { margin: 0 6px 6px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Banco de audio de video — V7 (solo desarrollo)</h1>
+    <p>Mide con números reales: sonoridad (LUFS) y pico real del archivo exportado, ducking, reducción de ruido, vista previa en vivo frente a exportación, fundido cruzado, ritmo y formatos. Resultados en <code>window.__au</code>.</p>
+    <div id="controls"></div>
+    <pre id="out"></pre>
+    <script type="module" src="/src/video/bench/audioBench.ts"></script>
+  </body>
+</html>

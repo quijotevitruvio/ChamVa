@@ -10,6 +10,8 @@
 import { shiftKeys, splitKeys } from '../fx/keyframes';
 import { IDENTITY_TRANSFORM, type Clip, type ClipKind, type MediaAsset, type Track, type TrackKind, type Transform, type VideoProject, uid, VIDEO_PROJECT_VERSION } from './types';
 import { DEFAULT_SUBTITLE_STYLE } from '../title/style';
+import { projectBeatMarks } from '../audio/beatMarks';
+import { isTimeSpecial, maxExtendFront, splitSpecial, trimSpecial } from '../speed/clipTime';
 import { MIN_CLIP, clipDuration, clipEnd, findClip, fitsTrack, isStill, projectDuration } from './query';
 
 /** Margen mínimo (s) de cada mitad al dividir, como el atajo «S» de V1. */
@@ -67,6 +69,12 @@ export function makeClip(kind: ClipKind, o: Partial<Clip> = {}): Clip {
     ...(o.fx && o.fx.length ? { fx: o.fx } : {}),
     ...(o.blend && o.blend !== 'normal' ? { blend: o.blend } : {}),
     ...(o.keys && Object.keys(o.keys).length ? { keys: o.keys } : {}),
+    ...(!still && o.curve ? { curve: o.curve } : {}),
+    ...(!still && o.reverse ? { reverse: true } : {}),
+    ...(!still && o.pitch ? { pitch: true } : {}),
+    ...(!still && o.loop ? { loop: o.loop } : {}),
+    ...(kind === 'video' && o.freeze ? { freeze: o.freeze } : {}),
+    ...(kind === 'video' && o.reframe ? { reframe: o.reframe } : {}),
   };
 }
 
@@ -279,6 +287,10 @@ export function updateClip(p: VideoProject, clipId: string, patch: ClipPatch): V
   if (next.outP < next.inP) next.outP = next.inP;
   if ('toEnd' in patch && !patch.toEnd) delete next.toEnd;
   // V6: un campo opcional puesto a undefined (o vacío) se quita del clip
+  // V8: velocidad, curva, bucle y reencuadre solo en video/audio; un campo puesto a undefined/falso se quita
+  for (const k of ['curve', 'reverse', 'pitch', 'freeze', 'loop', 'reframe'] as const)
+    if (k in patch && (isStill(c) || next[k] === undefined || next[k] === false || (k === 'freeze' && !(next.freeze! > 0)) || (k === 'reframe' && c.kind !== 'video') || (k === 'freeze' && c.kind !== 'video'))) delete next[k];
+  delete next.xlayer;
   for (const k of ['tin', 'tout', 'blend', 'keys', 'fx'] as const) if (k in patch && (next[k] === undefined || (k === 'fx' && !next.fx?.length) || (k === 'blend' && next.blend === 'normal'))) delete next[k];
   const changed = (Object.keys(next) as (keyof Clip)[]).some((k) => next[k] !== c[k]) || Object.keys(c).length !== Object.keys(next).length;
   if (!changed) return p;
@@ -350,10 +362,18 @@ export function splitClip(p: VideoProject, clipId: string, t: number, newId: str
     b = { ...c, id: newId, start: c.start + local, inP: 0, outP: Math.max(0, c.outP - c.inP - local), fadeIn: 0, audioFadeIn: 0 };
     splitV6(c, a, b, local);
   } else {
-    const src = c.inP + (t - c.start) * (c.speed || 1);
-    if (!(src > c.inP + SPLIT_MARGIN && src < c.outP - SPLIT_MARGIN)) return p;
-    a = { ...c, outP: src, fadeOut: 0, audioFadeOut: 0 };
-    b = { ...c, id: newId, inP: src, fadeIn: 0, audioFadeIn: 0 };
+    if (isTimeSpecial(c)) {
+      // V8: curva / invertido / congelado (un bucle no se divide)
+      const sp = splitSpecial(c, t - c.start, SPLIT_MARGIN);
+      if (!sp) return p;
+      a = { ...c, ...sp.a, fadeOut: 0, audioFadeOut: 0 };
+      b = { ...c, ...sp.b, id: newId, fadeIn: 0, audioFadeIn: 0 };
+    } else {
+      const src = c.inP + (t - c.start) * (c.speed || 1);
+      if (!(src > c.inP + SPLIT_MARGIN && src < c.outP - SPLIT_MARGIN)) return p;
+      a = { ...c, outP: src, fadeOut: 0, audioFadeOut: 0 };
+      b = { ...c, id: newId, inP: src, fadeIn: 0, audioFadeIn: 0 };
+    }
     b.start = clipEnd(a);
     splitV6(c, a, b, t - c.start);
   }
@@ -384,11 +404,16 @@ export function trimClip(p: VideoProject, clipId: string, edge: 'in' | 'out', t:
   if (edge === 'in') {
     let delta = t - c.start; // >0 acorta
     const maxDelta = clipDuration(c) - minLen;
-    const minDelta = still ? -Infinity : -c.inP / sp; // no antes del inicio del archivo
+    const special = !still && isTimeSpecial(c);
+    const minDelta = still ? -Infinity : special ? -maxExtendFront(c, mediaDur) : -c.inP / sp; // no antes del inicio del archivo
     delta = Math.max(minDelta, Math.min(maxDelta, delta));
     if (!ripple) delta = Math.max(delta, (prev ? clipEnd(prev) : 0) - c.start);
     if (delta === 0) return p;
-    n = still ? { ...c, outP: c.outP - delta } : { ...c, inP: c.inP + delta * sp };
+    if (special) {
+      const tr = trimSpecial(c, 'in', delta, mediaDur);
+      if (!tr) return p;
+      n = { ...c, ...tr };
+    } else n = still ? { ...c, outP: c.outP - delta } : { ...c, inP: c.inP + delta * sp };
     if (!ripple) {
       n.start = c.start + delta;
       n = shiftKeys(n, -delta); // los fotogramas clave se quedan en el mismo instante de la línea de tiempo
@@ -398,11 +423,18 @@ export function trimClip(p: VideoProject, clipId: string, edge: 'in' | 'out', t:
     else n = { ...c };
     let len = t - c.start;
     len = Math.max(minLen, len);
-    if (!still && mediaDur > 0) len = Math.min(len, (mediaDur - c.inP) / sp);
+    const special = !still && isTimeSpecial(c);
+    if (!still && !special && mediaDur > 0) len = Math.min(len, (mediaDur - c.inP) / sp);
     if (!ripple && nextClip) len = Math.min(len, nextClip.start - c.start);
-    if (still) n.outP = n.inP + len;
-    else n.outP = c.inP + len * sp;
-    if (n.outP === c.outP && !c.toEnd) return p;
+    if (special) {
+      const tr = trimSpecial(c, 'out', len, mediaDur);
+      if (!tr || clipDuration({ ...c, ...tr }) === clipDuration(c)) return p;
+      n = { ...n, ...tr };
+    } else {
+      if (still) n.outP = n.inP + len;
+      else n.outP = c.inP + len * sp;
+      if (n.outP === c.outP && !c.toEnd) return p;
+    }
   }
   const clips = track.clips.slice();
   clips[ci] = n;
@@ -440,11 +472,13 @@ export function duplicateClip(p: VideoProject, clipId: string, newId: string = u
 export interface SnapResult {
   time: number;
   /** a qué se pegó (null = no se pegó) */
-  target: 'zero' | 'playhead' | 'clip' | null;
+  target: 'zero' | 'playhead' | 'clip' | 'beat' | null;
 }
 
 function snapCandidates(p: VideoProject, o: { playhead?: number; exclude?: string }) {
-  const out: { t: number; target: 'zero' | 'playhead' | 'clip' }[] = [{ t: 0, target: 'zero' }];
+  const out: { t: number; target: 'zero' | 'playhead' | 'clip' | 'beat' }[] = [{ t: 0, target: 'zero' }];
+  // V7: marcas de ritmo (si el proyecto las tiene activadas como imán)
+  if (p.audio?.beatSnap) for (const b of projectBeatMarks(p)) out.push({ t: b, target: 'beat' });
   if (o.playhead !== undefined && Number.isFinite(o.playhead)) out.push({ t: o.playhead, target: 'playhead' });
   for (const t of p.tracks)
     for (const c of t.clips) {

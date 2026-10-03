@@ -17,6 +17,7 @@
 import { applyEase } from './ease';
 import type { Clip, EaseId, Track, TransitionSpec } from '../model/types';
 import { clipDuration, clipEnd, effectiveEnd } from '../model/query';
+import { extendedSourceAt, type TimeFields } from '../speed/clipTime';
 
 export const JOIN_EPS = 0.02;
 export const MIN_TRANS = 0.1;
@@ -169,7 +170,8 @@ export const areJoined = (a: Clip, b: Clip) => a.kind !== 'audio' && b.kind !== 
  * Instante del archivo para un clip que se muestra fuera de su rango (ventana de unión): el tiempo avanza con la
  * velocidad del clip y se limita al archivo (no al recorte), es decir, usa los márgenes de recorte.
  */
-export function extendedSourceTime(c: Pick<Clip, 'inP' | 'start' | 'speed'>, t: number, mediaDur: number): number {
+export function extendedSourceTime(c: Pick<Clip, 'inP' | 'start' | 'speed'> & Partial<Pick<Clip, 'kind' | 'outP' | 'curve' | 'reverse' | 'freeze' | 'loop'>>, t: number, mediaDur: number): number {
+  if (c.kind && c.outP !== undefined && (c.curve || c.reverse || c.freeze || c.loop)) return extendedSourceAt(c as TimeFields, t - c.start, mediaDur); // V8
   const s = c.inP + (t - c.start) * (c.speed || 1);
   const hi = mediaDur > 0 ? Math.max(0, mediaDur - 0.001) : Infinity;
   return Math.max(0, Math.min(hi, s));

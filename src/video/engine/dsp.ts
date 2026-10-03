@@ -4,92 +4,29 @@
 //
 // Las piezas imitan los nodos que usa la vista previa del editor (BiquadFilter
 // con la semántica de Web Audio, compuerta, eco y compresor) para que lo que se
-// oye al previsualizar sea lo que sale; y al final siempre va un limitador.
+// oye al previsualizar sea lo que sale; y al final siempre va un limitador
+// (V7: de pico real, −1 dBTP). Este mismo código corre en la exportación (mixer.ts)
+// y en la vista previa en vivo (liveDsp.ts → AudioWorklet).
+import { Biquad } from '../audio/biquad';
+import { DuckEnvelope, type DuckSpec } from '../audio/duck';
+import { SpectralDenoiser } from '../audio/denoise';
+import { ParametricEq, type EqBand } from '../audio/eq';
+import { TruePeakLimiter } from '../audio/limiter';
+import { fromDb } from '../audio/loudness';
+import { applyPan } from '../audio/pan';
+
+export { Biquad, type BiquadType } from '../audio/biquad';
 
 export const LIMIT_CEILING = Math.pow(10, -1 / 20); // −1 dBFS ≈ 0,891
-
-export type BiquadType = 'lowpass' | 'highpass' | 'peaking';
-
-/** Filtro bicuadrático (RBJ), con la misma semántica que BiquadFilterNode de Web Audio. */
-export class Biquad {
-  private b0 = 1;
-  private b1 = 0;
-  private b2 = 0;
-  private a1 = 0;
-  private a2 = 0;
-  private z: Float64Array; // estado por canal: x1, x2, y1, y2
-  readonly bypass: boolean;
-
-  constructor(type: BiquadType, freq: number, sampleRate: number, opts: { q?: number; gainDb?: number } = {}, channels = 2) {
-    this.z = new Float64Array(channels * 4);
-    const q = opts.q ?? 1;
-    const gainDb = opts.gainDb ?? 0;
-    const nyq = sampleRate / 2;
-    if ((type === 'peaking' && gainDb === 0) || (type === 'lowpass' && freq >= nyq) || (type === 'highpass' && freq <= 0)) {
-      this.bypass = true;
-      return;
-    }
-    this.bypass = false;
-    const f = Math.min(freq, nyq * 0.999);
-    const w0 = (2 * Math.PI * f) / sampleRate;
-    const cos = Math.cos(w0);
-    const sin = Math.sin(w0);
-    let b0: number, b1: number, b2: number, a0: number, a1: number, a2: number;
-    if (type === 'peaking') {
-      const A = Math.pow(10, gainDb / 40);
-      const alpha = sin / (2 * q);
-      b0 = 1 + alpha * A;
-      b1 = -2 * cos;
-      b2 = 1 - alpha * A;
-      a0 = 1 + alpha / A;
-      a1 = -2 * cos;
-      a2 = 1 - alpha / A;
-    } else {
-      // En Web Audio la Q de paso bajo/alto está en dB.
-      const qLin = Math.pow(10, q / 20);
-      const alpha = sin / (2 * qLin);
-      if (type === 'lowpass') {
-        b0 = (1 - cos) / 2;
-        b1 = 1 - cos;
-        b2 = (1 - cos) / 2;
-      } else {
-        b0 = (1 + cos) / 2;
-        b1 = -(1 + cos);
-        b2 = (1 + cos) / 2;
-      }
-      a0 = 1 + alpha;
-      a1 = -2 * cos;
-      a2 = 1 - alpha;
-    }
-    this.b0 = b0 / a0;
-    this.b1 = b1 / a0;
-    this.b2 = b2 / a0;
-    this.a1 = a1 / a0;
-    this.a2 = a2 / a0;
-  }
-
-  process(ch: Float32Array, channel: number, n = ch.length) {
-    if (this.bypass) return;
-    const z = this.z;
-    const o = channel * 4;
-    let x1 = z[o], x2 = z[o + 1], y1 = z[o + 2], y2 = z[o + 3];
-    const { b0, b1, b2, a1, a2 } = this;
-    for (let i = 0; i < n; i++) {
-      const x = ch[i];
-      let y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-      if (Math.abs(y) < 1e-30) y = 0; // evita denormales
-      x2 = x1;
-      x1 = x;
-      y2 = y1;
-      y1 = y;
-      ch[i] = y;
-    }
-    z[o] = x1;
-    z[o + 1] = x2;
-    z[o + 2] = y1;
-    z[o + 3] = y2;
-  }
-}
+/**
+ * Techo del pico real del limitador final. El archivo debe quedar por debajo de −1 dBTP (BS.1770 / EBU R128) DESPUÉS del códec:
+ * el medidor propio lee hasta 0,3 dB de menos cerca de Nyquist y al decodificar AAC el pico sube ~0,3 dB (−1,3 → −0,99 medido)
+ * y Opus hasta ~0,7 dB con material limitado (−1,7 → −1,04). Con −2,2 dBTP, medido en el archivo decodificado: Opus −1,30, AAC −2,06 y WAV −1,9.
+ * Es UN solo techo para vista previa y exportación (con dos, el sonido limitado de la vista previa no sería el de la exportación).
+ */
+export const TRUE_PEAK_CEILING_DB = -2.2;
+/** Techo de las exportaciones con códec con pérdida: el mismo que la vista previa (ver TRUE_PEAK_CEILING_DB). */
+export const TRUE_PEAK_LOSSY_CEILING_DB = TRUE_PEAK_CEILING_DB;
 
 /**
  * Compuerta de ruido como la de la vista previa: mide el RMS (mono) de los
@@ -194,9 +131,9 @@ export class Compressor {
 }
 
 /**
- * Limitador de pico sin latencia: si una muestra superaría el techo, la ganancia
- * baja al instante justo lo necesario y se recupera en ~100 ms. Garantiza
- * |salida| ≤ techo (−1 dBFS) en cada muestra: antes el MP4 llegaba a pico 1,00.
+ * Limitador de pico de muestra sin latencia (el de V1–V6): si una muestra superaría el techo, la ganancia
+ * baja al instante justo lo necesario y se recupera en ~100 ms. Se conserva para pruebas y para quien no
+ * necesite la anticipación; la cadena maestra usa ahora el de pico real (`TruePeakLimiter`).
  */
 export class Limiter {
   private gain = 1;
@@ -238,71 +175,231 @@ export class Limiter {
   }
 }
 
-/** Parámetros de audio de un clip (los del efecto «Voz» y el volumen). */
+/** Parámetros de audio de un clip (los del efecto «Voz», el volumen y, desde V7, panorámica, ganancia en dB, ecualizador y reducción de ruido). */
 export interface ClipAudioFx {
   volume: number;
   hp: number;
   lp: number;
   echo: number;
   gate: boolean;
+  /** V7: −1..1, ley de potencia constante (sin definir = centro) */
+  pan?: number;
+  /** V7: ganancia fija en dB, se suma al volumen */
+  gainDb?: number;
+  /** V7: ecualizador paramétrico */
+  eq?: EqBand[];
+  /** V7: intensidad de la reducción de ruido, 0..1 */
+  denoise?: number;
 }
 
-/** Cadena por clip, en el mismo orden que la vista previa: paso alto → paso bajo → compuerta → volumen → (+eco). */
+/** Segundos que sigue sonando la cadena de un clip tras su final (cola del eco y vaciado del reductor de ruido). */
+export function fxTail(fx: Pick<ClipAudioFx, 'echo' | 'denoise'>, sampleRate = 48000): number {
+  return Math.max(fx.echo > 0 ? 2 : 0, fx.denoise && fx.denoise > 0 ? SpectralDenoiser.LATENCY / sampleRate + 0.02 : 0);
+}
+
+/**
+ * Cadena por clip, en el mismo orden que la vista previa:
+ * paso alto → paso bajo → reducción de ruido → compuerta → ecualizador → volumen·ganancia → (+eco) → panorámica.
+ */
 export class ClipChain {
   private hp: Biquad;
   private lp: Biquad;
+  private denoise: SpectralDenoiser | null;
   private gate: NoiseGate | null;
+  private eq: ParametricEq | null;
   private echo: Echo | null;
-  constructor(private fx: ClipAudioFx, sampleRate: number) {
+  private gainLin: number;
+  private pan: number;
+  constructor(private fx: ClipAudioFx, private sampleRate: number) {
     this.hp = new Biquad('highpass', fx.hp, sampleRate);
     this.lp = new Biquad('lowpass', fx.lp, sampleRate);
+    this.denoise = fx.denoise && fx.denoise > 0 ? new SpectralDenoiser(fx.denoise, sampleRate) : null;
     this.gate = fx.gate ? new NoiseGate(sampleRate) : null;
+    const eq = fx.eq?.length ? new ParametricEq(fx.eq, sampleRate) : null;
+    this.eq = eq && eq.active ? eq : null;
     this.echo = fx.echo > 0 ? new Echo(sampleRate, fx.echo) : null;
+    this.gainLin = fx.volume * (fx.gainDb ? fromDb(fx.gainDb) : 1);
+    this.pan = fx.pan ?? 0;
   }
   /** Cambia solo el volumen sin perder el estado de la cadena (filtros, compuerta, eco). */
   setVolume(v: number) {
     this.fx = { ...this.fx, volume: v };
+    this.gainLin = v * (this.fx.gainDb ? fromDb(this.fx.gainDb) : 1);
   }
-  /** Segundos de cola que siguen sonando tras el final del clip (eco). */
+  /** Cambia volumen, ganancia en dB y panorámica sin perder el estado. */
+  setLevels(volume: number, gainDb: number | undefined, pan: number | undefined) {
+    this.fx = { ...this.fx, volume, gainDb, pan };
+    this.gainLin = volume * (gainDb ? fromDb(gainDb) : 1);
+    this.pan = pan ?? 0;
+  }
+  /** Muestras de retardo de la salida respecto a la entrada (reductor de ruido). */
+  get latency(): number {
+    return this.denoise ? SpectralDenoiser.LATENCY : 0;
+  }
+  /** Segundos de cola que siguen sonando tras el final del clip (eco, reductor de ruido). */
   get tail(): number {
-    return this.echo ? 2 : 0;
+    return fxTail(this.fx, this.sampleRate);
   }
   process(L: Float32Array, R: Float32Array, n = L.length) {
     this.hp.process(L, 0, n);
     this.hp.process(R, 1, n);
     this.lp.process(L, 0, n);
     this.lp.process(R, 1, n);
+    this.denoise?.process(L, R, n);
     this.gate?.process(L, R, n);
-    const v = this.fx.volume;
+    this.eq?.process(L, R, n);
+    const v = this.gainLin;
     if (v !== 1)
       for (let i = 0; i < n; i++) {
         L[i] *= v;
         R[i] *= v;
       }
     this.echo?.process(L, R, n);
+    if (this.pan) applyPan(L, R, this.pan, n);
   }
 }
 
-/** Cadena maestra: ecualizador de 3 bandas → compresor (si «Normalizar») → limitador a −1 dBFS. */
+/** Mezclador de una pista (V7): ecualizador, volumen en dB, ducking por sidechain y panorámica. */
+export interface TrackFx {
+  gainDb?: number;
+  pan?: number;
+  eq?: EqBand[];
+  duck?: DuckSpec;
+}
+
+/** ¿La pista necesita procesado (si no, su bus se suma sin tocar)? */
+export const trackHasFx = (fx: TrackFx | undefined): boolean => !!fx && (!!fx.gainDb || !!fx.pan || !!fx.eq?.length || !!fx.duck?.on);
+
+/**
+ * Cadena de pista: ecualizador → volumen (dB) → [toma de la señal de control, antes de ducking y panorámica]
+ * → ducking (con la señal de control de otras pistas) → panorámica.
+ */
+export class TrackChain {
+  private eq: ParametricEq | null;
+  private gain: number;
+  private pan: number;
+  private duck: DuckEnvelope | null;
+  private duckKey: string;
+  /** picos del bloque procesado (lineal), para el medidor */
+  peakL = 0;
+  peakR = 0;
+  constructor(private fx: TrackFx, sampleRate: number) {
+    const eq = fx.eq?.length ? new ParametricEq(fx.eq, sampleRate) : null;
+    this.eq = eq && eq.active ? eq : null;
+    this.gain = fx.gainDb ? fromDb(fx.gainDb) : 1;
+    this.pan = fx.pan ?? 0;
+    this.duck = fx.duck?.on ? new DuckEnvelope(fx.duck, sampleRate) : null;
+    this.duckKey = duckSig(fx.duck);
+  }
+  get ducking(): boolean {
+    return !!this.duck;
+  }
+  /** Menor ganancia de ducking alcanzada (dB, ≤ 0). */
+  get minDuckDb(): number {
+    return this.duck ? this.duck.minGainDb : 0;
+  }
+  /** Cambia volumen y panorámica sin reconstruir (los filtros y el ducking conservan su estado). */
+  setLevels(gainDb: number | undefined, pan: number | undefined) {
+    this.gain = gainDb ? fromDb(gainDb) : 1;
+    this.pan = pan ?? 0;
+  }
+  /** ¿Este cambio de ajustes exige reconstruir la cadena (EQ o ducking distintos)? */
+  needsRebuild(fx: TrackFx): boolean {
+    return eqSig(fx.eq) !== eqSig(this.fx.eq) || duckSig(fx.duck) !== this.duckKey;
+  }
+  /**
+   * Procesa el bus en el sitio. `tapL/tapR` (opcional) reciben la señal tras ecualizador y volumen, antes de
+   * ducking y panorámica: es la que usan como control las pistas que hacen ducking. `keyL/keyR` es la suma de
+   * las señales de control de las pistas que disparan el ducking de ESTA pista (o null = ninguna).
+   */
+  process(L: Float32Array, R: Float32Array, n: number, keyL: Float32Array | null, keyR: Float32Array | null, tapL?: Float32Array | null, tapR?: Float32Array | null) {
+    this.eq?.process(L, R, n);
+    const g = this.gain;
+    if (g !== 1)
+      for (let i = 0; i < n; i++) {
+        L[i] *= g;
+        R[i] *= g;
+      }
+    if (tapL && tapR) {
+      tapL.set(L.subarray(0, n));
+      tapR.set(R.subarray(0, n));
+    }
+    this.duck?.process(L, R, keyL, keyR, n);
+    if (this.pan) applyPan(L, R, this.pan, n);
+    let pl = 0;
+    let pr = 0;
+    for (let i = 0; i < n; i++) {
+      const a = L[i] < 0 ? -L[i] : L[i];
+      const b = R[i] < 0 ? -R[i] : R[i];
+      if (a > pl) pl = a;
+      if (b > pr) pr = b;
+    }
+    if (pl > this.peakL) this.peakL = pl;
+    if (pr > this.peakR) this.peakR = pr;
+  }
+}
+
+const eqSig = (bands: readonly EqBand[] | undefined) => (bands?.length ? JSON.stringify(bands) : '');
+const duckSig = (d: DuckSpec | undefined) => (d?.on ? `${d.db}|${d.thr}|${d.attack}|${d.release}|${d.hold}` : '');
+
+/** Ajustes de la cadena maestra. */
+export interface MasterOptions {
+  eq: { low: number; mid: number; high: number };
+  normalize: boolean;
+  /** V7: ecualizador paramétrico maestro */
+  eqBands?: EqBand[];
+  /** V7: ganancia de normalización de sonoridad (dB), antes del limitador */
+  gainDb?: number;
+  /** V7: techo del pico real (dBTP) */
+  ceilingDb?: number;
+}
+
+/**
+ * Cadena maestra: ecualizador de 3 bandas → ecualizador paramétrico → compresor (si «Normalizar») →
+ * [`onPre`: medida previa a la ganancia] → ganancia de sonoridad → limitador de pico real (−1 dBTP).
+ * El limitador tiene `latency` muestras de retardo (ver TruePeakLimiter).
+ */
 export class MasterChain {
   private eq: Biquad[];
+  private peq: ParametricEq | null;
   private comp: Compressor | null;
-  readonly limiter: Limiter;
-  constructor(eq: { low: number; mid: number; high: number }, normalize: boolean, sampleRate: number) {
+  private gain: number;
+  readonly limiter: TruePeakLimiter;
+  /** gancho de medida: ve la señal justo antes de la ganancia de sonoridad y el limitador */
+  onPre: ((L: Float32Array, R: Float32Array, n: number) => void) | null = null;
+  constructor(eq: { low: number; mid: number; high: number }, normalize: boolean, sampleRate: number, opts: Pick<MasterOptions, 'eqBands' | 'gainDb' | 'ceilingDb'> = {}) {
     this.eq = [
       new Biquad('peaking', 120, sampleRate, { q: 1, gainDb: eq.low }),
       new Biquad('peaking', 1000, sampleRate, { q: 1, gainDb: eq.mid }),
       new Biquad('peaking', 6000, sampleRate, { q: 1, gainDb: eq.high }),
     ];
+    const peq = opts.eqBands?.length ? new ParametricEq(opts.eqBands, sampleRate) : null;
+    this.peq = peq && peq.active ? peq : null;
     this.comp = normalize ? new Compressor(sampleRate) : null;
-    this.limiter = new Limiter(sampleRate);
+    this.gain = opts.gainDb ? fromDb(opts.gainDb) : 1;
+    this.limiter = new TruePeakLimiter(sampleRate, opts.ceilingDb ?? TRUE_PEAK_CEILING_DB);
+  }
+  get latency(): number {
+    return this.limiter.latency;
+  }
+  /** Cambia solo la ganancia de sonoridad (no reconstruye nada). */
+  setGainDb(db: number | undefined) {
+    this.gain = db ? fromDb(db) : 1;
   }
   process(L: Float32Array, R: Float32Array, n = L.length) {
     for (const b of this.eq) {
       b.process(L, 0, n);
       b.process(R, 1, n);
     }
+    this.peq?.process(L, R, n);
     this.comp?.process(L, R, n);
+    this.onPre?.(L, R, n);
+    const g = this.gain;
+    if (g !== 1)
+      for (let i = 0; i < n; i++) {
+        L[i] *= g;
+        R[i] *= g;
+      }
     this.limiter.process(L, R, n);
   }
 }

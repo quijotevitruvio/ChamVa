@@ -8,7 +8,12 @@
 // (migrar dos veces da lo mismo); lo que V1 no podía usar (clips sin archivo, tipos
 // desconocidos) se guarda en `legacy` en vez de perderse; números inválidos se reparan
 // y se anotan en el informe. La imagen y el sonido resultantes son los mismos que V1.
+import { sanitizeCurve } from '../speed/curve';
+import { sanitizeFreeze, sanitizeLoop } from '../speed/clipTime';
+import { sanitizeReframe } from '../reframe/math';
 import { sanitizeBlend, sanitizeFxList, sanitizeKeys, sanitizeTransition } from '../fx/sanitize';
+import { sanitizeAmount, sanitizeBeats, sanitizeDuck, sanitizeGainDb, sanitizePan, sanitizeProjectAudio } from '../audio/sanitize';
+import { sanitizeEqBands } from '../audio/eq';
 import { IDENTITY_TRANSFORM, VIDEO_PROJECT_VERSION, type Clip, type ClipKind, type MediaAsset, type MediaKind, type Track, type Transform, type VideoProject } from './types';
 import { createProject, createTrack, normalizeTrack } from './ops';
 import { clipEnd } from './query';
@@ -257,6 +262,21 @@ const CLIP_KINDS: ClipKind[] = ['video', 'audio', 'image', 'text', 'subtitle', '
 const MEDIA_KINDS: MediaKind[] = ['video', 'audio', 'image'];
 
 /** Lee un v2 guardado rellenando lo que falte. No muta la entrada; descarta las URL (son de otra sesión). */
+/** V7: campos del mezclador de una pista (solo los que no son neutros). */
+function mixerFields(rt: Record<string, unknown>): Partial<Track> {
+  const out: Partial<Track> = {};
+  const g = sanitizeGainDb(rt.gainDb);
+  if (g !== undefined) out.gainDb = g;
+  const pn = sanitizePan(rt.pan);
+  if (pn !== undefined) out.pan = pn;
+  if (rt.solo === true) out.solo = true;
+  const eq = sanitizeEqBands(rt.eq);
+  if (eq) out.eq = eq;
+  const dk = sanitizeDuck(rt.duck);
+  if (dk) out.duck = dk;
+  return out;
+}
+
 export function normalizeV2(raw: Record<string, unknown>): VideoProject {
   const p = createProject();
   const orphanClips: unknown[] = [];
@@ -273,6 +293,8 @@ export function normalizeV2(raw: Record<string, unknown>): VideoProject {
       if (isBlobLike(rm.blob)) m.blob = rm.blob;
       if (typeof rm.thumb === 'string' && rm.thumb) m.thumb = rm.thumb;
       if (!m.blob) m.missing = true;
+      const bt = sanitizeBeats(rm.beats); // V7
+      if (bt && m.kind !== 'image') m.beats = bt;
       p.media[id] = m;
     }
   const seen = new Set<string>();
@@ -340,6 +362,32 @@ export function normalizeV2(raw: Record<string, unknown>): VideoProject {
         const ks = sanitizeKeys(rc.keys);
         if (ks) c.keys = ks;
       }
+      // V8 (todo opcional): curva de velocidad, invertir, tono, bucle, congelar y reencuadre
+      if (ck === 'video' || ck === 'audio') {
+        const cv = sanitizeCurve(rc.curve);
+        if (cv) c.curve = cv;
+        if (rc.reverse === true) c.reverse = true;
+        if (rc.pitch === true) c.pitch = true;
+        const lp = sanitizeLoop(rc.loop);
+        if (lp) c.loop = lp;
+      }
+      if (ck === 'video') {
+        const fz = sanitizeFreeze(rc.freeze);
+        if (fz) c.freeze = fz;
+        const rf = sanitizeReframe(rc.reframe);
+        if (rf) c.reframe = rf;
+      }
+      // V7 (todo opcional): panorámica, ganancia, ecualizador y reducción de ruido del clip
+      if (ck === 'video' || ck === 'audio') {
+        const pn = sanitizePan(rc.pan);
+        if (pn !== undefined) c.pan = pn;
+        const gd = sanitizeGainDb(rc.gainDb);
+        if (gd !== undefined) c.gainDb = gd;
+        const eqb = sanitizeEqBands(rc.eq);
+        if (eqb) c.eq = eqb;
+        const dn = sanitizeAmount(rc.denoise);
+        if (dn !== undefined) c.denoise = dn;
+      }
       clips.push(c);
     });
     const subStyle = kind === 'subtitle' ? (sanitizeSubtitleStyle(rt.subStyle) ?? { ...DEFAULT_SUBTITLE_STYLE, style: { ...DEFAULT_SUBTITLE_STYLE.style } }) : undefined;
@@ -354,11 +402,15 @@ export function normalizeV2(raw: Record<string, unknown>): VideoProject {
         hidden: rt.hidden === true,
         magnet: rt.magnet === true,
         clips,
+        // V7: mezclador de la pista
+        ...(kind !== 'subtitle' ? mixerFields(rt) : {}),
       }),
     );
   });
   p.eq = sanitizeEq(raw.eq);
   p.normalize = raw.normalize === true;
+  const pa = sanitizeProjectAudio(raw.audio); // V7
+  if (pa) p.audio = pa;
   const legacy = isObj(raw.legacy) ? raw.legacy : null;
   const keepOrphans = [...(legacy && Array.isArray(legacy.orphanClips) ? legacy.orphanClips : []), ...orphanClips];
   const keepOverlays = legacy && Array.isArray(legacy.orphanOverlays) ? legacy.orphanOverlays : [];

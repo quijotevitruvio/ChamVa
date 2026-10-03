@@ -1,6 +1,7 @@
 import { memo, type CSSProperties } from 'react';
 import type { Clip, MediaAsset, TrackKind } from '../../video/model';
 import { clipDuration } from '../../video/model';
+import { averageSpeed, isTimeSpecial } from '../../video/speed/clipTime';
 import type { Strip, Waveform } from './mediaCache';
 
 export const fmtDur = (s: number) => {
@@ -36,7 +37,8 @@ export const ClipView = memo(function ClipView({ clip, locked, selected, pps, en
   const width = Math.max(2, (end - clip.start) * pps);
   const style: CSSProperties = { left, width };
   const name = clip.kind === 'text' || clip.kind === 'subtitle' ? ((clip.text ?? '').replace(/\s*\n\s*/g, ' ') || KIND_LABEL[clip.kind]) : (clip.name ?? media?.name ?? KIND_LABEL[clip.kind]);
-  const speed = clip.speed || 1;
+  // V8: con curva, bucle o congelado la tira de miniaturas se reparte con la velocidad media
+  const speed = isTimeSpecial(clip) && !clip.freeze ? Math.max(0.01, averageSpeed(clip)) : clip.speed || 1;
 
   let bg: CSSProperties | undefined;
   if (clip.kind === 'video') {
@@ -81,6 +83,7 @@ export const ClipView = memo(function ClipView({ clip, locked, selected, pps, en
         <span className="vx-clip-label">
           <span className="vx-clip-name">{name}</span>
           {width > 90 && <span className="vx-clip-dur">{fmtDur(dur)}</span>}
+          {width > 50 && (clip.curve || clip.reverse || clip.freeze || clip.loop || (clip.speed || 1) !== 1) && <span className="vx-clip-sp" title={speedTitle(clip)}>{speedBadge(clip)}</span>}
           {width > 60 && !!clip.fx?.length && <span className="vx-clip-fx" title={`${clip.fx.length} efecto(s)`}>fx</span>}
         </span>
       )}
@@ -91,3 +94,17 @@ export const ClipView = memo(function ClipView({ clip, locked, selected, pps, en
     </div>
   );
 });
+
+function speedBadge(c: Clip): string {
+  if (c.freeze) return '❄';
+  return `${c.reverse ? '⟲' : ''}${c.curve ? '〜' : (c.speed || 1) !== 1 ? `${Number((c.speed || 1).toFixed(2)).toString().replace('.', ',')}×` : ''}${c.loop ? '↻' : ''}`;
+}
+function speedTitle(c: Clip): string {
+  const parts: string[] = [];
+  if (c.freeze) parts.push('fotograma congelado');
+  if (c.curve) parts.push('curva de velocidad');
+  else if ((c.speed || 1) !== 1) parts.push(`velocidad ${c.speed}×`);
+  if (c.reverse) parts.push('invertido');
+  if (c.loop) parts.push('en bucle');
+  return parts.join(', ');
+}

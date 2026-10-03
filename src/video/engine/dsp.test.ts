@@ -40,8 +40,17 @@ describe('filtros (semántica de Web Audio)', () => {
     const x = sine(440, 0.3, 4800);
     const y = Float32Array.from(x);
     const r = Float32Array.from(x);
-    new MasterChain({ low: 0, mid: 0, high: 0 }, false, SR).process(y, r);
-    for (let i = 0; i < x.length; i++) expect(y[i]).toBeCloseTo(x[i], 6);
+    const mc = new MasterChain({ low: 0, mid: 0, high: 0 }, false, SR);
+    // el limitador de pico real retrasa mc.latency muestras: se alimenta con ceros al final y se compara alineado
+    const pad = (a: Float32Array) => {
+      const o = new Float32Array(a.length + mc.latency);
+      o.set(a);
+      return o;
+    };
+    const py = pad(y);
+    const pr = pad(r);
+    mc.process(py, pr);
+    for (let i = 0; i < x.length; i++) expect(py[i + mc.latency]).toBeCloseTo(x[i], 6);
   });
 });
 

@@ -24,6 +24,9 @@ import * as E from './video/editing';
 import * as T from './video/timelineMath';
 import { probeDuration, useVideoProject } from './video/useVideoProject';
 import { useExporter } from './video/useExporter';
+import { MixerPanel } from './video/MixerPanel';
+import { useLoudnessAnalysis } from './video/loudness';
+import { audioDuration } from '../video/engine/audioExport';
 import './video/video.css';
 
 function useMediaQuery(q: string): boolean {
@@ -63,6 +66,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [autoKey, setAutoKey] = useState(false);
   const [keyClip, setKeyClip] = useState<KeyClipboard>([]);
   const [recording, setRecording] = useState(false);
+  const [mixerOpen, setMixerOpen] = useState(false); // V7: mezclador desplegable
   const [marks, setMarks] = useState<AS.Marks>({ in: null, out: null });
   const [auto, setAuto] = useState<AS.AutoScope | null>(null);
   const [clipMenu, setClipMenu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -71,6 +75,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const micRec = useRef<MediaRecorder | null>(null);
 
   useLayoutEffect(() => engine.setProject(project), [engine, project]);
+  useLoudnessAnalysis(project, engine); // V7: ganancia de sonoridad de la vista previa = la de la exportación
   const engineAlive = useRef(true);
   useEffect(() => {
     engineAlive.current = true;
@@ -421,6 +426,12 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         burnSubs={exporter.burnSubs}
         setBurnSubs={exporter.setBurnSubs}
         onExportSubs={exporter.exportSubs}
+        audioFormat={exporter.audioFormat}
+        setAudioFormat={exporter.setAudioFormat}
+        audioFormats={exporter.audioFormats}
+        audioSupport={exporter.audioSupport}
+        canExportAudio={audioDuration(project) > 0}
+        onExportAudio={exporter.runAudio}
       />
       </div>
         {(!compact || binOpen) && (
@@ -461,12 +472,16 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             <button type="button" onClick={() => apiRef.current?.fit()} aria-label="Ajustar todo (F)" title="Ajustar todo (F)">⤢</button>
             <button type="button" onClick={() => apiRef.current?.zoomBy(1.4)} aria-label="Acercar (+)" title="Acercar (+)">＋</button>
           </div>
+          <button type="button" className={mixerOpen ? 'on' : ''} aria-pressed={mixerOpen} onClick={() => setMixerOpen((v) => !v)} title="Mezclador: volumen, panorámica, solo, ecualizador y ducking por pista, con medidores">
+            🎚 Mezclador
+          </button>
           <div className="vx-addtrack">
             <button type="button" onClick={() => addTrack('video')} title="Añadir una pista de video encima de las demás">＋ Pista video</button>
             <button type="button" onClick={() => addTrack('subtitle')} title="Añadir una pista de subtítulos">＋ Subtítulos</button>
             <button type="button" onClick={() => addTrack('audio')} title="Añadir una pista de audio">＋ Pista audio</button>
           </div>
         </div>
+        {mixerOpen && <MixerPanel project={project} engine={engine} commit={commit} onClose={() => setMixerOpen(false)} />}
         <Timeline
           project={project}
           engine={engine}
@@ -516,7 +531,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         />
       )}
       <div className="vx-side">
-        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} engine={engine} autoKey={autoKey} setAutoKey={setAutoKey} keyClip={keyClip} setKeyClip={setKeyClip} onSelect={select} />
+        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} engine={engine} autoKey={autoKey} setAutoKey={setAutoKey} keyClip={keyClip} setKeyClip={setKeyClip} onSelect={select} aspect={exporter.aspect} setAspect={exporter.setAspect} fit={exporter.fit} />
       </div>
     </div>
   );

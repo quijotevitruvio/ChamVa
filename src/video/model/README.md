@@ -99,3 +99,51 @@ const s = VM.snapClipStart(p, clipId, propuesto, { threshold: 0.1, playhead });
   (miniaturas con el mismo motor, en caché). `composeFrame` es la única composición (exportación, vista previa y miniaturas).
   Banco: `/dev/fx-bench.html` (`window.__fx`: transitions, effects, fxTimes, perf, export, exportFx, previewVsExport).
 
+
+## V8: velocidad avanzada, invertir, bucle y reencuadre (campos aditivos: el formato sigue siendo `v: 2`)
+- Campos opcionales de `Clip` (solo video/audio salvo `freeze` y `reframe`, solo video): `curve` (curva de velocidad),
+  `reverse`, `pitch` (conservar el tono), `freeze` (congelar fotograma: duración en s), `loop` (`{ n | dur, xf }`) y `reframe`
+  (marco de recorte). `xlayer` es SOLO en memoria (la copia del clip que dibuja la pasada saliente de un fundido cruzado).
+  `normalizeV2` los lee con `speed/curve.ts`, `speed/clipTime.ts` y `reframe/math.ts` (idempotente; un clip sin ellos no gana campos).
+- **Una sola fuente de verdad del tiempo** (`speed/clipTime.ts`): `clipDuration`, `sourceTimeAt`, `extendedSourceTime` (márgenes de
+  transición), la exportación, la vista previa y el audio usan las mismas funciones (`passDuration`, `layersAt`, `sourceAtLocal`,
+  `rateAt`). Sin curva/invertir/congelar/bucle son las expresiones de V1 (bit a bit).
+- **Curva de velocidad** (`speed/curve.ts`): puntos `{ s, v }` con `s` = instante del ARCHIVO (la velocidad queda pegada al contenido: al
+  recortar o dividir no se mueve) y `v` en 0,1×–100×. Entre puntos, interpolación logarítmica (`va·(vb/va)^x`; con `smooth`, x = smoothstep).
+  El tiempo de salida es ∫ ds/v: forma cerrada en tramos lineales y Simpson de 64 paneles en los suaves; la inversa (salida → archivo) es
+  exacta (cerrada) o por bisección. Velocidad constante = `speed` (0,1×–100× en la interfaz); `curve` prevalece sobre `speed`.
+- **Invertir**: el origen va de `outP` a `inP`. La curva va con el contenido (la velocidad de un fotograma es la misma al derecho y al revés).
+  Imagen: `engine/reverse.ts` (decodifica por GOP y conserva una ventana de K fotogramas, K según el tamaño; se vuelve a decodificar el GOP
+  para la ventana siguiente). Audio: `engine/timeAudio.ts` (`ReverseAudioSource`, bloques de 2 s). Límites: aviso a 5 min, tope 1 h.
+- **Congelar fotograma**: `freeze` s sobre el fotograma `inP`, sin sonido; `freezeFrame` divide el clip y mete el congelado entre las dos mitades.
+- **Bucle**: `n` pasadas o hasta `dur`, `xf` s de fundido cruzado entre pasadas (la duración es `(n−1)·(B−xf)+B`). Un bucle no se divide ni se
+  recorta por delante. El fundido dibuja DOS capas del mismo clip (`xlayer`), cada una con su propio decodificador.
+- **Audio** (`engine/timeAudio.ts`): el mezclador ve un clip normal en tiempo local (inP 0, velocidad 1) y `ClipTimeSource` traduce con el mismo
+  mapa de tiempo; con `pitch`, estiramiento WSOLA sobre el audio a ritmo natural (no con invertido).
+- **Reencuadre** (`reframe/`): `reframe` guarda el marco (proporción, centro, zoom, marcos `track` en s del clip) y se DERIVA la transformación
+  x/y/escala y sus fotogramas clave (`applyReframe`); `composeFrame` no sabe nada del reencuadre, así que la vista previa y la exportación
+  son iguales. Seguimiento propio (`reframe/tracker.ts`, plantilla ZNCC adaptativa, sin OpenCV: no trae clasificadores de caras y el editor
+  es offline) y suavizado (`framesFromTrack`: mediana, zona muerta de «operador», gaussiana sin retardo, Douglas–Peucker). Banco: `/dev/speed-bench.html`.
+
+## V7: audio de verdad (campos aditivos: el formato sigue siendo `v: 2`, sin migración)
+- Campos opcionales: `Clip.pan` (−1..1, potencia constante), `gainDb`, `eq` (`EqBand[]`), `denoise` (0..1); `Track.gainDb`, `pan`, `solo`, `eq`,
+  `duck` (`DuckSpec`); `MediaAsset.beats` (`BeatInfo`: pulsos en s del ARCHIVO); `VideoProject.audio` (`ProjectAudio`: `eq` maestro, `loud {on, target LUFS}`,
+  `xfade` s, `beatSnap`, `showBeats`). `normalizeV2` los lee con `audio/sanitize.ts` (idempotente; un valor neutro no añade campo: un proyecto sin ajustes
+  de audio se lee y se guarda igual que en V6). Operaciones en `audio/mixOps.ts` (`setClipAudio`, `setTrackMix`, `setProjectAudio`, `setMediaBeats`): una llamada = un paso.
+- **Una sola mezcla.** `engine/audioPlan.ts` (puro) decide qué suena (silencio y solo, TAMBIÉN al exportar), resuelve las pistas de control del ducking (una pista con
+  ducking nunca es control de otra) y calcula los fundidos cruzados; `TimelineMixer` suma cada clip en el bus de su pista, cada pista pasa por `TrackChain`
+  (EQ → dB → toma de control → ducking → panorámica) y la maestra por `MasterChain` (EQ de 3 bandas → EQ paramétrico → compresor → ganancia de sonoridad → limitador de
+  pico real, techo −1,3 dBTP: −1 dBTP más 0,3 dB para el error del medidor y los códecs con pérdida). La vista previa en vivo usa los MISMOS `ClipChain/TrackChain/MasterChain`
+  en AudioWorklets (`dsp.worklet.ts` → `liveDsp.ts`): cada pista es un nodo con 2 entradas (clips, control) y 2 salidas (pista, toma); el banco `/dev/audio-bench.html` mide
+  cociente RMS 1,0000 y diferencia máxima 1e-7 entre la vista previa en vivo y la exportación.
+- **Sonoridad** (`audio/loudness.ts`): BS.1770-4 (K-weighting, bloques de 400 ms con solape del 75 %, puertas −70 LUFS y −10 LU), momentánea, a corto plazo, integrada y pico real (×4).
+  `engine/loudnessPass.ts` normaliza en varias pasadas medidas con el mismo mezclador (la ganancia va ANTES del limitador; el limitador baja algo la sonoridad y se corrige con la secante).
+  La interfaz repite la medida en segundo plano tras cada cambio (`ui/video/loudness.ts`) y manda la ganancia a la vista previa.
+- **Latencia.** El limitador de pico real tiene `latency` muestras (134): el mezclador mezcla ese tanto por delante y descarta el arranque, así la exportación sale alineada;
+  la vista previa las deja (≈ 2,8 ms). El reductor de ruido retrasa el clip `SpectralDenoiser.LATENCY` (1024 muestras, 21 ms) tanto en la exportación como en vivo.
+- **Reducción de ruido** (`audio/denoise.ts`): sustracción espectral propia, sin dependencias (STFT de 1024, mínimos por bin, regla de Wiener atenuada). RNNoise (BSD-3,
+  COPYING de xiph/rnnoise verificado) NO se integra: sus puertos wasm de npm (`@jitsi/rnnoise-wasm` sin campo de licencia; `@shiguredo/rnnoise-wasm` Apache-2.0) añadirían una
+  dependencia nueva y un wasm dentro del AudioWorklet cuya paridad exportación/vista previa no está probada.
+- **Ritmo** (`audio/beats.ts`, `engine/beatAnalysis.ts`): flujo espectral + autocorrelación + programación dinámica; las marcas salen en la regla y, con `audio.beatSnap`, entran en `snapTime` (objetivo `'beat'`).
+- **Exportar solo audio** (`engine/audioExport.ts`): WAV 16/24 bits (dither TPDF), OGG/Opus (`AudioEncoder` + contenedor Ogg propio, `ogg.ts`) y M4A/AAC (`AudioEncoder` + mp4-muxer);
+  si el equipo no codifica Opus/AAC se degrada con aviso. MP3 no se ofrece: no hay codificador JS con licencia permisiva verificada (lamejs es LGPL).

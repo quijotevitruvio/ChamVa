@@ -6,6 +6,8 @@
 // - Cada clip tiene un inicio absoluto en la línea de tiempo (`start`) y, si viene
 //   de un archivo, el recorte del archivo (`inP`..`outP`) y la velocidad.
 import type { ClipAudioFx } from '../engine/dsp';
+import type { DuckSpec } from '../audio/duck';
+import type { EqBand } from '../audio/eq';
 
 export const VIDEO_PROJECT_VERSION = 2 as const;
 
@@ -27,6 +29,15 @@ export interface MediaAsset {
   url?: string;
   /** el proyecto antiguo no tenía el archivo (no se puede mostrar ni exportar) */
   missing?: boolean;
+  /** V7: ritmo detectado (instantes en s del ARCHIVO) */
+  beats?: BeatInfo;
+}
+
+/** V7: resultado de la detección de ritmo de un archivo de audio. */
+export interface BeatInfo {
+  bpm: number;
+  beats: number[];
+  onsets?: number[];
 }
 
 /** Transformación de un clip visual. x/y: centro en fracción del fotograma (0..1). */
@@ -167,6 +178,45 @@ export interface Keyframe {
   bz?: Bezier;
 }
 
+// ---- V8: velocidad avanzada, invertir, bucle y reencuadre (campos aditivos: el formato sigue siendo `v: 2`) ----
+
+/** Punto de una curva de velocidad: `s` = instante del ARCHIVO (s), `v` = velocidad en ese punto (0,1×–100×). */
+export interface SpeedPoint {
+  s: number;
+  v: number;
+}
+/**
+ * Curva de velocidad sobre el tiempo de fuente: la velocidad en un fotograma del archivo no cambia al recortar o dividir el clip.
+ * Entre puntos se interpola en escala logarítmica (1×→4× pasa por 2× a mitad); antes del primero y después del último vale el extremo.
+ */
+export interface SpeedCurve {
+  pts: SpeedPoint[];
+  /** suaviza cada tramo (aceleración y frenada suaves en vez de rampas rectas) */
+  smooth?: boolean;
+}
+/** Bucle de un tramo: `n` pasadas o hasta `dur` s (si hay `dur`, manda); `xf` = fundido cruzado entre pasadas (s). */
+export interface LoopSpec {
+  n?: number;
+  dur?: number;
+  xf?: number;
+}
+/** Marco del reencuadre: centro (fracción del fotograma de origen) y zoom (1 = el marco más grande que cabe en la proporción de salida). */
+export interface ReframeKey {
+  /** s desde el inicio del clip */
+  t: number;
+  cx: number;
+  cy: number;
+  zoom?: number;
+}
+export interface ReframeSpec {
+  aspect: '16:9' | '9:16' | '1:1' | '4:5';
+  cx: number;
+  cy: number;
+  zoom: number;
+  /** marcos a lo largo del clip (seguimiento o fotogramas del marco); vacío = marco fijo */
+  track?: ReframeKey[];
+}
+
 export interface Clip {
   id: string;
   kind: ClipKind;
@@ -213,6 +263,28 @@ export interface Clip {
   blend?: BlendMode;
   /** fotogramas clave por propiedad: x, y, scale, rotation, opacity, volume, `fx.<id>.amount` o `fx.<id>.<parámetro>` */
   keys?: Record<string, Keyframe[]>;
+  /** V8: curva de velocidad (prevalece sobre `speed`) */
+  curve?: SpeedCurve;
+  /** V8: el clip se reproduce al revés (imagen y sonido) */
+  reverse?: boolean;
+  /** V8: conservar el tono del sonido al cambiar la velocidad (sin esto, el sonido se acelera y se vuelve agudo, como la imagen) */
+  pitch?: boolean;
+  /** V8: congelar fotograma: el clip muestra el fotograma `inP` del archivo durante `freeze` s (sin sonido) */
+  freeze?: number;
+  /** V8: repetir el tramo recortado */
+  loop?: LoopSpec;
+  /** V8: reencuadre (la transformación x/y/escala y sus fotogramas se derivan de esto) */
+  reframe?: ReframeSpec;
+  /** SOLO en memoria (nunca se guarda): copia del clip que dibuja la pasada saliente de un bucle con fundido cruzado */
+  xlayer?: boolean;
+  /** V7: panorámica del clip (−1 izquierda … 1 derecha, ley de potencia constante); sin esto, centro */
+  pan?: number;
+  /** V7: ganancia fija del clip en dB (la que deja «Normalizar clip a LUFS»); se suma al volumen */
+  gainDb?: number;
+  /** V7: ecualizador paramétrico del clip */
+  eq?: EqBand[];
+  /** V7: reducción de ruido (0..1, intensidad); sin esto, apagada */
+  denoise?: number;
 }
 
 export interface Track {
@@ -231,6 +303,30 @@ export interface Track {
   clips: Clip[];
   /** solo pistas de subtítulos: estilo global */
   subStyle?: SubtitleStyle;
+  /** V7: mezclador. Volumen de la pista en dB (0 = sin cambio) */
+  gainDb?: number;
+  /** V7: panorámica de la pista (−1..1) */
+  pan?: number;
+  /** V7: solo (si alguna pista está en solo, solo suenan las que lo están; también al exportar) */
+  solo?: boolean;
+  /** V7: ecualizador paramétrico de la pista */
+  eq?: EqBand[];
+  /** V7: ducking automático (la pista baja cuando suena voz en otras) */
+  duck?: DuckSpec;
+}
+
+/** V7: ajustes de audio del proyecto (todo opcional; sin esto el audio se mezcla como en V6). */
+export interface ProjectAudio {
+  /** ecualizador paramétrico maestro */
+  eq?: EqBand[];
+  /** normalización de sonoridad del programa entero (LUFS integrados) */
+  loud?: { on: boolean; target: number };
+  /** fundido cruzado de audio en las uniones de clips contiguos, s (0 / sin definir = sin fundido) */
+  xfade?: number;
+  /** imán de la línea de tiempo a las marcas de ritmo */
+  beatSnap?: boolean;
+  /** mostrar las marcas de ritmo en la regla */
+  showBeats?: boolean;
 }
 
 export interface VideoProject {
@@ -239,6 +335,8 @@ export interface VideoProject {
   tracks: Track[];
   eq: { low: number; mid: number; high: number };
   normalize: boolean;
+  /** V7: ajustes de audio (ecualizador maestro, sonoridad objetivo, fundido cruzado, ritmo) */
+  audio?: ProjectAudio;
   /** datos del formato antiguo que no se pudieron usar (se conservan, no se borran) */
   legacy?: { from: 1; orphanClips?: unknown[]; orphanOverlays?: unknown[] };
 }

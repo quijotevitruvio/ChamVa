@@ -1,5 +1,6 @@
 // Consultas puras sobre el modelo v2: duraciones, «qué está activo en t», tiempos de origen.
 import { resolveTransitions } from '../fx/transitions';
+import { clipDurationOf, sourceAtLocal, type TimeFields } from '../speed/clipTime';
 import type { Clip, Track, Transform, VideoProject } from './types';
 
 /** Duración mínima de un clip de video/audio en la línea de tiempo (igual que V1). */
@@ -15,9 +16,9 @@ export const fitsTrack = (c: Pick<Clip, 'kind'>, t: Pick<Track, 'kind'>) => (c.k
  * Duración en la línea de tiempo (sin `toEnd`). Video/audio: recorte ÷ velocidad,
  * mínimo 0,01 s, con la MISMA expresión que V1 (para que los tiempos coincidan bit a bit).
  */
-export function clipDuration(c: Pick<Clip, 'kind' | 'inP' | 'outP' | 'speed'>): number {
+export function clipDuration(c: TimeFields): number {
   if (isStill(c)) return Math.max(0, c.outP - c.inP);
-  return Math.max(MIN_CLIP, (c.outP - c.inP) / (c.speed || 1));
+  return clipDurationOf(c); // V8: curva de velocidad, invertir, congelar y bucle (sin ellos, la expresión de V1)
 }
 
 /** Fin en la línea de tiempo (sin `toEnd`). */
@@ -107,8 +108,7 @@ export function clipsAt(p: VideoProject, t: number, projectDur = projectDuration
 
 /** Instante del archivo de origen que se ve/oye en t (misma fórmula y límites que V1). */
 export function sourceTimeAt(c: Clip, t: number): number {
-  const s = c.inP + (t - c.start) * (c.speed || 1);
-  return Math.max(c.inP, Math.min(c.outP - 0.001, s));
+  return sourceAtLocal(c, t - c.start);
 }
 
 /** Opacidad del fundido de imagen en t (0..1), como `fadeAlpha` de V1. */

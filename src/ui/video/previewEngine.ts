@@ -14,6 +14,7 @@
 import * as VM from '../../video/model';
 import { composeFrame, type ComposedFrame, type StillImage } from '../../video/engine/compose';
 import { extendedSourceTime } from '../../video/fx/transitions';
+import { rateAt } from '../../video/speed/clipTime';
 import { measureTitleClip } from '../../video/engine/titleDraw';
 import { ensureTitleFonts, titleFontsReady } from '../../video/engine/titleFonts';
 import { OVERLAY_FONT, overlayFontPx, type Fit } from '../../video/engine/timeline';
@@ -21,7 +22,9 @@ import { outputSize, type Aspect, type Quality } from '../../video/engine/format
 import type { MediaCache } from './mediaCache';
 import { NearestCache } from './preview/frameCache';
 import { FrameStats } from './preview/frameStats';
-import { PREVIEW_SAMPLE_RATE, PreviewAudioGraph, type ClipStrip } from './preview/previewAudio';
+import { PREVIEW_SAMPLE_RATE, PreviewAudioGraph, type ClipStrip, type TrackPeaks } from './preview/previewAudio';
+import type { MasterMeter } from '../../video/engine/liveDsp';
+import { crossfadeAbs, masterOf, resolveTrackPlan, xfGain, type XfAbs } from '../../video/engine/audioPlan';
 import { driftCorrection, pickReleases, planPreload, type PlanItem } from './preview/preloadPlanner';
 import { QualityController, isQualityMode, type QualityMode } from './preview/quality';
 
@@ -272,9 +275,11 @@ export class PreviewEngine {
   setProject(p: VM.VideoProject) {
     if (p === this.project) return;
     this.project = p;
+    this.xf = crossfadeAbs(p); // V7: fundido cruzado de audio en las uniones
+    this.xfLead = 0.15 + (p.audio?.xfade ?? 0);
     // fuera los elementos de clips que ya no existen (si no continúan en otro clip) y las miniaturas de medios que ya no están
     for (const [id, e] of this.entries) {
-      if (!VM.findClip(p, id)) {
+      if (!VM.findClip(p, id.replace(/~x$/, ''))) {
         this.release(e);
         this.entries.delete(id);
       }
@@ -533,10 +538,25 @@ export class PreviewEngine {
     if (e.el.playbackRate !== rate) e.el.playbackRate = rate;
   }
 
+  /** V7: añade a la planificación los clips salientes que siguen sonando durante el fundido cruzado (ya han pasado de su final). */
+  private addXfTails(items: PlanItem[], t: number) {
+    const have = new Set(items.map((i) => i.clipId));
+    for (const [id, x] of this.xf) {
+      if (!x.out || have.has(id)) continue;
+      const loc = VM.findClip(this.project, id);
+      if (!loc || (loc.clip.kind !== 'video' && loc.clip.kind !== 'audio') || !loc.clip.mediaId) continue;
+      const c = loc.clip;
+      const end = VM.clipEnd(c);
+      if (t < end || t >= x.out.w0 + x.out.len) continue;
+      items.push({ clip: c, clipId: id, mediaId: c.mediaId!, kind: c.kind as 'video' | 'audio', startsIn: c.start - t, active: true, visible: false, audible: true, seekTo: c.outP + (t - end) * (c.speed || 1), play: true });
+    }
+  }
+
   /** Pone en hora los elementos según t. `playing`: reproduce; si no, solo coloca los fotogramas visibles. */
   private sync(t: number, playing: boolean) {
     const now = this.nowS();
-    const items = planPreload(this.project, t, { horizon: 2, lead: 0.15 });
+    const items = planPreload(this.project, t, { horizon: 2, lead: this.xfLead });
+    if (this.xf.size) this.addXfTails(items, t);
     const planned = new Set<string>();
     const fps = PREVIEW_FPS;
     for (const it of items) {
@@ -548,9 +568,21 @@ export class PreviewEngine {
       if (!e) continue;
       planned.add(e.clipId);
       e.lastUsed = now;
-      const speed = Math.max(0.0625, Math.min(16, clip.speed || 1));
+      // V8: velocidad instantánea (curva, bucle); el invertido, el congelado y lo que pasa de los límites del elemento
+      // (0,0625×–16×) se reproducen «a saltos»: elemento quieto y un seek por paso (la exportación sí los hace exactos).
+      const rNow = rateAt(clip, Math.max(0, t - clip.start));
+      const seekMode = !!clip.reverse || !!clip.freeze || Math.abs(rNow) > 16 || (Math.abs(rNow) < 0.0625 && rNow !== 0);
+      const speed = Math.max(0.0625, Math.min(16, Math.abs(rNow) || clip.speed || 1));
       e.baseRate = speed;
+      if ('preservesPitch' in e.el) (e.el as HTMLMediaElement & { preservesPitch: boolean }).preservesPitch = !!clip.pitch;
       this.connect(e, clip);
+      if (seekMode && playing && it.play !== undefined && (it.active || it.play)) {
+        if (!e.el.paused) e.el.pause();
+        const want = it.active ? it.seekTo : it.seekTo;
+        if (!e.el.seeking && Math.abs(e.el.currentTime - want) > 0.5 / fps) e.el.currentTime = want + 0.0005;
+        e.strip?.setFade(0);
+        continue;
+      }
       if (!playing) {
         // Pausa / scrubbing: elemento quieto en el fotograma exacto.
         if (!e.el.paused) e.el.pause();
@@ -572,7 +604,9 @@ export class PreviewEngine {
             this.setRate(e, speed);
           } else this.setRate(e, c.rate);
         }
-        e.strip?.setFade(it.active && it.audible ? audioFadeAlpha(clip, t) : 0);
+        // V7: el clip saliente de una unión sigue sonando tras su final y el entrante arranca antes (potencia constante, igual que el mezclador)
+        const xg = this.xf.size ? xfGain(this.xf.get(clip.id), t) : 1;
+        e.strip?.setFade(it.active && it.audible ? audioFadeAlpha(clip, t) * xg : !it.active && this.xf.get(clip.id)?.in ? xg : 0);
       } else {
         // Precarga: pre-seek una sola vez al primer fotograma; en silencio.
         const key = `${clip.id}:${it.seekTo.toFixed(3)}`;
@@ -613,13 +647,15 @@ export class PreviewEngine {
       ac = new AC();
     }
     const rec = ac.createMediaStreamDestination();
-    const g = new PreviewAudioGraph(ac, { eq: this.project.eq, normalize: this.project.normalize });
+    const g = new PreviewAudioGraph(ac, this.masterSettings());
     g.out.connect(rec);
     this.audioCtx = ac;
     this.audio = g;
     this.recDest = rec;
     void g.ready.then(() => {
       if (this.audio !== g) return;
+      this.applyTracks();
+      this.hookMeters();
       for (const e of this.entries.values()) this.connect(e);
     });
     return g;
@@ -631,8 +667,88 @@ export class PreviewEngine {
     return this.recDest?.stream ?? null;
   }
 
+  /** V7: ganancia de la normalización de sonoridad (dB) que la interfaz ha calculado con el análisis (misma que usa la exportación) */
+  private loudGainDb = 0;
+  /** V7: ventanas de fundido cruzado por clip (tiempo de la línea de tiempo) y antelación con que arranca el clip entrante */
+  private xf = new Map<string, XfAbs>();
+  private xfLead = 0.15;
+  setLoudnessGain(db: number) {
+    if (db === this.loudGainDb) return;
+    this.loudGainDb = db;
+    this.applyMaster();
+  }
+  private masterSettings() {
+    return masterOf(this.project, this.project.audio?.loud?.on ? this.loudGainDb : 0);
+  }
   private applyMaster() {
-    this.audio?.setMaster({ eq: this.project.eq, normalize: this.project.normalize });
+    this.audio?.setMaster(this.masterSettings());
+    this.applyTracks();
+  }
+  /** V7: mezclador (EQ, dB, panorámica, ducking, silencio y solo de cada pista) */
+  private applyTracks() {
+    const g = this.audio;
+    if (!g || !g.workletOk) return;
+    g.setTracks(resolveTrackPlan(this.project));
+  }
+  /** V7: el grafo de audio, para el medidor y el mezclador de la interfaz (null hasta que suena algo) */
+  get audioGraph(): PreviewAudioGraph | null {
+    return this.audio;
+  }
+
+  // V7: medidores del mezclador (sonoridad de la maestra y picos por pista), solo mientras la interfaz los pide
+  private meterData: { master: MasterMeter | null; tracks: Map<string, TrackPeaks> } = { master: null, tracks: new Map() };
+  private meterListeners = new Set<() => void>();
+  private meterOn = false;
+  private meterRefs = 0;
+  /** Pide los medidores; devuelve la función que los suelta (se apagan cuando nadie los usa). */
+  acquireMetering(): () => void {
+    this.meterRefs++;
+    this.setMetering(true);
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      if (--this.meterRefs <= 0) {
+        this.meterRefs = 0;
+        this.setMetering(false);
+      }
+    };
+  }
+  get meters() {
+    return this.meterData;
+  }
+  subscribeMeters = (fn: () => void) => {
+    this.meterListeners.add(fn);
+    return () => void this.meterListeners.delete(fn);
+  };
+  private setMetering(on: boolean) {
+    this.meterOn = on;
+    if (!on) {
+      this.audio?.setMetering(false);
+      return;
+    }
+    this.hookMeters();
+  }
+  /** Conecta los medidores al grafo de audio si ya existe (no lo crea: el AudioContext nace con la primera reproducción). */
+  private hookMeters() {
+    const g = this.audio;
+    if (!g || !this.meterOn) return;
+    void g.ready.then(() => {
+      if (this.audio !== g || !this.meterOn) return;
+      g.onMasterMeter = (m) => {
+        this.meterData.master = m;
+        this.meterListeners.forEach((f) => f());
+      };
+      g.onTrackPeaks = (id, pk) => {
+        this.meterData.tracks.set(id, pk);
+        this.meterListeners.forEach((f) => f());
+      };
+      g.setMetering(true);
+    });
+  }
+  /** Reinicia la sonoridad integrada y los picos del medidor. */
+  resetMeter() {
+    this.audio?.resetMeter();
   }
 
   /** Conecta el elemento a su cadena de audio (una sola vez; createMediaElementSource solo admite una). */
@@ -643,7 +759,7 @@ export class PreviewEngine {
     if (!c) return;
     try {
       const src = (g.ctx as AudioContext).createMediaElementSource(e.el);
-      e.strip = g.addSource(src, VM.clipAudioFx(c));
+      e.strip = g.addSource(src, VM.clipAudioFx(c), VM.findClip(this.project, c.id)?.track.id);
     } catch {
       /* el elemento ya estaba conectado */
     }
@@ -718,6 +834,25 @@ export class PreviewEngine {
         return img && img.complete && img.naturalWidth ? (img as StillImage) : null;
       },
     });
+  }
+
+  /** V8: PNG de lo que se ve en el cabezal (lado corto 1080 px), con la misma composición que la exportación. */
+  async frameBlob(): Promise<Blob | null> {
+    await this.settle(2500);
+    const size = outputSize(this.aspect, 1080);
+    const cv = document.createElement('canvas');
+    cv.width = size.width;
+    cv.height = size.height;
+    const ctx = cv.getContext('2d');
+    if (!ctx) return null;
+    this.drawFrame(ctx, size.width, size.height, this.t);
+    return new Promise((res) => cv.toBlob((b) => res(b), 'image/png'));
+  }
+
+  /** V8: elemento de video de un clip y su tamaño ya girado (para el marco del reencuadre); null si aún no hay fotograma. */
+  sourceOf(clipId: string): { el: HTMLVideoElement; w: number; h: number } | null {
+    const v = this.entries.get(clipId)?.el;
+    return v instanceof HTMLVideoElement && v.videoWidth && v.readyState >= 2 ? { el: v, w: v.videoWidth, h: v.videoHeight } : null;
   }
 
   /** Tamaños de origen de un clip visual para las manijas (px de su fuente, y texto medido). */

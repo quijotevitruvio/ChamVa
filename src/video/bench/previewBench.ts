@@ -307,7 +307,11 @@ const pv = {
     const { project } = await build();
     const ex = await exportTap(project, []);
     const dur = ex.L.length / 48000;
-    const { L, R, workletOk } = await previewOffline(project, ex.L.length);
+    const pre = await previewOffline(project, ex.L.length + 134);
+    // el limitador de pico real de la vista previa retrasa 134 muestras (la exportación lo compensa): se alinean
+    const L = pre.L.subarray(134);
+    const R = pre.R.subarray(134);
+    const workletOk = pre.workletOk;
     const seg = (a: Float32Array, t0: number, t1: number) => {
       let s = 0;
       let pk = 0;
