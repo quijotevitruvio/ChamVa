@@ -4,9 +4,10 @@
 // proyecto migrado salga idéntico píxel a píxel.
 import { clipAudioFx } from '../model/effects';
 import { clipEnd, clipFadeAlpha, clipsAt, isIdentityTransform, videoTracksBottomUp } from '../model/query';
-import type { Clip, VideoProject } from '../model/types';
+import type { Clip, Track, VideoProject } from '../model/types';
 import type { MixEntry, PcmSource } from './mixer';
 import { OVERLAY_FONT, type Fit, drawVideoFrame, fitRect, overlayFontPx } from './timeline';
+import { drawTitleClip } from './titleDraw';
 
 export type StillImage = CanvasImageSource & { naturalWidth?: number; naturalHeight?: number };
 
@@ -151,15 +152,17 @@ export function composeFrame(
   h: number,
   fit: Fit,
   src: ComposeSources,
-  visual: { clip: Clip }[] = clipsAt(p, t, duration).visual,
+  visual: { clip: Clip; track?: Track }[] = clipsAt(p, t, duration).visual,
 ) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
-  for (const { clip } of visual) {
+  for (const { clip, track } of visual) {
     const alpha = clipFadeAlpha(clip, t, duration);
     if (clip.kind === 'video') {
       const f = src.video(clip);
       if (f) drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, clip, alpha);
+    } else if (drawTitleClip(ctx, w, h, clip, t, duration, alpha, track?.subStyle)) {
+      // título con estilo o subtítulo (V4)
     } else drawStillClip(ctx, w, h, clip, clip.kind === 'image' ? src.image(clip) : null, alpha);
   }
 }

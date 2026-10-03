@@ -4,11 +4,11 @@ import type { Clip, Track, Transform, VideoProject } from './types';
 /** Duración mínima de un clip de video/audio en la línea de tiempo (igual que V1). */
 export const MIN_CLIP = 0.01;
 
-export const isStill = (c: Pick<Clip, 'kind'>) => c.kind === 'image' || c.kind === 'text';
+export const isStill = (c: Pick<Clip, 'kind'>) => c.kind === 'image' || c.kind === 'text' || c.kind === 'subtitle';
 export const isVisual = (c: Pick<Clip, 'kind'>) => c.kind !== 'audio';
 
-/** ¿Este clip puede ir en esta pista? (audio ↔ pista de audio; video/imagen/texto ↔ pista de video) */
-export const fitsTrack = (c: Pick<Clip, 'kind'>, t: Pick<Track, 'kind'>) => (c.kind === 'audio') === (t.kind === 'audio');
+/** ¿Este clip puede ir en esta pista? (audio ↔ pista de audio; subtítulo ↔ pista de subtítulos; video/imagen/texto ↔ pista de video) */
+export const fitsTrack = (c: Pick<Clip, 'kind'>, t: Pick<Track, 'kind'>) => (c.kind === 'audio') === (t.kind === 'audio') && (c.kind === 'subtitle') === (t.kind === 'subtitle');
 
 /**
  * Duración en la línea de tiempo (sin `toEnd`). Video/audio: recorte ÷ velocidad,
@@ -43,7 +43,7 @@ export function projectDuration(p: VideoProject): number {
     for (const c of t.clips) {
       if (t.kind === 'video') {
         if (!c.toEnd) vis = Math.max(vis, clipEnd(c));
-      } else aud = Math.max(aud, clipEnd(c));
+      } else if (t.kind === 'audio') aud = Math.max(aud, clipEnd(c));
     }
   return vis > 0 ? vis : aud;
 }
@@ -66,7 +66,7 @@ export function videoTracksBottomUp(p: VideoProject): { track: Track; trackIndex
 
 /**
  * Clips activos en t. `visual`: lo que se ve, de abajo arriba (orden de dibujo),
- * sin pistas ocultas. `audible`: lo que suena (clips de video y de audio), sin
+ * sin pistas ocultas (los subtítulos van siempre encima de todo). `audible`: lo que suena (clips de video y de audio), sin
  * pistas silenciadas.
  */
 export function clipsAt(p: VideoProject, t: number, projectDur = projectDuration(p)): { visual: ActiveClip[]; audible: ActiveClip[] } {
@@ -78,6 +78,12 @@ export function clipsAt(p: VideoProject, t: number, projectDur = projectDuration
       if (!track.hidden) visual.push({ track, trackIndex, clip });
       if (!track.muted && clip.kind === 'video') audible.push({ track, trackIndex, clip });
     }
+  }
+  // Subtítulos: encima de todas las capas (la pista de más arriba en `tracks` queda más arriba).
+  for (let trackIndex = p.tracks.length - 1; trackIndex >= 0; trackIndex--) {
+    const track = p.tracks[trackIndex];
+    if (track.kind !== 'subtitle' || track.hidden) continue;
+    for (const clip of track.clips) if (isActiveAt(clip, t, projectDur)) visual.push({ track, trackIndex, clip });
   }
   p.tracks.forEach((track, trackIndex) => {
     if (track.kind !== 'audio' || track.muted) return;

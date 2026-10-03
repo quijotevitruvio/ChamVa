@@ -7,7 +7,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import * as VM from '../video/model';
 import { toast } from './toast';
 import { Inspector } from './video/Inspector';
-import { MediaBin } from './video/MediaBin';
+import { MediaBin, type BinTab } from './video/MediaBin';
+import { SubtitlePanel } from './video/SubtitlePanel';
+import { TextPanel } from './video/TextPanel';
 import { PreviewPanel, Transport } from './video/PreviewPanel';
 import { Timeline, type TimelineApi } from './video/Timeline';
 import { Toolbar } from './video/Toolbar';
@@ -50,6 +52,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [pps, setPps] = useState(T.DEFAULT_PPS);
   const [snapOn, setSnapOn] = useState(true);
   const [binOpen, setBinOpen] = useState(false);
+  const [binTab, setBinTab] = useState<BinTab>('media');
   const [recording, setRecording] = useState(false);
   const apiRef = useRef<TimelineApi | null>(null);
   const clipboard = useRef<E.ClipboardItem[]>([]);
@@ -138,6 +141,30 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     setSelection([clipId]);
   };
 
+  const addTitle = (preset: Parameters<typeof E.addTitleClip>[2]) => {
+    let clipId = '';
+    commit((p) => {
+      const r = E.addTitleClip(p, engine.time, preset);
+      clipId = r.clipId;
+      return r.p;
+    });
+    setSelection([clipId]);
+  };
+  const addPair = (pair: Parameters<typeof E.addTitlePair>[2]) => {
+    let ids: string[] = [];
+    commit((p) => {
+      const r = E.addTitlePair(p, engine.time, pair);
+      ids = r.ids;
+      return r.p;
+    });
+    setSelection(ids);
+  };
+  const selectedText = selection.length === 1 ? VM.findClip(project, selection[0]) : null;
+  const canApplyStyle = !!selectedText && selectedText.clip.kind === 'text' && !selectedText.track.locked;
+  const applyTitle = (preset: Parameters<typeof E.addTitleClip>[2]) => {
+    if (selectedText) commit((p) => E.applyTitlePreset(p, selectedText.clip.id, preset));
+  };
+
   const addTrack = (kind: VM.TrackKind) => commit((p) => E.withNewTrack(p, kind).p);
 
   const onImport = async (files: File[]) => {
@@ -203,6 +230,8 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (isTyping(target)) return;
+      // flechas sobre una pestaña del panel: cambian de pestaña (las atiende MediaBin), no mueven el cabezal
+      if (target?.getAttribute('role') === 'tab' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const handled = () => {
@@ -289,7 +318,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={`vx-root${compact ? ' compact' : ''}${selection.length ? ' has-sel' : ''}`} onPointerUp={endGroup} onDragOver={stopFileDefault} onDrop={stopFileDefault}>
+    <div className={`vx-root${compact ? ' compact' : ''}${selection.length ? ' has-sel' : ''}${binTab === 'subs' && (!compact || binOpen) ? ' bin-wide' : ''}`} onPointerUp={endGroup} onDragOver={stopFileDefault} onDrop={stopFileDefault}>
       <div className="vx-top">
       <Toolbar
         onClose={onClose}
@@ -320,6 +349,10 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         setFit={exporter.setFit}
         fps={exporter.fps}
         setFps={exporter.setFps}
+        hasSubs={project.tracks.some((t) => t.kind === 'subtitle' && t.clips.length > 0)}
+        burnSubs={exporter.burnSubs}
+        setBurnSubs={exporter.setBurnSubs}
+        onExportSubs={exporter.exportSubs}
       />
       </div>
         {(!compact || binOpen) && (
@@ -339,6 +372,10 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             }
             onAddText={addText}
             onToggleRecord={toggleRec}
+            tab={binTab}
+            onTab={setBinTab}
+            textPanel={<TextPanel canApply={canApplyStyle} onAdd={addTitle} onApply={applyTitle} onAddPair={addPair} onAddPlain={addText} />}
+            subtitlePanel={<SubtitlePanel project={project} engine={engine} selection={selection} setSelection={select} commit={commit} />}
           />
         )}
         <PreviewPanel engine={engine} project={project} selectedId={selection.length === 1 ? selection[0] : null} aspect={exporter.aspect} fit={exporter.fit} commit={commit} endGroup={endGroup} empty={!hasClips} />
@@ -352,6 +389,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           </div>
           <div className="vx-addtrack">
             <button type="button" onClick={() => addTrack('video')} title="Añadir una pista de video encima de las demás">＋ Pista video</button>
+            <button type="button" onClick={() => addTrack('subtitle')} title="Añadir una pista de subtítulos">＋ Subtítulos</button>
             <button type="button" onClick={() => addTrack('audio')} title="Añadir una pista de audio">＋ Pista audio</button>
           </div>
         </div>
@@ -374,7 +412,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div className="vx-side">
-        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} />
+        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} />
       </div>
     </div>
   );

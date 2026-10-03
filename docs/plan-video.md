@@ -208,6 +208,12 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   importar y exportar SRT/VTT; estilos de subtítulo con resaltado palabra a palabra (karaoke);
   tercios inferiores y créditos rodantes como plantillas locales.
 - **Prueba:** Vitest del analizador SRT/VTT (ida y vuelta); banco de exportación con subtítulos.
+- **Hecho (V4):** clips de texto con estilo propio y 43 preajustes (los 32 estilos del editor de diseño pasados a claro, tercios
+  inferiores, karaoke), 10 pares de fuentes, animaciones de entrada/salida/énfasis (todo, palabra o letra) y karaoke;
+  pista de subtítulos con tabla editable, SRT/VTT/TXT (leer y escribir), desplazar, ajustar a escenas, dividir/unir y estilo
+  global; exportar con subtítulos incrustados o `.srt`/`.vtt` aparte. Los títulos usan `drawStyledText` directamente (no
+  `renderDocToCanvas`, que es asíncrona y construye un lienzo por fotograma) y se componen en `composeFrame`.
+  Pendiente: créditos rodantes, efectos de texto avanzados (extrusión, texto en curva) en las animaciones por unidades.
 
 ### V5 · Subtítulos automáticos con IA local — **opus alto** (auditoría de licencias y descarga) + **sonnet medio** (integración)
 

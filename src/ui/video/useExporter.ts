@@ -9,6 +9,8 @@ import { openSink } from '../../video/engine/sink';
 import type { Fit } from '../../video/engine/timeline';
 import { MIME, deliver } from '../../video/exportActions';
 import * as VM from '../../video/model';
+import { SUB_FILE, serializeSubtitles, type SubFormat } from '../../video/title/srt';
+import { cuesOfTrack, subtitleTracks } from '../../video/title/subtitles';
 import { toast } from '../toast';
 import type { MediaCache } from './mediaCache';
 import type { PreviewEngine } from './previewEngine';
@@ -19,6 +21,8 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
   const [aspect, setAspect] = useState<Aspect>('16:9');
   const [fit, setFit] = useState<Fit>('contain');
   const [fps, setFps] = useState(30);
+  /** subtítulos quemados en la imagen (si no, solo van en el archivo .srt aparte) */
+  const [burnSubs, setBurnSubs] = useState(true);
   const [progress, setProgress] = useState(0); // 0..1
   const [label, setLabel] = useState('');
   const [support, setSupport] = useState<ExportSupport | null>(null);
@@ -76,7 +80,9 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
     abort.current = ac;
     setProgress(0);
     setLabel('');
+    const hasSubs = subtitleTracks(project).some((t) => !t.hidden && t.clips.length > 0);
     if (!canUseWebCodecs()) {
+      if (!burnSubs && hasSubs) toast('Este navegador exporta grabando la vista previa: los subtítulos siempre quedan incrustados. Oculta la pista de subtítulos para quitarlos.', 'info');
       const mime =
         container === 'mp4'
           ? ['video/mp4;codecs=avc1,mp4a', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m))
@@ -119,6 +125,7 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
         sizes,
         fps,
         images: cache.loadedImages(),
+        burnSubtitles: burnSubs,
         fit,
         sink,
         signal: ac.signal,
@@ -143,5 +150,16 @@ export function useExporter(getProject: () => VM.VideoProject, cache: MediaCache
     }
   };
 
-  return { exporting, res, setRes, aspect, setAspect, fit, setFit, fps, setFps, progress, label, support, run, cancel: () => abort.current?.abort() };
+  /** Guarda los subtítulos de la primera pista con subtítulos en un archivo aparte. */
+  const exportSubs = (format: SubFormat) => {
+    const tr = subtitleTracks(getProject()).find((t) => t.clips.length > 0);
+    if (!tr) {
+      toast('No hay subtítulos que guardar', 'info');
+      return;
+    }
+    const text = serializeSubtitles(cuesOfTrack(tr), format);
+    void downloadBlob(new Blob([text], { type: SUB_FILE[format].mime + ';charset=utf-8' }), `chamva-video.${SUB_FILE[format].ext}`);
+  };
+
+  return { exporting, res, setRes, aspect, setAspect, fit, setFit, fps, setFps, burnSubs, setBurnSubs, exportSubs, progress, label, support, run, cancel: () => abort.current?.abort() };
 }

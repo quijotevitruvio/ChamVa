@@ -9,6 +9,11 @@ import { PreviewEngine } from '../../ui/video/previewEngine';
 import { MediaCache } from '../../ui/video/mediaCache';
 import { PreviewAudioGraph } from '../../ui/video/preview/previewAudio';
 import { makeSynthClip, type SynthClip } from './synth';
+import { ensureTitleFonts } from '../engine/titleFonts';
+import { DEFAULT_TITLE_STYLE } from '../title/style';
+import { parseSrt, serializeSrt } from '../title/srt';
+import { cuesOfTrack, newSubtitleTrack, replaceCues } from '../title/subtitles';
+import srtReal from './fixtures/entrevista.srt?raw';
 
 const out = document.getElementById('out')!;
 const log = (s: string) => {
@@ -83,7 +88,7 @@ const maxAbs = (a: Float32Array) => {
 const heap = () => (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0;
 
 /** Exporta con el motor real y devuelve los fotogramas pedidos (índices) y el audio mezclado. */
-async function exportTap(p: VM.VideoProject, wantFrames: number[], images?: Map<string, HTMLImageElement>) {
+async function exportTap(p: VM.VideoProject, wantFrames: number[], images?: Map<string, HTMLImageElement>, burnSubtitles?: boolean) {
   const want = new Set(wantFrames);
   const frames = new Map<number, ImageData>();
   const aL: Float32Array[] = [];
@@ -95,6 +100,7 @@ async function exportTap(p: VM.VideoProject, wantFrames: number[], images?: Map<
     fps: FPS,
     sink: new BlobPartsSink('video/mp4'),
     images,
+    burnSubtitles,
     tap: {
       frame: (i, ctx) => {
         if (want.has(i)) frames.set(i, ctx.getImageData(0, 0, W, H));
@@ -165,7 +171,103 @@ const rmsOf = (a: Float32Array, t0: number, t1: number) => {
   return Math.sqrt(s / Math.max(1, i1 - i0));
 };
 
+/** Proyecto V4: título animado (subir + fundido), karaoke y subtítulos de un SRT real. Con o sin video debajo. */
+async function titleProject(withVideo: boolean): Promise<VM.VideoProject> {
+  const b = await build();
+  let p = VM.createProject();
+  p = VM.addTrack(p, 'video', { id: 'V' });
+  if (withVideo) {
+    p = VM.addMedia(p, b.project.media.m1);
+    p = VM.addClip(p, 'V', VM.makeClip('video', { id: 'v', mediaId: 'm1', start: 0, inP: 0, outP: 8 }));
+  } else p = VM.addClip(p, 'V', VM.makeClip('text', { id: 'bg', text: ' ', start: 0, outP: 8 }));
+  p = VM.addTrack(p, 'video', { id: 'T', index: 0 });
+  p = VM.addClip(p, 'T', VM.makeClip('text', { id: 't', start: 1, outP: 4, text: 'Título animado', tstyle: { ...DEFAULT_TITLE_STYLE, fontSize: 120, shadow: false }, anim: { in: 'slideUp', out: 'fade', inDur: 0.8, outDur: 0.6 }, transform: { x: 0.5, y: 0.35, scale: 1, rotation: 0, opacity: 1 } }));
+  p = VM.addTrack(p, 'video', { id: 'K', index: 0 });
+  p = VM.addClip(p, 'K', VM.makeClip('text', { id: 'k', start: 2, outP: 4, text: 'uno dos tres cuatro', tstyle: { ...DEFAULT_TITLE_STYLE, fontSize: 90, shadow: false }, anim: { karaoke: { color: '#ffd84d', scale: 1.15, keep: false } }, transform: { x: 0.5, y: 0.6, scale: 1, rotation: 0, opacity: 1 } }));
+  const sub = newSubtitleTrack(p, { id: 'S' });
+  p = replaceCues(sub.p, 'S', parseSrt(srtReal).cues.slice(0, 7), { ids: ['s1', 's2', 's3', 's4', 's5', 's6', 's7'] }).p;
+  await ensureTitleFonts(p);
+  return p;
+}
+
+type Rgba = Uint8ClampedArray;
+/** Píxeles claros (R,G,B > 200) de una franja vertical y su centro de gravedad vertical. */
+function bright(d: Rgba, y0: number, y1: number, yellow = false) {
+  let n = 0;
+  let sy = 0;
+  let ink = 0;
+  for (let y = Math.floor(y0 * H); y < Math.floor(y1 * H); y++)
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const ok = yellow ? d[i] > 200 && d[i + 1] > 170 && d[i + 2] < 110 : d[i] > 200 && d[i + 1] > 200 && d[i + 2] > 200;
+      if (ok) {
+        n++;
+        sy += y;
+      }
+      ink += Math.max(d[i], d[i + 1], d[i + 2]) / 255;
+    }
+  return { n, cy: n ? sy / n / H : 0, ink: Math.round(ink) };
+}
+
+async function comparePixels(project: VM.VideoProject, times: number[]) {
+  const e = ensureEngine();
+  e.setProject(project);
+  const idx = times.map((t) => Math.round(t * FPS));
+  const ex = await exportTap(project, idx);
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d', { alpha: false })!;
+  const rows: Record<string, unknown>[] = [];
+  for (let k = 0; k < times.length; k++) {
+    const t = idx[k] / FPS;
+    e.seek(t);
+    const ok = await e.settle(4000);
+    await new Promise((r) => setTimeout(r, 60));
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, W, H);
+    e.drawFrame(g, W, H, t);
+    const d = diffImages(g.getImageData(0, 0, W, H).data, ex.frames.get(idx[k])!.data);
+    rows.push({ t, settled: ok, meanAbs: +d.meanAbs.toFixed(4), pctBig: +d.pctBig.toFixed(4) });
+  }
+  return { exportMs: Math.round(ex.ms), rows, worstMean: Math.max(...rows.map((r) => r.meanAbs as number)), worstPct: Math.max(...rows.map((r) => r.pctBig as number)) };
+}
+
 const pv = {
+  /**
+   * V4: exporta con el motor real un proyecto (fondo negro) con título animado, karaoke y subtítulos, extrae fotogramas
+   * en varios instantes y mide qué hay en pantalla (texto que aparece y desaparece, animación que avanza).
+   */
+  async titles(times = [0.2, 0.7, 1.0, 1.2, 1.5, 2.0, 2.6, 3.4, 4.4, 4.8, 5.2, 5.9, 6.5, 7.4], burnSubtitles = true) {
+    const p = await titleProject(false);
+    const idx = times.map((t) => Math.round(t * FPS));
+    const ex = await exportTap(p, idx, undefined, burnSubtitles);
+    const rows = times.map((t, k) => {
+      const d = ex.frames.get(idx[k])!.data;
+      const title = bright(d, 0.15, 0.5);
+      const kara = bright(d, 0.5, 0.72);
+      const karaY = bright(d, 0.5, 0.72, true);
+      const sub = bright(d, 0.8, 1);
+      return { t, titlePx: title.n, titleInk: title.ink, titleCy: +title.cy.toFixed(4), karaWhite: kara.n, karaYellow: karaY.n, subPx: sub.n, subInk: sub.ink };
+    });
+    return { exportMs: Math.round(ex.ms), rows };
+  },
+
+  /** V4: vista previa (drawFrame) contra exportación, píxel a píxel, con título + karaoke + subtítulos sobre el video. */
+  async titlePixels(times = [0.3, 1.2, 1.8, 2.5, 3.4, 4.6, 5.2, 6.4], withVideo = true) {
+    return comparePixels(await titleProject(withVideo), times);
+  },
+
+  /** V4: SRT real con acentos → pista de subtítulos → SRT, idéntico; y tras guardar/reabrir el proyecto. */
+  async srt() {
+    const cues = parseSrt(srtReal).cues;
+    const base = newSubtitleTrack(VM.createProject(), { id: 'S' });
+    const r = replaceCues(base.p, 'S', cues);
+    const out = serializeSrt(cuesOfTrack(VM.findTrack(r.p, 'S')!));
+    const norm = srtReal.split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
+    return { cues: cues.length, identical: out === norm, bytes: out.length, overlapsFixed: r.overlapsFixed };
+  },
+
   async build() {
     const b = await build();
     return { duration: VM.projectDuration(b.project), tracks: b.project.tracks.length, clips: b.project.tracks.reduce((s, t) => s + t.clips.length, 0) };
@@ -445,4 +547,4 @@ const pv = {
 };
 
 (window as unknown as { __pv: typeof pv }).__pv = pv;
-log('listo: window.__pv.{build,pixels,audio,fluency,simulated,scrub,leak,disposeCheck}');
+log('listo: window.__pv.{build,titles,titlePixels,srt,pixels,audio,fluency,simulated,scrub,leak,disposeCheck}');

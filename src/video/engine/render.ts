@@ -15,6 +15,7 @@ import { makeClip } from '../model/ops';
 import { clipsAt, isStill, projectDuration, sourceTimeAt, videoTracksBottomUp } from '../model/query';
 import { IDENTITY_TRANSFORM, type Clip, type MediaAsset, type VideoProject } from '../model/types';
 import { BufferAudioSource, DecoderAudioSource, audioDecoderConfig } from './audioSource';
+import { ensureTitleFonts } from './titleFonts';
 import { buildProjectMixEntries, composeFrame, type ComposedFrame, type StillImage } from './compose';
 import { type DemuxedFile, demux } from './demux';
 import type { ClipAudioFx } from './dsp';
@@ -64,6 +65,8 @@ export interface RenderProjectOptions {
   onNotice?: (msg: string) => void;
   /** Imágenes ya cargadas por id de medio (si faltan, se cargan del Blob). */
   images?: Map<string, StillImage>;
+  /** Subtítulos quemados en la imagen (por defecto sí). `false`: se exporta sin ellos (p. ej. para entregarlos en un .srt aparte). */
+  burnSubtitles?: boolean;
   tap?: RenderTap;
 }
 
@@ -150,7 +153,8 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
 
 export async function renderProject(project: VideoProject, opts: RenderProjectOptions): Promise<RenderResult> {
   const t0 = performance.now();
-  const p = project;
+  // sin subtítulos incrustados: las pistas de subtítulos se ocultan (el proyecto original no se toca)
+  const p = opts.burnSubtitles === false && project.tracks.some((t) => t.kind === 'subtitle' && !t.hidden) ? { ...project, tracks: project.tracks.map((t) => (t.kind === 'subtitle' ? { ...t, hidden: true } : t)) } : project;
   const { container, sink, signal } = opts;
   const fit = opts.fit ?? 'contain';
   const notices: string[] = [];
@@ -246,6 +250,9 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     ac = a.audio;
     if (a.notice) notice(a.notice);
   }
+
+  // --- fuentes de títulos y subtítulos (un canvas no espera a que se descarguen) ---
+  await ensureTitleFonts(p);
 
   // --- imágenes ---
   const images = new Map<string, StillImage | null>();

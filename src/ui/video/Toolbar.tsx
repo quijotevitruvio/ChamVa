@@ -34,6 +34,11 @@ interface Props {
   setFit: (f: Fit) => void;
   fps: number;
   setFps: (n: number) => void;
+  /** subtítulos (V4) */
+  hasSubs: boolean;
+  burnSubs: boolean;
+  setBurnSubs: (b: boolean) => void;
+  onExportSubs: (f: 'srt' | 'vtt') => void;
 }
 
 export function Toolbar(p: Props) {
@@ -92,6 +97,13 @@ export function Toolbar(p: Props) {
                 <option value={60}>60 fps</option>
               </select>
             </label>
+            <label className="vx-check" title="Si lo quitas, el video sale sin subtítulos en la imagen y puedes guardarlos aparte en un archivo .srt">
+              <input type="checkbox" checked={p.burnSubs} disabled={p.exporting || !p.hasSubs} onChange={(e) => p.setBurnSubs(e.target.checked)} /> Incrustar subtítulos en el video
+            </label>
+            <span className="vx-pop-row">
+              <button type="button" onClick={() => p.onExportSubs('srt')} disabled={!p.hasSubs} title="Guardar los subtítulos en un archivo .srt aparte">⬇ .srt</button>
+              <button type="button" onClick={() => p.onExportSubs('vtt')} disabled={!p.hasSubs} title="Guardar los subtítulos en un archivo .vtt aparte">⬇ .vtt</button>
+            </span>
             <button type="button" onClick={() => p.onExport('webm')} disabled={!p.canExport || p.exporting || (!!support && support.webcodecs && !support.webm)} title="Exportar a WebM (VP9 + Opus)">
               ⬇ WebM
             </button>

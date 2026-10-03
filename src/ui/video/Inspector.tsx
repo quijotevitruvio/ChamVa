@@ -1,7 +1,11 @@
-import { useId } from 'react';
 import * as VM from '../../video/model';
 import { EFFECTS } from '../../video/model/effects';
 import { fmtDur } from './ClipView';
+import { AnimControls } from './AnimControls';
+import { Field } from './Field';
+import { StyleControls } from './StyleControls';
+import { DEFAULT_TITLE_STYLE } from '../../video/title/style';
+import { setCueText, setCueTimes } from '../../video/title/subtitles';
 
 interface Props {
   project: VM.VideoProject;
@@ -10,35 +14,11 @@ interface Props {
   onSplit: () => void;
   onDuplicate: () => void;
   onDelete: (ripple: boolean) => void;
+  /** abre la pestaña «Subtítulos» del panel de medios */
+  onOpenSubtitles?: () => void;
 }
 
-function Field({ label, value, min, max, step, unit = '', scale = 1, digits = 0, onChange, disabled }: { label: string; value: number; min: number; max: number; step: number; unit?: string; scale?: number; digits?: number; onChange: (v: number) => void; disabled?: boolean }) {
-  const id = useId();
-  const shown = Number((value * scale).toFixed(digits));
-  return (
-    <div className="vx-field">
-      <label htmlFor={id}>{label}</label>
-      <input type="range" id={id} min={min} max={max} step={step} value={Math.max(min, Math.min(max, value))} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))} aria-valuetext={`${shown}${unit}`} />
-      <input
-        type="number"
-        className="vx-num"
-        aria-label={`${label} (valor)`}
-        min={min * scale}
-        max={max * scale}
-        step={step * scale}
-        value={shown}
-        disabled={disabled}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          if (Number.isFinite(v)) onChange(v / scale);
-        }}
-      />
-      <span className="vx-unit">{unit}</span>
-    </div>
-  );
-}
-
-export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete }: Props) {
+export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles }: Props) {
   const loc = selection.length === 1 ? VM.findClip(project, selection[0]) : null;
 
   if (selection.length === 0 || (selection.length === 1 && !loc)) {
@@ -80,14 +60,16 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
   const c = loc!.clip;
   const track = loc!.track;
   const media = c.mediaId ? project.media[c.mediaId] : undefined;
-  const visual = c.kind !== 'audio';
+  const sub = c.kind === 'subtitle';
+  const styled = c.kind === 'text' && !!c.tstyle;
+  const visual = c.kind !== 'audio' && !sub;
   const timed = c.kind === 'video' || c.kind === 'audio';
   const locked = track.locked;
   const upd = (patch: Parameters<typeof VM.updateClip>[2], group?: string) => commit((p) => VM.updateClip(p, c.id, patch), group ? `${group}:${c.id}` : undefined);
   const upTr = (tr: Partial<VM.Transform>, g: string) => upd({ transform: tr }, g);
   const dur = VM.clipDuration(c);
   const maxLen = timed && media ? Math.max(0.1, (media.duration - c.inP) / (c.speed || 1)) : 600;
-  const KIND = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto' }[c.kind];
+  const KIND = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo' }[c.kind];
 
   return (
     <div className="vx-insp" aria-label={`Clip ${KIND}`}>
@@ -96,19 +78,52 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
         {locked ? ' 🔒' : ''}
       </h3>
       {locked && <p className="vx-note">La pista está bloqueada: desbloquéala para editar.</p>}
-      {c.kind === 'text' ? (
-        <div className="vx-field wide">
-          <label htmlFor="vx-text">Texto</label>
-          <input id="vx-text" type="text" value={c.text ?? ''} disabled={locked} onChange={(e) => upd({ text: e.target.value }, 'text')} />
-          <input type="color" aria-label="Color del texto" value={c.color ?? '#ffffff'} disabled={locked} onChange={(e) => upd({ color: e.target.value }, 'color')} />
+      {styled || sub ? (
+        <div className="vx-field area">
+          <label htmlFor="vx-text">{sub ? 'Subtítulo' : 'Texto'}</label>
+          <textarea
+            id="vx-text"
+            rows={sub ? 3 : 2}
+            value={c.text ?? ''}
+            disabled={locked}
+            spellCheck
+            onChange={(e) => (sub ? commit((p) => setCueText(p, c.id, e.target.value), 'text:' + c.id) : upd({ text: e.target.value }, 'text'))}
+          />
         </div>
+      ) : c.kind === 'text' ? (
+        <>
+          <div className="vx-field wide">
+            <label htmlFor="vx-text">Texto</label>
+            <input id="vx-text" type="text" value={c.text ?? ''} disabled={locked} onChange={(e) => upd({ text: e.target.value }, 'text')} />
+            <input type="color" aria-label="Color del texto" value={c.color ?? '#ffffff'} disabled={locked} onChange={(e) => upd({ color: e.target.value }, 'color')} />
+          </div>
+          <button type="button" className="mini" disabled={locked} title="Usa fuentes, contorno, sombra, caja y animaciones" onClick={() => upd({ tstyle: { ...DEFAULT_TITLE_STYLE, fontFamily: 'Arial', fontSize: Math.round(((c.size ?? 60) * 1080) / 720), fill: c.color ?? '#ffffff', shadow: false }, anim: { in: 'fade', out: 'fade', inDur: 0.3, outDur: 0.3 } })}>
+            🎨 Pasar a estilos de título
+          </button>
+        </>
       ) : (
         <p className="vx-note vx-name">{c.name ?? media?.name ?? ''}</p>
       )}
 
+      {styled && (
+        <>
+          <h4>Estilo del texto</h4>
+          <StyleControls style={c.tstyle!} disabled={locked} onChange={(patch, g) => upd({ tstyle: { ...c.tstyle!, ...patch, presetId: undefined } }, 'ts-' + g)} />
+          <AnimControls anim={c.anim} clipDur={dur} disabled={locked} onChange={(a, g) => upd({ anim: a }, 'anim-' + g)} />
+        </>
+      )}
+      {sub && (
+        <p className="vx-note">
+          El estilo (fuente, posición, caja, karaoke) es de toda la pista de subtítulos.{' '}
+          {onOpenSubtitles && (
+            <button type="button" className="mini" onClick={onOpenSubtitles}>Abrir pestaña Subtítulos</button>
+          )}
+        </p>
+      )}
+
       <h4>Tiempo</h4>
-      <Field label="Inicio" value={c.start} min={0} max={Math.max(60, VM.projectDuration(project) + 30)} step={0.1} unit=" s" digits={2} disabled={locked} onChange={(v) => commit((p) => VM.moveClip(p, c.id, { start: v }), 'start:' + c.id)} />
-      <Field label="Duración" value={dur} min={0.1} max={maxLen} step={0.1} unit=" s" digits={2} disabled={locked || !!c.toEnd} onChange={(v) => commit((p) => VM.trimClip(p, c.id, 'out', c.start + v), 'dur:' + c.id)} />
+      <Field label="Inicio" value={c.start} min={0} max={Math.max(60, VM.projectDuration(project) + 30)} step={0.1} unit=" s" digits={2} disabled={locked} onChange={(v) => commit((p) => (sub ? setCueTimes(p, c.id, { start: v, end: v + dur }) : VM.moveClip(p, c.id, { start: v })), 'start:' + c.id)} />
+      <Field label="Duración" value={dur} min={0.1} max={maxLen} step={0.1} unit=" s" digits={2} disabled={locked || !!c.toEnd} onChange={(v) => commit((p) => (sub ? setCueTimes(p, c.id, { end: c.start + v }) : VM.trimClip(p, c.id, 'out', c.start + v)), 'dur:' + c.id)} />
       {timed && (
         <Field label="Velocidad" value={c.speed || 1} min={0.25} max={3} step={0.05} unit="×" digits={2} disabled={locked} onChange={(v) => upd({ speed: v }, 'speed')} />
       )}
@@ -125,7 +140,7 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
             Restablecer
           </button>
           {c.kind === 'image' && <Field label="Ancho base" value={c.size ?? 0.3} min={0.05} max={1} step={0.01} scale={100} unit=" %" disabled={locked} onChange={(v) => upd({ size: v }, 'size')} />}
-          {c.kind === 'text' && <Field label="Tamaño" value={c.size ?? 60} min={20} max={200} step={2} unit=" px" disabled={locked} onChange={(v) => upd({ size: v }, 'size')} />}
+          {c.kind === 'text' && !styled && <Field label="Tamaño" value={c.size ?? 60} min={20} max={200} step={2} unit=" px" disabled={locked} onChange={(v) => upd({ size: v }, 'size')} />}
           <Field label="Fundido de entrada" value={c.fadeIn} min={0} max={3} step={0.1} unit=" s" digits={1} disabled={locked} onChange={(v) => upd({ fadeIn: v }, 'fi')} />
           <Field label="Fundido de salida" value={c.fadeOut} min={0} max={3} step={0.1} unit=" s" digits={1} disabled={locked} onChange={(v) => upd({ fadeOut: v }, 'fo')} />
         </>

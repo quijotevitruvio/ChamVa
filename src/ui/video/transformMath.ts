@@ -14,7 +14,7 @@ export interface Size {
  * - imagen: `size` = fracción del ancho; el alto sale de su proporción.
  * - texto: ancho medido y alto ≈ 1,25 × el cuerpo de letra.
  */
-export function baseBox(clip: Pick<Clip, 'kind' | 'size'>, frame: Size, dims: { w: number; h: number; textW?: number; fontPx?: number } | null, fit: Fit = 'contain'): Size {
+export function baseBox(clip: Pick<Clip, 'kind' | 'size'>, frame: Size, dims: { w: number; h: number; textW?: number; textH?: number; fontPx?: number } | null, fit: Fit = 'contain'): Size {
   if (!dims || !frame.w || !frame.h) return { w: 0.3, h: 0.2 };
   if (clip.kind === 'video') {
     if (!dims.w || !dims.h) return { w: 1, h: 1 };
@@ -27,7 +27,7 @@ export function baseBox(clip: Pick<Clip, 'kind' | 'size'>, frame: Size, dims: { 
     return { w, h: (w * frame.w * ratio) / frame.h };
   }
   const tw = Math.max(dims.textW ?? 0, 8);
-  const fh = (dims.fontPx ?? 40) * 1.25;
+  const fh = dims.textH ?? (dims.fontPx ?? 40) * 1.25;
   return { w: tw / frame.w, h: fh / frame.h };
 }
 

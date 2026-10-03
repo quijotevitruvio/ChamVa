@@ -2,6 +2,9 @@
 // modelo (src/video/model) para actuar sobre varios clips a la vez. Devuelven un
 // proyecto nuevo (o el mismo si no aplican) y, cuando crean clips, sus ids.
 import * as VM from '../../video/model';
+import { DEFAULT_TITLE_STYLE } from '../../video/title/style';
+import { splitCueAtTime } from '../../video/title/subtitles';
+import { applyPreset, type TitlePair, type TitlePreset } from '../../video/title/presets';
 
 export interface Result {
   p: VM.VideoProject;
@@ -61,7 +64,8 @@ export function splitAt(p: VM.VideoProject, ids: readonly string[], t: number, n
   const created: string[] = [];
   for (const id of targets) {
     const nid = newId();
-    const next = VM.splitClip(out, id, t, nid);
+    const sub = VM.findClip(out, id)?.clip.kind === 'subtitle';
+    const next = sub ? splitCueAtTime(out, id, t, nid).p : VM.splitClip(out, id, t, nid);
     if (next !== out) created.push(nid);
     out = next;
   }
@@ -116,7 +120,7 @@ export function pasteClips(p: VM.VideoProject, items: readonly ClipboardItem[], 
     let dest = out.tracks.find((tr) => tr.id === it.trackId && kindOk(tr)) ?? out.tracks.find(kindOk);
     if (!dest) {
       const id = VM.uid();
-      out = VM.addTrack(out, it.kind, { id, name: it.kind === 'audio' ? 'Audio' : 'Video', index: it.kind === 'video' ? 0 : out.tracks.length });
+      out = VM.addTrack(out, it.kind, it.kind === 'subtitle' ? { id, name: 'Subtítulos' } : { id, name: it.kind === 'audio' ? 'Audio' : 'Video', index: it.kind === 'video' ? 0 : out.tracks.length });
       dest = VM.findTrack(out, id)!;
     }
     const clip: VM.Clip = { ...it.clip, id: newId(), start: Math.max(0, t + it.offset) };
@@ -143,8 +147,9 @@ function freeAt(tr: VM.Track, s: number, d: number): boolean {
 /** Nueva pista del tipo adecuado: las de video van arriba de todo; las de audio, al final. */
 export function withNewTrack(p: VM.VideoProject, kind: VM.TrackKind, name?: string, magnet = false): { p: VM.VideoProject; id: string } {
   const id = VM.uid();
-  const index = kind === 'video' ? 0 : p.tracks.length;
-  const n = name ?? (kind === 'video' ? (p.tracks.some((t) => t.kind === 'video') ? `Video ${p.tracks.filter((t) => t.kind === 'video').length + 1}` : 'Video') : p.tracks.some((t) => t.kind === 'audio') ? `Audio ${p.tracks.filter((t) => t.kind === 'audio').length + 1}` : 'Audio');
+  const firstAudio = p.tracks.findIndex((t) => t.kind === 'audio');
+  const index = kind === 'video' ? 0 : kind === 'subtitle' ? (firstAudio < 0 ? p.tracks.length : firstAudio) : p.tracks.length;
+  const n = name ?? (kind === 'subtitle' ? (p.tracks.some((t) => t.kind === 'subtitle') ? `Subtítulos ${p.tracks.filter((t) => t.kind === 'subtitle').length + 1}` : 'Subtítulos') : kind === 'video' ? (p.tracks.some((t) => t.kind === 'video') ? `Video ${p.tracks.filter((t) => t.kind === 'video').length + 1}` : 'Video') : p.tracks.some((t) => t.kind === 'audio') ? `Audio ${p.tracks.filter((t) => t.kind === 'audio').length + 1}` : 'Audio');
   return { p: VM.addTrack(p, kind, { id, index, name: n, magnet }), id };
 }
 
@@ -192,11 +197,58 @@ export function placeMedia(p: VM.VideoProject, m: MediaInfo, o: { trackId?: stri
   return { p: out, clipId: clip.id, trackId: tr.id };
 }
 
-/** Clip de texto en una pista nueva encima de todo, en t. */
+/** Clip de texto (con estilo propio, V4) en una pista nueva encima de todo, en t. */
 export function addTextClip(p: VM.VideoProject, t: number, text = 'Texto'): { p: VM.VideoProject; clipId: string } {
   const nt = withNewTrack(p, 'video', 'Texto');
-  const clip = VM.makeClip('text', { text, color: '#ffffff', size: 60, start: Math.max(0, t), outP: stillSeconds, transform: { ...VM.IDENTITY_TRANSFORM, x: 0.5, y: 0.85 } });
+  const clip = VM.makeClip('text', {
+    text,
+    color: '#ffffff',
+    size: 60,
+    start: Math.max(0, t),
+    outP: stillSeconds,
+    tstyle: { ...DEFAULT_TITLE_STYLE },
+    anim: { in: 'fade', out: 'fade', inDur: 0.4, outDur: 0.4 },
+    transform: { ...VM.IDENTITY_TRANSFORM, x: 0.5, y: 0.5 },
+  });
   return { p: VM.addClip(nt.p, nt.id, clip), clipId: clip.id };
+}
+
+/** Título con un preajuste en una pista nueva encima de todo, en t (5 s, o lo que dure la entrada y la salida más 2 s). */
+export function addTitleClip(p: VM.VideoProject, t: number, preset: TitlePreset): { p: VM.VideoProject; clipId: string } {
+  const nt = withNewTrack(p, 'video', preset.category === 'Tercios inferiores' ? 'Tercio inferior' : 'Título');
+  const base = VM.makeClip('text', { text: preset.text, color: '#ffffff', size: 60, start: Math.max(0, t), outP: stillSeconds, transform: { ...VM.IDENTITY_TRANSFORM } });
+  const clip = applyPreset(base, preset);
+  return { p: VM.addClip(nt.p, nt.id, clip), clipId: clip.id };
+}
+
+/** Par de fuentes: título y cuerpo en dos pistas nuevas. */
+export function addTitlePair(p: VM.VideoProject, t: number, pair: TitlePair): { p: VM.VideoProject; ids: string[] } {
+  let out = p;
+  const ids: string[] = [];
+  for (const [part, name] of [[pair.body, 'Cuerpo'], [pair.title, 'Título']] as const) {
+    const nt = withNewTrack(out, 'video', name);
+    const clip = VM.makeClip('text', {
+      text: part.text,
+      color: '#ffffff',
+      size: 60,
+      start: Math.max(0, t),
+      outP: stillSeconds,
+      tstyle: { ...part.style },
+      anim: { in: 'fade', out: 'fade', inDur: 0.4, outDur: 0.4 },
+      transform: { ...VM.IDENTITY_TRANSFORM, y: part.y },
+    });
+    out = VM.addClip(nt.p, nt.id, clip);
+    ids.push(clip.id);
+  }
+  return { p: out, ids };
+}
+
+/** Aplica un preajuste a un texto que ya está en la línea de tiempo (conserva su texto, tiempos y posición). */
+export function applyTitlePreset(p: VM.VideoProject, clipId: string, preset: TitlePreset): VM.VideoProject {
+  const loc = VM.findClip(p, clipId);
+  if (!loc || loc.clip.kind !== 'text') return p;
+  const next = applyPreset(loc.clip, preset, { keepText: true, keepPosition: true });
+  return VM.updateClip(p, clipId, { tstyle: next.tstyle, anim: next.anim });
 }
 
 /** Tiempo de un clip (en la línea de tiempo) de la unión de los seleccionados: [inicio, fin]. */

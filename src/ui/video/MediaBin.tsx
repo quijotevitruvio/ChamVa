@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore } from 'react';
+import { useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import * as VM from '../../video/model';
 import { fmtDur } from './ClipView';
 import type { MediaCache } from './mediaCache';
@@ -13,18 +13,50 @@ interface Props {
   onRemove: (mediaId: string) => void;
   onAddText: () => void;
   onToggleRecord: () => void;
+  /** pestaña activa y su contenido (V4) */
+  tab: BinTab;
+  onTab: (t: BinTab) => void;
+  textPanel: ReactNode;
+  subtitlePanel: ReactNode;
 }
+
+export type BinTab = 'media' | 'text' | 'subs';
+const TABS: { id: BinTab; label: string }[] = [
+  { id: 'media', label: 'Medios' },
+  { id: 'text', label: 'Texto' },
+  { id: 'subs', label: 'Subtítulos' },
+];
 
 const ICON = { video: '🎬', audio: '🎵', image: '🖼' } as const;
 
 /** Panel de medios: importar, ver lo importado y arrastrarlo a la línea de tiempo. */
-export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove, onAddText, onToggleRecord }: Props) {
+export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove, onAddText, onToggleRecord, tab, onTab, textPanel, subtitlePanel }: Props) {
   useSyncExternalStore(cache.subscribe, cache.getVersion);
   const file = useRef<HTMLInputElement>(null);
   const used = VM.usedMediaIds(project);
   const items = Object.values(project.media);
+  const onTabKey = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const i = TABS.findIndex((t) => t.id === tab);
+    const n = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    onTab(n.id);
+    requestAnimationFrame(() => document.getElementById('vx-tab-' + n.id)?.focus());
+  };
   return (
-    <aside className="vx-bin" aria-label="Medios">
+    <aside className={`vx-bin${tab === 'subs' ? ' wide' : ''}`} aria-label="Medios, texto y subtítulos">
+      <div className="vx-tabs" role="tablist" aria-label="Panel de medios" onKeyDown={onTabKey}>
+        {TABS.map((t) => (
+          <button key={t.id} id={'vx-tab-' + t.id} type="button" role="tab" aria-selected={tab === t.id} aria-controls={'vx-tabpanel-' + t.id} tabIndex={tab === t.id ? 0 : -1} className={tab === t.id ? 'on' : ''} onClick={() => onTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'text' && <div id="vx-tabpanel-text" role="tabpanel" aria-labelledby="vx-tab-text" className="vx-tabpanel">{textPanel}</div>}
+      {tab === 'subs' && <div id="vx-tabpanel-subs" role="tabpanel" aria-labelledby="vx-tab-subs" className="vx-tabpanel">{subtitlePanel}</div>}
+      {tab === 'media' && (
+      <>
       <div className="vx-bin-head">
         <button type="button" className="primary" onClick={() => file.current?.click()}>＋ Importar</button>
         <button type="button" onClick={onAddText}>🅣 Texto</button>
@@ -90,6 +122,8 @@ export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove,
           );
         })}
       </div>
+      </>
+      )}
     </aside>
   );
 }

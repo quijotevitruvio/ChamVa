@@ -54,3 +54,18 @@ const s = VM.snapClipStart(p, clipId, propuesto, { threshold: 0.1, playhead });
   lo relee y solo entonces retira la copia. Nunca pisa una versión futura (`writable === false`).
 - El motor lo exporta con `renderProject(p, opts)` (`src/video/engine/render.ts`); el banco compara contra
   el motor V1 congelado (`src/video/bench/v1Engine.ts`).
+
+## V4: texto con estilo, animaciones y subtítulos (campos aditivos: el formato sigue siendo `v: 2`, sin migración)
+- `Clip.tstyle?: TitleStyle` (texto con estilo propio: fuente, tamaño, color, contorno, sombra, caja, alineación,
+  mayúsculas, espaciado; px en un lienzo de 1080 px de lado corto). Sin `tstyle` el texto se dibuja como en V1 (Arial
+  negrita, `size`, `color`): los proyectos de antes salen idénticos. `Clip.anim?: TitleAnim` (entrada, salida, por
+  palabra o letra, énfasis continuo, karaoke) y `Clip.words?: WordTime[]` (tiempos por palabra para el karaoke).
+- Pistas `kind: 'subtitle'` con clips `kind: 'subtitle'` (`start`, duración = `outP`, `text`); estilo global en
+  `Track.subStyle` (posición, margen, máx. de líneas, karaoke, fundido y un `TitleStyle`). No cuentan para
+  `projectDuration`; `clipsAt` los pone encima de todo; `hidden` = no se incrustan al exportar.
+- `normalizeV2` lee y sanea todo lo nuevo (idempotente); un clip que no encaja con su pista va a `legacy.orphanClips`.
+- Lógica pura en `src/video/title/`: `anim.ts` (entrada/salida/énfasis en t), `karaoke.ts`, `wrap.ts` (salto por ancho,
+  equilibrado, máx. de líneas), `srt.ts` (SRT/VTT/TXT: leer, escribir, solapes, ANSI/UTF-16), `subtitles.ts` (añadir,
+  dividir, unir, desplazar, ajustar a escenas, estilo), `presets.ts` (43 estilos de título, 10 pares, 8 de subtítulo).
+- Dibujo: `src/video/engine/titleDraw.ts` (reutiliza `drawStyledText` del editor de diseño). `composeFrame` lo llama,
+  así que la exportación y la vista previa dibujan lo mismo.

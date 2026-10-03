@@ -9,8 +9,8 @@ import type { ClipAudioFx } from '../engine/dsp';
 
 export const VIDEO_PROJECT_VERSION = 2 as const;
 
-export type TrackKind = 'video' | 'audio';
-export type ClipKind = 'video' | 'audio' | 'image' | 'text';
+export type TrackKind = 'video' | 'audio' | 'subtitle';
+export type ClipKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle';
 export type MediaKind = 'video' | 'audio' | 'image';
 
 export interface MediaAsset {
@@ -42,6 +42,88 @@ export interface Transform {
 }
 
 export const IDENTITY_TRANSFORM: Readonly<Transform> = Object.freeze({ x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1 });
+
+/**
+ * Estilo de un título o subtítulo (V4). Las medidas en px están en un lienzo de referencia de
+ * 1080 px de lado corto y se escalan a cada salida (vista previa y exportación igual).
+ * Mismos nombres y significado que `TextLayer` del editor de diseño.
+ */
+export interface TitleStyle {
+  fontFamily: string;
+  fontSize: number;
+  bold: boolean;
+  italic: boolean;
+  fill: string;
+  strokeColor: string;
+  /** 0 = sin contorno */
+  strokeWidth: number;
+  shadow: boolean;
+  shadowColor: string;
+  shadowBlur: number;
+  shadowX: number;
+  shadowY: number;
+  align: 'left' | 'center' | 'right';
+  textTransform: 'none' | 'upper' | 'lower' | 'caps';
+  letterSpacing: number;
+  lineHeight: number;
+  /** 'background' = caja detrás del texto (color en `effectColor`); 'echo' = copias desplazadas */
+  textEffect?: 'none' | 'echo' | 'background';
+  effectColor?: string;
+  underline?: boolean;
+  /** ancho máximo del texto, fracción del ancho del fotograma (def. 0,9); más ancho = salto de línea */
+  maxWidth?: number;
+  /** id del preajuste de origen (solo informativo) */
+  presetId?: string;
+}
+
+/** Resaltado palabra a palabra (karaoke): la palabra activa cambia de color y de escala. */
+export interface Karaoke {
+  /** color de la palabra activa */
+  color: string;
+  /** escala de la palabra activa (1 = sin cambio) */
+  scale: number;
+  /** las palabras ya dichas se quedan con el color */
+  keep: boolean;
+}
+
+/** Animaciones de un título (V4). Todo opcional: sin esto, el texto aparece y desaparece sin más. */
+export interface TitleAnim {
+  /** id de entrada: none, fade, slideUp/Down/Left/Right, scale, pop, bounce, typewriter, rotate */
+  in?: string;
+  out?: string;
+  /** duración (s) de entrada y de salida (def. 0,5) */
+  inDur?: number;
+  outDur?: number;
+  /** a qué se aplica la entrada y la salida: todo el texto, cada palabra o cada letra */
+  unit?: 'all' | 'word' | 'letter';
+  /** retardo entre unidades, 0..1 de la duración (def. 0,6) */
+  stagger?: number;
+  /** animación continua: none, pulse, float, shake, wiggle, blink */
+  emphasis?: string;
+  /** velocidad de la animación continua (ciclos por segundo, def. 1) */
+  emphasisSpeed?: number;
+  karaoke?: Karaoke;
+}
+
+/** Tiempo de una palabra (s, relativo al inicio del clip): para el karaoke. */
+export interface WordTime {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** Estilo global de una pista de subtítulos (se aplica a todos sus clips). */
+export interface SubtitleStyle {
+  style: TitleStyle;
+  position: 'bottom' | 'middle' | 'top';
+  /** distancia al borde, fracción del alto (def. 0,07) */
+  margin: number;
+  /** máximo de líneas (def. 2): el salto es automático por ancho */
+  maxLines: number;
+  karaoke?: Karaoke;
+  /** fundido de entrada/salida de cada subtítulo (s, def. 0) */
+  fade?: number;
+}
 
 export interface Clip {
   id: string;
@@ -75,6 +157,11 @@ export interface Clip {
   color?: string;
   /** imagen/texto: se ve desde `start` hasta el final del proyecto (ignora outP) */
   toEnd?: boolean;
+  /** texto con estilo propio (V4); sin esto, el texto se dibuja como en V1 (Arial negrita, `size` y `color`) */
+  tstyle?: TitleStyle;
+  anim?: TitleAnim;
+  /** subtítulo / texto: tiempo de cada palabra (karaoke); sin esto se reparte por letras */
+  words?: WordTime[];
 }
 
 export interface Track {
@@ -91,6 +178,8 @@ export interface Track {
   magnet: boolean;
   /** ordenados por `start`, sin solaparse */
   clips: Clip[];
+  /** solo pistas de subtítulos: estilo global */
+  subStyle?: SubtitleStyle;
 }
 
 export interface VideoProject {

@@ -8,6 +8,7 @@
 //  - pista con imán: clips en secuencia desde 0 sin huecos, en el orden del array;
 //  - `toEnd` solo puede tenerlo el último clip de su pista.
 import { IDENTITY_TRANSFORM, type Clip, type ClipKind, type MediaAsset, type Track, type TrackKind, type Transform, type VideoProject, uid, VIDEO_PROJECT_VERSION } from './types';
+import { DEFAULT_SUBTITLE_STYLE } from '../title/style';
 import { MIN_CLIP, clipDuration, clipEnd, findClip, fitsTrack, isStill, projectDuration } from './query';
 
 /** Margen mínimo (s) de cada mitad al dividir, como el atajo «S» de V1. */
@@ -23,18 +24,19 @@ export function createTrack(kind: TrackKind, o: Partial<Omit<Track, 'kind'>> = {
   return {
     id: o.id ?? uid(),
     kind,
-    name: o.name ?? (kind === 'video' ? 'Video' : 'Audio'),
+    name: o.name ?? (kind === 'video' ? 'Video' : kind === 'subtitle' ? 'Subtítulos' : 'Audio'),
     muted: o.muted ?? false,
     locked: o.locked ?? false,
     hidden: o.hidden ?? false,
     magnet: o.magnet ?? false,
     clips: o.clips ?? [],
+    ...(o.subStyle ? { subStyle: o.subStyle } : kind === 'subtitle' ? { subStyle: { ...DEFAULT_SUBTITLE_STYLE, style: { ...DEFAULT_SUBTITLE_STYLE.style } } } : {}),
   };
 }
 
 /** Clip con valores por defecto (los campos que falten se rellenan). */
 export function makeClip(kind: ClipKind, o: Partial<Clip> = {}): Clip {
-  const still = kind === 'image' || kind === 'text';
+  const still = kind === 'image' || kind === 'text' || kind === 'subtitle';
   return {
     id: o.id ?? uid(),
     kind,
@@ -56,6 +58,9 @@ export function makeClip(kind: ClipKind, o: Partial<Clip> = {}): Clip {
     ...(o.text !== undefined ? { text: o.text } : {}),
     ...(o.color !== undefined ? { color: o.color } : {}),
     ...(o.toEnd ? { toEnd: true } : {}),
+    ...(o.tstyle ? { tstyle: o.tstyle } : {}),
+    ...(o.anim ? { anim: o.anim } : {}),
+    ...(o.words ? { words: o.words } : {}),
   };
 }
 
@@ -120,7 +125,7 @@ export function addTrack(p: VideoProject, kind: TrackKind, o: Partial<Omit<Track
   if (p.tracks.some((x) => x.id === t.id)) throw new Error(`Ya existe la pista ${t.id}`);
   const tracks = p.tracks.slice();
   let at = index ?? tracks.findIndex((x) => x.kind === kind);
-  if (at < 0) at = kind === 'video' ? 0 : tracks.length;
+  if (at < 0) at = kind === 'video' ? 0 : kind === 'subtitle' ? Math.max(0, tracks.findIndex((x) => x.kind === 'audio') < 0 ? tracks.length : tracks.findIndex((x) => x.kind === 'audio')) : tracks.length;
   tracks.splice(Math.max(0, Math.min(tracks.length, at)), 0, t);
   return { ...p, tracks };
 }
@@ -144,7 +149,7 @@ export function moveTrack(p: VideoProject, trackId: string, toIndex: number): Vi
 }
 
 /** Nombre, silencio, bloqueo, ocultar, imán. Se permite aunque esté bloqueada (para desbloquearla). */
-export function updateTrack(p: VideoProject, trackId: string, patch: Partial<Pick<Track, 'name' | 'muted' | 'locked' | 'hidden' | 'magnet'>>): VideoProject {
+export function updateTrack(p: VideoProject, trackId: string, patch: Partial<Pick<Track, 'name' | 'muted' | 'locked' | 'hidden' | 'magnet' | 'subStyle'>>): VideoProject {
   const i = trackIndex(p, trackId);
   if (i < 0) return p;
   const t = p.tracks[i];

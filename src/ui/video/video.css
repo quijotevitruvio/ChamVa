@@ -241,6 +241,8 @@
 .vx-clip.k-audio { background: color-mix(in srgb, var(--c-green) 30%, var(--panel-2)); color: color-mix(in srgb, var(--c-green-text) 80%, var(--text)); }
 .vx-clip.k-image { background: color-mix(in srgb, var(--accent) 42%, var(--panel-2)); }
 .vx-clip.k-text { background: color-mix(in srgb, var(--accent) 22%, var(--panel-2)); border-style: dashed; }
+.vx-clip.k-subtitle { background: color-mix(in srgb, #e0a800 30%, var(--panel-2)); }
+.vx-tl-row.k-subtitle .vx-tl-lane { background: color-mix(in srgb, #e0a800 6%, var(--bg)); }
 .vx-clip.sel { touch-action: none; outline: 2px solid var(--accent); outline-offset: -1px; z-index: 2; }
 .vx-clip.active { cursor: grabbing; z-index: 3; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
 .vx-clip.locked { cursor: not-allowed; opacity: 0.8; }
@@ -297,3 +299,57 @@
   .vx-progress-fill { transition: none; }
 }
 
+
+/* ---------- V4: pestañas Texto y Subtítulos, estilos, tabla de subtítulos ---------- */
+.vx-root.bin-wide { grid-template-columns: 400px minmax(0, 1fr) 300px; }
+.vx-tabs { display: flex; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--border); }
+.vx-root .vx-tabs button { border-radius: 6px 6px 0 0; border-bottom: 0; padding: 6px 10px; background: transparent; flex: 1; }
+.vx-root .vx-tabs button.on { background: var(--panel-2); border-color: var(--accent); font-weight: 600; }
+.vx-tabpanel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.vx-tabbody { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.vx-tabbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.vx-inline { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.vx-inline select, .vx-inline input { font-size: 12px; }
+.vx-exp { display: inline-flex; gap: 4px; margin-left: auto; }
+.vx-swatches { display: flex; flex-direction: column; gap: 8px; }
+.vx-root .vx-swatch-btn { display: block; width: 100%; box-sizing: border-box; padding: 0; overflow: hidden; text-align: left; border-radius: 8px; white-space: normal; }
+.vx-swatch { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #222; }
+.vx-swatch-name { display: block; padding: 4px 8px; font-size: 12px; color: var(--muted); }
+.vx-field.area { grid-template-columns: 92px minmax(0, 1fr); align-items: start; }
+.vx-field.area textarea { width: 100%; box-sizing: border-box; min-height: 52px; resize: vertical; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+.vx-togs { display: inline-flex; gap: 2px; }
+.vx-root .vx-togs button { padding: 2px 8px; min-width: 28px; }
+.vx-field.wide select { min-width: 0; width: 100%; }
+.vx-pop-row { display: flex; gap: 6px; }
+.vx-pop-row button { flex: 1; }
+.vx-pop label.vx-check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 12px; }
+
+.vx-subs { gap: 6px; }
+.vx-cuelist { display: flex; flex-direction: column; gap: 4px; min-height: 120px; }
+.vx-cue { display: grid; grid-template-columns: 30px 84px minmax(0, 1fr) 30px; gap: 4px; align-items: start; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
+.vx-cue.head { background: transparent; border-color: transparent; color: var(--muted); font-size: 11px; padding: 0 4px; position: sticky; top: -8px; z-index: 2; background: var(--panel); }
+.vx-cue.now { border-color: var(--c-cyan); box-shadow: inset 3px 0 0 var(--c-cyan); }
+.vx-cue.sel { border-color: var(--accent); }
+.vx-cue.warn .vx-cue-n { color: #e0a800; }
+.vx-root .vx-cue-n { padding: 2px 0; min-width: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
+.vx-cue-times { display: grid; gap: 3px; }
+.vx-root input.vx-cue-time { width: 100%; box-sizing: border-box; font-size: 11px; padding: 2px 3px; font-variant-numeric: tabular-nums; }
+.vx-cue-text { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 12px; line-height: 1.3; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 5px; min-height: 40px; }
+.vx-cue-act { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.vx-cue-warn { font-size: 12px; color: #e0a800; cursor: help; }
+.vx-substyle { border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.vx-substyle summary { cursor: pointer; padding: 8px 10px; font-weight: 600; }
+.vx-insp-inner { padding: 4px 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.vx-insp-inner h4 { margin: 10px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.vx-subs kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; background: var(--panel); }
+
+@media (max-width: 720px) {
+  .vx-root.bin-wide { grid-template-columns: none; }
+  .vx-bin { max-height: 62vh; }
+  .vx-cue { grid-template-columns: 26px 78px minmax(0, 1fr) 26px; }
+  .vx-swatches { display: grid; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 1000px) and (min-width: 721px) {
+  .vx-root.bin-wide { grid-template-columns: 340px minmax(0, 1fr) 270px; }
+}
+.vx-tabbody > * { flex-shrink: 0; }

@@ -13,6 +13,8 @@
 //  - Calidad: lado corto 720/540/360 px, automática según el tiempo por fotograma.
 import * as VM from '../../video/model';
 import { composeFrame, type ComposedFrame, type StillImage } from '../../video/engine/compose';
+import { measureTitleClip } from '../../video/engine/titleDraw';
+import { ensureTitleFonts, titleFontsReady } from '../../video/engine/titleFonts';
 import { OVERLAY_FONT, overlayFontPx, type Fit } from '../../video/engine/timeline';
 import { outputSize, type Aspect, type Quality } from '../../video/engine/formats';
 import type { MediaCache } from './mediaCache';
@@ -278,6 +280,8 @@ export class PreviewEngine {
     }
     for (const g of this.frameCache.groups()) if (!p.media[g]) this.frameCache.dropGroup(g);
     this.applyMaster();
+    // fuentes de títulos y subtítulos: un canvas no espera a que se descarguen; al llegar, se vuelve a dibujar
+    if (!titleFontsReady(p)) void ensureTitleFonts(p).then(() => this.project === p && this.requestDraw());
     const d = this.duration;
     if (!this.playing) {
       if (this.t > d) this.setT(d);
@@ -716,7 +720,7 @@ export class PreviewEngine {
   }
 
   /** Tamaños de origen de un clip visual para las manijas (px de su fuente, y texto medido). */
-  dimsFor(clip: VM.Clip): { w: number; h: number; textW?: number; fontPx?: number } | null {
+  dimsFor(clip: VM.Clip): { w: number; h: number; textW?: number; textH?: number; fontPx?: number } | null {
     if (clip.kind === 'video') {
       const v = this.entries.get(clip.id)?.el as HTMLVideoElement | undefined;
       if (v?.videoWidth) return { w: v.videoWidth, h: v.videoHeight };
@@ -729,8 +733,13 @@ export class PreviewEngine {
       return img?.naturalWidth ? { w: img.naturalWidth, h: img.naturalHeight } : { w: 4, h: 3 };
     }
     const { width: W, height: H } = this.size;
-    const fontPx = overlayFontPx(clip.size ?? 60, W, H);
     this.measure ??= document.createElement('canvas').getContext('2d');
+    if (clip.tstyle && this.measure) {
+      // título con estilo (V4): la misma maquetación que usa la composición
+      const mm = measureTitleClip(this.measure, clip, W, H);
+      if (mm) return { w: 0, h: 0, textW: mm.width, textH: mm.height, fontPx: mm.fontPx };
+    }
+    const fontPx = overlayFontPx(clip.size ?? 60, W, H);
     if (!this.measure) return { w: 0, h: 0, textW: fontPx * (clip.text?.length ?? 4) * 0.6, fontPx };
     this.measure.font = `bold ${fontPx}px ${OVERLAY_FONT}`;
     return { w: 0, h: 0, textW: this.measure.measureText(clip.text ?? '').width, fontPx };

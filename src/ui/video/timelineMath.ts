@@ -109,15 +109,15 @@ export function visibleClips(track: VM.Track, r: TimeRange, projectDur: number, 
 
 // ---------- filas ----------
 export const RULER_H = 28;
-export const ROW_H: Record<VM.TrackKind, number> = { video: 58, audio: 44 };
+export const ROW_H: Record<VM.TrackKind, number> = { video: 58, audio: 44, subtitle: 40 };
 export const HEADER_W = 132;
 export const HEADER_W_COMPACT = 104;
 /** Margen (px) de los bordes de un clip donde se recorta. */
 export const TRIM_ZONE = 9;
 
-/** Orden visual: pistas de video/imagen/texto arriba (en el orden de capas), audio abajo. */
+/** Orden visual: pistas de video/imagen/texto arriba (en el orden de capas), luego subtítulos, audio abajo. */
 export function displayTracks(p: VM.VideoProject): VM.Track[] {
-  return [...p.tracks.filter((t) => t.kind === 'video'), ...p.tracks.filter((t) => t.kind === 'audio')];
+  return [...p.tracks.filter((t) => t.kind === 'video'), ...p.tracks.filter((t) => t.kind === 'subtitle'), ...p.tracks.filter((t) => t.kind === 'audio')];
 }
 
 export interface Row {

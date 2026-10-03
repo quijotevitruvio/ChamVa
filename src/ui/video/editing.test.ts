@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as VM from '../../video/model';
+import * as P from '../../video/title/presets';
+import * as S from '../../video/title/subtitles';
 import * as E from './editing';
 
 let n = 0;
@@ -169,5 +171,65 @@ describe('selección: tramo', () => {
   it('une el inicio y el fin', () => {
     expect(E.selectionSpan(base(), ['a', 'c'])).toEqual({ start: 0, end: 12 });
     expect(E.selectionSpan(base(), ['zz'])).toBeNull();
+  });
+});
+
+describe('títulos y subtítulos (V4)', () => {
+  it('un título con preajuste va a una pista nueva encima de todo, con su estilo y animación', () => {
+    const preset = P.TITLE_PRESETS.find((x) => x.id === 'v-tercio-doble')!;
+    const r = E.addTitleClip(base(), 2, preset);
+    expect(r.p.tracks[0].kind).toBe('video');
+    expect(r.p.tracks[0].name).toBe('Tercio inferior');
+    const c = VM.findClip(r.p, r.clipId)!.clip;
+    expect(c).toMatchObject({ kind: 'text', start: 2, text: preset.text });
+    expect(c.tstyle?.fontFamily).toBe('Oswald');
+    expect(c.anim?.in).toBe('slideRight');
+    expect(c.transform.y).toBe(0.8);
+  });
+  it('un par de fuentes crea dos clips en dos pistas', () => {
+    const r = E.addTitlePair(base(), 1, P.TITLE_PAIRS[0]);
+    expect(r.ids).toHaveLength(2);
+    const [body, title] = r.ids.map((id) => VM.findClip(r.p, id)!);
+    expect(title.clip.transform.y).toBeLessThan(body.clip.transform.y);
+    expect(title.track.id).not.toBe(body.track.id);
+    expect(r.p.tracks[0].id).toBe(title.track.id); // el título arriba
+  });
+  it('aplicar un preajuste a un texto conserva su texto, sus tiempos y su posición', () => {
+    let r = E.addTextClip(base(), 3, 'Mi texto');
+    const id = r.clipId;
+    const p2 = VM.updateClip(r.p, id, { transform: { x: 0.2, y: 0.9 } });
+    const p3 = E.applyTitlePreset(p2, id, P.TITLE_PRESETS.find((x) => x.id === 'v-karaoke-verde')!);
+    const c = VM.findClip(p3, id)!.clip;
+    expect(c.text).toBe('Mi texto');
+    expect(c.start).toBe(3);
+    expect(c.transform.x).toBe(0.2);
+    expect(c.tstyle?.presetId).toBe('v-karaoke-verde');
+    expect(c.anim?.karaoke?.keep).toBe(true);
+    expect(E.applyTitlePreset(base(), 'a', P.TITLE_PRESETS[0])).toEqual(base()); // un clip de video no
+  });
+  it('dividir un subtítulo en el cabezal parte el texto por una palabra y el tiempo exactamente en t', () => {
+    let p = base();
+    p = S.newSubtitleTrack(p, { id: 'S' }).p;
+    p = S.replaceCues(p, 'S', [{ start: 2, end: 6, text: 'uno dos tres cuatro' }], { ids: ['s'] }).p;
+    const r = E.splitAt(p, ['s'], 4, () => 's2');
+    const cs = VM.findTrack(r.p, 'S')!.clips;
+    expect(cs.map((c) => c.text)).toEqual(['uno dos', 'tres cuatro']);
+    expect(cs[1].start).toBeCloseTo(4, 9);
+    expect(r.ids).toEqual(['s2']);
+  });
+  it('pegar un subtítulo vuelve a una pista de subtítulos (la crea si no existe)', () => {
+    let p = base();
+    p = S.newSubtitleTrack(p, { id: 'S' }).p;
+    p = S.replaceCues(p, 'S', [{ start: 1, end: 2, text: 'hola' }], { ids: ['s'] }).p;
+    const items = E.copyClips(p, ['s']);
+    const q = E.pasteClips(VM.removeTrack(p, 'S'), items, 5);
+    const t = q.p.tracks.find((x) => x.kind === 'subtitle')!;
+    expect(t.clips[0]).toMatchObject({ kind: 'subtitle', text: 'hola', start: 5 });
+    expect(t.subStyle).toBeDefined();
+  });
+  it('nueva pista de subtítulos: entre las de video y las de audio', () => {
+    const r = E.withNewTrack(base(), 'subtitle');
+    expect(r.p.tracks.map((t) => t.kind)).toEqual(['video', 'subtitle', 'audio']);
+    expect(VM.findTrack(r.p, r.id)!.name).toBe('Subtítulos');
   });
 });

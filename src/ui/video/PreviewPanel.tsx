@@ -213,7 +213,7 @@ export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit,
   // la manija solo sale si el clip se ve en el instante actual (un booleano: no repinta en cada fotograma)
   const activeNow = useSyncExternalStore(
     engine.subscribeTime,
-    () => (loc && loc.clip.kind !== 'audio' ? engine.time >= loc.clip.start && engine.time < VM.effectiveEnd(loc.clip, dur) && !loc.track.hidden : false),
+    () => (loc && loc.clip.kind !== 'audio' && loc.clip.kind !== 'subtitle' ? engine.time >= loc.clip.start && engine.time < VM.effectiveEnd(loc.clip, dur) && !loc.track.hidden : false),
   );
 
   const aspectLabel = ASPECTS.find((a) => a.id === aspect)?.label ?? aspect;

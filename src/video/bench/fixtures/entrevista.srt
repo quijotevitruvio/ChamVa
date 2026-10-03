@@ -1,0 +1,32 @@
+1
+00:00:00,500 --> 00:00:02,400
+¿Qué tal, señora Peña?
+Bienvenida al programa.
+
+2
+00:00:03,000 --> 00:00:04,900
+Gracias, es un placer estar aquí…
+
+3
+00:00:05,250 --> 00:00:07,800
+Hoy hablaremos de ñandúes, pingüinos y cigüeñas.
+
+4
+00:00:08,100 --> 00:00:10,000
+—¡Cuidado! —dijo el niño—. Está muy frío.
+
+5
+00:00:10,500 --> 00:00:13,250
+Cuesta 25 € la entrada; los menores de 12 años entran gratis.
+
+6
+00:00:14,000 --> 00:00:16,125
+“Camión, canción y corazón” no riman en inglés.
+
+7
+00:00:17,000 --> 00:00:19,999
+Última frase: ¡hasta pronto, amigos y amigas!
+
+8
+00:01:02,005 --> 00:01:03,999
+Un minuto después…

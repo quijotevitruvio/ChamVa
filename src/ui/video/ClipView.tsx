@@ -25,14 +25,14 @@ interface Props {
   active: boolean;
 }
 
-const KIND_LABEL: Record<Clip['kind'], string> = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto' };
+const KIND_LABEL: Record<Clip['kind'], string> = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo' };
 
 /** Un bloque de la línea de tiempo. Memoizado: al hacer scroll o arrastrar otro clip no se repinta. */
 export const ClipView = memo(function ClipView({ clip, locked, selected, pps, end, media, strip, wave, active }: Props) {
   const left = clip.start * pps;
   const width = Math.max(2, (end - clip.start) * pps);
   const style: CSSProperties = { left, width };
-  const name = clip.kind === 'text' ? (clip.text ?? 'Texto') : (clip.name ?? media?.name ?? KIND_LABEL[clip.kind]);
+  const name = clip.kind === 'text' || clip.kind === 'subtitle' ? ((clip.text ?? '').replace(/\s*\n\s*/g, ' ') || KIND_LABEL[clip.kind]) : (clip.name ?? media?.name ?? KIND_LABEL[clip.kind]);
   const speed = clip.speed || 1;
 
   let bg: CSSProperties | undefined;
