@@ -12,10 +12,10 @@ import { Muxer as Mp4Muxer, StreamTarget as Mp4StreamTarget } from 'mp4-muxer';
 import { Muxer as WebmMuxer, StreamTarget as WebmStreamTarget } from 'webm-muxer';
 import { sequenceToProject, type SeqOverlay } from '../model/migrate';
 import { makeClip } from '../model/ops';
-import { clipFadeAlpha, clipsAt, isStill, projectDuration, sourceTimeAt, videoTracksBottomUp } from '../model/query';
+import { clipsAt, isStill, projectDuration, sourceTimeAt, videoTracksBottomUp } from '../model/query';
 import { IDENTITY_TRANSFORM, type Clip, type MediaAsset, type VideoProject } from '../model/types';
 import { BufferAudioSource, DecoderAudioSource, audioDecoderConfig } from './audioSource';
-import { buildProjectMixEntries, drawStillClip, drawVideoClip, type StillImage } from './compose';
+import { buildProjectMixEntries, composeFrame, type ComposedFrame, type StillImage } from './compose';
 import { type DemuxedFile, demux } from './demux';
 import type { ClipAudioFx } from './dsp';
 import { findAudioConfig, negotiateVideo, type AudioChoice, type VideoChoice } from './encoderConfig';
@@ -324,23 +324,29 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
       if (encodeError) throw encodeError;
       const t = i / fps;
       const { visual } = clipsAt(p, t, timelineDur);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, w, h);
+      // Fotogramas de video de las capas (decodificación asíncrona) y composición común.
       const seen = new Set<string>();
+      const got = new Map<string, ComposedFrame | null>();
       for (const { track, clip } of visual) {
-        const alpha = clipFadeAlpha(clip, t, timelineDur);
-        if (clip.kind === 'video') {
-          if (!playable(clip)) continue;
-          seen.add(track.id);
-          const cur = current.get(track.id);
-          const src = cur && cur.clip.id === clip.id ? cur.src : await openFrameSource(track.id, clip);
-          const f = await src.frameAt(sourceTimeAt(clip, t));
-          if (src instanceof ElementFrameSource) fallbackFrames++;
-          if (f) drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, clip, alpha);
-        } else {
-          drawStillClip(ctx, w, h, clip, clip.mediaId ? (images.get(clip.mediaId) ?? null) : null, alpha);
-        }
+        if (clip.kind !== 'video' || !playable(clip)) continue;
+        seen.add(track.id);
+        const cur = current.get(track.id);
+        const src = cur && cur.clip.id === clip.id ? cur.src : await openFrameSource(track.id, clip);
+        const f = await src.frameAt(sourceTimeAt(clip, t));
+        if (src instanceof ElementFrameSource) fallbackFrames++;
+        got.set(clip.id, f ? { image: f.image, width: f.width, height: f.height, rotation: f.rotation } : null);
       }
+      composeFrame(
+        ctx,
+        p,
+        t,
+        timelineDur,
+        w,
+        h,
+        fit,
+        { video: (c) => got.get(c.id) ?? null, image: (c) => (c.mediaId ? (images.get(c.mediaId) ?? null) : null) },
+        visual,
+      );
       // Cerrar los decodificadores de pistas sin clip ahora ni en el próximo segundo.
       for (const [trackId, cur] of current) {
         if (seen.has(trackId)) continue;

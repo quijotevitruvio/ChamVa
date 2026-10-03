@@ -193,6 +193,13 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
 - **Depende de:** V1 y V2.
 - **Prueba:** contador de fotogramas perdidos en reproducción de 1 min con 3 pistas (meta < 1 %);
   comparación píxel a píxel vista previa vs. exportación en 10 instantes.
+- **Hecho (V3):** `composeFrame` (compose.ts) es la única composición, usada por exportación y vista previa;
+  el audio en vivo ejecuta `ClipChain`/`MasterChain` de `dsp.ts` en AudioWorklet (`liveDsp.ts`,
+  `dsp.worklet.ts`), sin segunda implementación. Precarga y reutilización del elemento al cortar
+  (`src/ui/video/preview/preloadPlanner.ts`), reloj de audio, caché LRU de fotogramas para el scrubbing,
+  calidad Auto/Alta/Media/Baja (720/540/360 p) y fps de depuración. Banco: `/dev/preview-bench.html`.
+  Límites: clips con `inP = 0` no pueden arrancar antes del corte; en reproducción manda el elemento
+  `<video>` (no WebCodecs), así que un códec que el navegador no abra no se ve en la vista previa.
 
 ### V4 · Texto, títulos y subtítulos manuales — **sonnet, esfuerzo medio**
 

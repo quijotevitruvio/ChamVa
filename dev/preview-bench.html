@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banco de la vista previa de video</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; background: #fafafa; color: #111; }
+      canvas { width: 640px; height: 360px; background: #000; display: block; }
+      pre { background: #fff; border: 1px solid #ccc; padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Banco de la vista previa de video (solo desarrollo)</h1>
+    <p>Compara la vista previa real con la exportación real: píxeles, audio, fluidez, scrubbing y fugas. Resultados en <code>window.__pv</code>.</p>
+    <canvas id="cv"></canvas>
+    <pre id="out"></pre>
+    <script type="module" src="/src/video/bench/previewBench.ts"></script>
+  </body>
+</html>

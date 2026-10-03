@@ -3,7 +3,7 @@
 // llamadas de dibujo que V1 (drawVideoFrame / texto / imagen), para que un
 // proyecto migrado salga idéntico píxel a píxel.
 import { clipAudioFx } from '../model/effects';
-import { clipEnd, isIdentityTransform, videoTracksBottomUp } from '../model/query';
+import { clipEnd, clipFadeAlpha, clipsAt, isIdentityTransform, videoTracksBottomUp } from '../model/query';
 import type { Clip, VideoProject } from '../model/types';
 import type { MixEntry, PcmSource } from './mixer';
 import { OVERLAY_FONT, type Fit, drawVideoFrame, fitRect, overlayFontPx } from './timeline';
@@ -118,4 +118,48 @@ export function drawStillClip(ctx: CanvasRenderingContext2D, w: number, h: numbe
   if (tr.scale !== 1) ctx.scale(tr.scale, tr.scale);
   ctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
   ctx.restore();
+}
+
+/** Fotograma de video listo para dibujar (con la rotación del archivo). */
+export interface ComposedFrame {
+  image: CanvasImageSource;
+  width: number;
+  height: number;
+  rotation: number;
+}
+
+/** De dónde saca `composeFrame` las imágenes: la exportación decodifica, la vista previa usa elementos/caché. */
+export interface ComposeSources {
+  /** Fotograma del clip de video en el instante dado (null = todavía no hay: se salta la capa). */
+  video(clip: Clip): ComposedFrame | null;
+  /** Imagen de un clip de imagen (null = no cargada). */
+  image(clip: Clip): StillImage | null;
+}
+
+/**
+ * Composición de UN fotograma del proyecto en el instante t: fondo negro y, de abajo
+ * arriba, cada capa visual con encaje, transformación, opacidad y fundido. Es la ÚNICA
+ * implementación: la usan la exportación (render.ts) y la vista previa, así que lo que
+ * se ve es lo que sale. `visual` permite pasar la lista de capas ya calculada.
+ */
+export function composeFrame(
+  ctx: CanvasRenderingContext2D,
+  p: VideoProject,
+  t: number,
+  duration: number,
+  w: number,
+  h: number,
+  fit: Fit,
+  src: ComposeSources,
+  visual: { clip: Clip }[] = clipsAt(p, t, duration).visual,
+) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  for (const { clip } of visual) {
+    const alpha = clipFadeAlpha(clip, t, duration);
+    if (clip.kind === 'video') {
+      const f = src.video(clip);
+      if (f) drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, clip, alpha);
+    } else drawStillClip(ctx, w, h, clip, clip.kind === 'image' ? src.image(clip) : null, alpha);
+  }
 }

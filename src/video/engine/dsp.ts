@@ -259,6 +259,10 @@ export class ClipChain {
     this.gate = fx.gate ? new NoiseGate(sampleRate) : null;
     this.echo = fx.echo > 0 ? new Echo(sampleRate, fx.echo) : null;
   }
+  /** Cambia solo el volumen sin perder el estado de la cadena (filtros, compuerta, eco). */
+  setVolume(v: number) {
+    this.fx = { ...this.fx, volume: v };
+  }
   /** Segundos de cola que siguen sonando tras el final del clip (eco). */
   get tail(): number {
     return this.echo ? 2 : 0;

@@ -3,6 +3,7 @@ import * as VM from '../../video/model';
 import { ASPECTS, outputSize, type Aspect } from '../../video/engine/formats';
 import type { Fit } from '../../video/engine/timeline';
 import type { PreviewEngine } from './previewEngine';
+import { QUALITY_MODES, isQualityMode } from './preview/quality';
 import { formatClock } from './timelineMath';
 import * as TM from './transformMath';
 
@@ -25,6 +26,45 @@ export function TimeLabel({ engine, duration }: { engine: PreviewEngine; duratio
     <span className="vx-time" aria-live="off">
       {formatClock(t)} <span className="vx-time-total">/ {formatClock(duration)}</span>
     </span>
+  );
+}
+
+/** Calidad de la vista previa, aviso suave de «vista previa reducida» y fps reales (modo depuración). */
+export function PreviewQuality({ engine }: { engine: PreviewEngine }) {
+  useSyncExternalStore(engine.subscribeStats, engine.getStatsVersion);
+  const m = engine.metrics();
+  return (
+    <div className="vx-pvbar">
+      <label className="vx-pvq" title="Resolución de la vista previa (la exportación siempre sale en la calidad elegida al exportar)">
+        Calidad de vista previa
+        <select value={engine.qualityMode} onChange={(e) => isQualityMode(e.target.value) && engine.setQualityMode(e.target.value)} aria-label="Calidad de vista previa">
+          {QUALITY_MODES.map((q) => (
+            <option key={q.id} value={q.id}>
+              {q.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {m.reduced && (
+        <span className="vx-pvnote" role="status">
+          Vista previa reducida ({m.shortSide}p): tu equipo no llega a la fluidez completa. La exportación no se ve afectada.
+        </span>
+      )}
+      <label className="vx-pvdbg" title="Mostrar fotogramas por segundo reales de la vista previa">
+        <input type="checkbox" checked={engine.debug} onChange={(e) => engine.setDebug(e.target.checked)} /> fps
+      </label>
+    </div>
+  );
+}
+
+function DebugOverlay({ engine }: { engine: PreviewEngine }) {
+  useSyncExternalStore(engine.subscribeStats, engine.getStatsVersion);
+  if (!engine.debug) return null;
+  const m = engine.metrics();
+  return (
+    <div className="vx-dbg" aria-hidden="true">
+      {m.fps.toFixed(0)} fps · {m.workMs.toFixed(1)} ms · perdidos {m.dropped} · {m.shortSide}p · caché {m.cachedFrames}
+    </div>
   );
 }
 
@@ -183,9 +223,11 @@ export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit,
         <div className="vx-frame" style={{ width: box.w, height: box.h }} aria-label={`Vista previa, ${aspectLabel}`}>
           <canvas ref={canvas} className="vx-canvas" aria-hidden="true" />
           {loc && activeNow && !loc.track.locked && <TransformBox engine={engine} clip={loc.clip} frame={box} fit={fit} commit={commit} endGroup={endGroup} />}
+          <DebugOverlay engine={engine} />
           {empty && <p className="vx-empty">Importa video, imágenes o audio para empezar.</p>}
         </div>
       </div>
+      <PreviewQuality engine={engine} />
     </div>
   );
 }

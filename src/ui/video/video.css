@@ -124,6 +124,12 @@
 .vx-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: var(--canvas-bg); border-radius: 8px; overflow: hidden; }
 .vx-frame { position: relative; flex: none; background: #000; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35); touch-action: none; }
 .vx-canvas { width: 100%; height: 100%; display: block; }
+.vx-pvbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); min-height: 24px; }
+.vx-pvq { display: flex; align-items: center; gap: 6px; }
+.vx-pvq select { font-size: 12px; padding: 2px 4px; }
+.vx-pvnote { color: var(--muted); background: rgba(255, 170, 0, 0.14); border-radius: 10px; padding: 2px 8px; }
+.vx-pvdbg { display: flex; align-items: center; gap: 4px; margin-left: auto; cursor: pointer; }
+.vx-dbg { position: absolute; top: 6px; left: 6px; font: 11px/1.3 ui-monospace, monospace; color: #bff; background: rgba(0, 0, 0, 0.6); padding: 2px 6px; border-radius: 4px; pointer-events: none; font-variant-numeric: tabular-nums; }
 .vx-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; margin: 0; color: #ddd; font-size: 13px; pointer-events: none; }
 .vx-tbox { position: absolute; border: 1.5px solid var(--accent); box-sizing: border-box; cursor: move; touch-action: none; }
 .vx-tbox:focus-visible { outline-offset: 3px; }
@@ -290,3 +296,4 @@
 @media (prefers-reduced-motion: reduce) {
   .vx-progress-fill { transition: none; }
 }
+
