@@ -57,3 +57,33 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Inicio en «modo pestaña»: franja con la vuelta al diseño actual */
+.home-tabbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+@media (max-width: 640px) {
+  .home-tabbar {
+    position: static;
+    transform: none;
+    border-radius: 12px;
+    margin-bottom: 8px;
+  }
+}

@@ -57,7 +57,11 @@ import { SaveIndicator } from './ui/SaveIndicator';
 import './ui/topbar.css';
 import { restoreUndoFor, startUndoPersistence, type UndoStoreApi } from './io/undoStore';
 import { loadTabs } from './io/tabsStore';
-import { readDesignMeta } from './editor/state/designIdentity';
+import { readDesignMeta, type DesignMeta } from './editor/state/designIdentity';
+import { isBlankSession, park } from './editor/state/sessions';
+import { canAddTab, neighborTab, tabLabel } from './editor/state/tabsNav';
+import { TabStrip } from './ui/TabStrip';
+import { CloseTabDialog } from './ui/CloseTabDialog';
 import { checkBackupReminder } from './io/backup';
 import { SizeMenu } from './ui/SizeMenu';
 import { sizeLabel } from './ui/sizeFieldsLogic';
@@ -206,6 +210,10 @@ export default function App() {
     else setShowPresent(true);
   };
   const [showHome, setShowHome] = useState(true);
+  // Inicio abierto desde «+» / «Nuevo diseño»: lo que se cree o abra va a una pestaña NUEVA.
+  const [homeTab, setHomeTab] = useState(false);
+  // Cerrar pestaña que no se pudo guardar: diálogo «Cerrar de todos modos / Cancelar».
+  const [closeAsk, setCloseAsk] = useState<{ id: string; name: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showDonate, setShowDonate] = useState<string | false>(false);
   const [showRequest, setShowRequest] = useState<LicenseType | null>(null);
@@ -343,19 +351,76 @@ export default function App() {
     setCustomW(String(d.width));
     setCustomH(String(d.height));
   };
+  // Diseño en blanco: en la pestaña activa si está vacía y el Inicio no vino de «+»; si no, en una nueva.
+  const startBlankDesign = (size?: Parameters<typeof newDesign>[0]): boolean => {
+    const st = useEditor.getState();
+    if (homeTab || !isBlankSession(park(st))) {
+      if (st.newTab(size) === null) {
+        tabLimitToast();
+        return false;
+      }
+    } else newDesign(size); // lleva unit/dpi opcionales
+    return true;
+  };
+  const closeHome = () => {
+    setShowHome(false);
+    setHomeTab(false);
+  };
+  const openHome = (tab: boolean) => {
+    setHomeTab(tab);
+    setShowHome(true);
+  };
+  const tabLimitToast = () =>
+    toast('Hay 8 pestañas abiertas. Cierra alguna para abrir otro diseño.', 'info');
+  // Abre unas páginas en una pestaña: si el diseño ya está abierto solo se cambia a ella
+  // (nunca dos pestañas con el mismo designId); `replaceIfOpen` además le pone ESTE contenido
+  // (restaurar una copia o abrir un archivo). Devuelve false si no se abrió (límite de pestañas).
+  const openInTab = (pgs: Doc[], index: number, meta: DesignMeta, replaceIfOpen = false): boolean => {
+    const r = useEditor.getState().openDesignInTab(pgs, index, meta);
+    if (r.status === 'limit') {
+      tabLimitToast();
+      return false;
+    }
+    if (r.status === 'invalid') return false;
+    if (r.status === 'opened' || r.status === 'reused') void restoreUndoFor(UNDO_API); // deshacer que sobrevive
+    else if (replaceIfOpen) useEditor.getState().loadPages(pgs, index, meta);
+    return true;
+  };
   const openDesign = async (d: SavedDesign) => {
     const p = await rehydrateDocs(d.pages);
     // Se abre con SU id (no el de la primera página): reordenar no lo duplica.
-    loadPages(p, d.pageIndex, { designId: d.id, name: d.designName });
-    void restoreUndoFor(UNDO_API); // deshacer que sobrevive: mismos pasos del diseño
-    setSizeInputs(p[d.pageIndex] ?? p[0]);
-    setShowHome(false);
+    if (!openInTab(p, d.pageIndex, { designId: d.id, name: d.designName })) return;
+    const cur = useEditor.getState().doc;
+    setSizeInputs(cur);
+    closeHome();
   };
   const restoreBackup = async (b: Backup) => {
-    loadPages(await rehydrateDocs(b.pages), b.pageIndex, readDesignMeta(b));
+    if (!openInTab(await rehydrateDocs(b.pages), b.pageIndex, readDesignMeta(b), true)) return;
     setShowSettings(false);
-    setShowHome(false);
+    closeHome();
     toast('Copia restaurada', 'success');
+  };
+
+  const requestCloseTab = async (id: string) => {
+    const st = useEditor.getState();
+    const was = st.tabs.length;
+    const name =
+      id === st.activeTabId ? tabLabel(st.designName, st.pages[0]?.name) : tabLabel(st.parked[id]?.designName, st.parked[id]?.pages[0]?.name);
+    const ok = await st.closeTab(id);
+    if (!ok) setCloseAsk({ id, name });
+    else if (was === 1) openHome(false); // era la última: queda un diseño en blanco y se muestra Inicio
+  };
+  const forceCloseTab = async () => {
+    const ask = closeAsk;
+    setCloseAsk(null);
+    if (!ask) return;
+    const was = useEditor.getState().tabs.length;
+    await useEditor.getState().closeTab(ask.id, { force: true });
+    if (was === 1) openHome(false);
+  };
+  const newTabHome = () => {
+    if (!canAddTab(useEditor.getState().tabs.length)) return tabLimitToast();
+    openHome(true);
   };
 
   // Recorrido de bienvenida: solo la primera vez, ya dentro del editor.
@@ -366,6 +431,10 @@ export default function App() {
   }, [showHome]);
 
   // ---- atajos globales ----
+  const newTabHomeRef = useRef(() => {});
+  const requestCloseTabRef = useRef(async (_id: string) => {});
+  newTabHomeRef.current = newTabHome;
+  requestCloseTabRef.current = requestCloseTab;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Ctrl+F: buscar y reemplazar texto (también desde un campo de texto).
@@ -389,6 +458,16 @@ export default function App() {
       if (act === 'palette') {
         e.preventDefault();
         setShowPalette((v) => !v);
+      } else if (act === 'newTab') {
+        e.preventDefault();
+        newTabHomeRef.current();
+      } else if (act === 'closeTab') {
+        e.preventDefault();
+        void requestCloseTabRef.current(st.activeTabId);
+      } else if (act === 'nextTab' || act === 'prevTab') {
+        e.preventDefault();
+        const to = neighborTab(st.tabs, st.activeTabId, act === 'nextTab' ? 1 : -1);
+        if (to) st.switchTab(to);
       } else if (act === 'pageView') {
         e.preventDefault();
         st.togglePageView();
@@ -544,8 +623,8 @@ export default function App() {
         const opened = await invoke<[string, string] | null>('opened_file');
         if (!opened) return;
         const project = parseProject(opened[1]);
-        loadPages(project.pages, project.pageIndex, readDesignMeta(project));
-        setShowHome(false);
+        if (!openInTab(project.pages, project.pageIndex, readDesignMeta(project), true)) return;
+        closeHome();
         toast(`Proyecto "${opened[0]}" abierto`, 'success');
       } catch {
         /* sin archivo inicial */
@@ -823,13 +902,14 @@ export default function App() {
     if (!file) return;
     try {
       const img = await loadImageFile(file);
+      if (!startBlankDesign()) return; // límite de pestañas: ya se avisó
       useEditor.getState().newDesignFromImage(img);
       useEditor.getState().setZoom(1);
       const d = useEditor.getState().doc;
       setCustomW(String(d.width));
       setCustomH(String(d.height));
       setShowVideo(false);
-      setShowHome(false);
+      closeHome();
       if (Math.max(img.naturalWidth, img.naturalHeight) > 8000)
         toast('La foto es muy grande: el lienzo se ajustó a 8000 px', 'info');
     } catch (err) {
@@ -1137,8 +1217,8 @@ export default function App() {
     if (!file) return;
     try {
       const project = await readProjectFile(file);
-      loadPages(project.pages, project.pageIndex, readDesignMeta(project));
-      setSizeInputs(project.pages[project.pageIndex] ?? project.pages[0]);
+      if (!openInTab(project.pages, project.pageIndex, readDesignMeta(project), true)) return;
+      setSizeInputs(useEditor.getState().doc);
     } catch (e) {
       toast('No se pudo abrir el proyecto: ' + (e as Error).message, 'error');
     }
@@ -1175,7 +1255,7 @@ export default function App() {
       c('Archivo', 'snapshots', 'Versiones del diseño…', () => setShowSnapshots(true), { keywords: 'instantaneas guardar version restaurar historial' }),
       c('Archivo', 'auto-versions', 'Versiones automáticas…', () => setShowAutoVersions(true), { keywords: 'autoguardado copias recuperar restaurar historial tiempo' }),
       c('Archivo', 'save-template', 'Guardar como plantilla', onSaveTemplate, { keywords: 'plantillas reutilizar' }),
-      c('Archivo', 'home', 'Ir al inicio', () => setShowHome(true), { keywords: 'nuevo diseño tamaño pantalla principal' }),
+      c('Archivo', 'home', 'Ir al inicio', () => openHome(false), { keywords: 'nuevo diseño tamaño pantalla principal' }),
       c('Editar', 'undo', 'Deshacer', undo, { shortcut: getShortcut('undo') }),
       c('Editar', 'redo', 'Rehacer', redo, { shortcut: getShortcut('redo') }),
       c('Editar', 'history', 'Historial de cambios', () => setShowHistory(true), { keywords: 'deshacer pasos volver' }),
@@ -1233,8 +1313,10 @@ export default function App() {
         <UpdateBanner update={update} pct={updatePct} onInstall={installUpdate} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
+      <TabStrip onNew={newTabHome} onClose={(id) => void requestCloseTab(id)} />
+
       <header className="toolbar">
-        <span className="brand" style={{ cursor: 'pointer' }} onClick={() => setShowHome(true)} title="Inicio">
+        <span className="brand" style={{ cursor: 'pointer' }} onClick={() => openHome(false)} title="Inicio">
           <span className="lg-c">C</span>ham<span className="lg-v">V</span>
           <span className="lg-a">a</span>
         </span>
@@ -1495,7 +1577,7 @@ export default function App() {
           onImportTemplates={onImportTemplates}
           onApplyTemplate={onApplyTemplate}
           onOpenDesign={openDesign}
-          onGoHome={() => setShowHome(true)}
+          onGoHome={() => openHome(true)}
         />
 
         {showFilters && selected && selected.type === 'image' && (
@@ -1618,6 +1700,7 @@ export default function App() {
         </div>
       )}
 
+      {closeAsk && <CloseTabDialog name={closeAsk.name} onForce={() => void forceCloseTab()} onCancel={() => setCloseAsk(null)} />}
       {showSnapshots && <SnapshotsDialog onClose={() => setShowSnapshots(false)} />}
       {showAutoVersions && <AutoVersionsDialog onClose={() => setShowAutoVersions(false)} />}
 
@@ -1625,19 +1708,21 @@ export default function App() {
         <HomeScreen
           designs={designs}
           hasLicense={!!license}
+          mode={homeTab ? 'tab' : 'replace'}
+          onCancelTab={closeHome}
           onNewDesign={(size) => {
-            newDesign(size); // lleva unit/dpi opcionales
+            if (!startBlankDesign(size)) return; // límite de pestañas: ya se avisó
             setCustomW(String(size.width));
             setCustomH(String(size.height));
-            setShowHome(false);
+            closeHome();
           }}
           onEditPhoto={startFromPhoto}
           onContinue={() => {
             setShowVideo(false);
-            setShowHome(false);
+            closeHome();
           }}
           onEditVideo={() => {
-            setShowHome(false);
+            closeHome();
             setShowVideo(true);
           }}
           onOpenDesign={openDesign}

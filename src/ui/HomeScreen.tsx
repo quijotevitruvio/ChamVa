@@ -1,6 +1,7 @@
 import { SupportCorner } from './SupportCorner';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './homephoto.css';
+import './projects.css';
 import { APP_VERSION } from '../branding';
 import type { SavedDesign } from '../io/designs';
 import { PURPOSES } from '../editor/core/purposes';
@@ -12,6 +13,9 @@ import { DEFAULT_DPI, type Unit } from '../editor/core/units';
 import type { SizeValue } from './sizeFieldsLogic';
 
 interface Props {
+  // 'tab': Inicio abierto desde «+»; crear o abrir algo lo pone en una pestaña NUEVA y se puede volver.
+  mode?: 'replace' | 'tab';
+  onCancelTab?: () => void;
   designs: SavedDesign[];
   hasLicense: boolean;
   onNewDesign: (size: { width: number; height: number; name: string; unit?: Unit; dpi?: number }) => void;
@@ -30,6 +34,8 @@ const GROUPS = ['Redes sociales', 'Impresión', 'Trabajo'] as const;
 // Pantalla de inicio: "¿Qué vas a crear?" con tamaños por caso de uso,
 // diseños recientes y acceso al editor de video.
 export function HomeScreen({
+  mode = 'replace',
+  onCancelTab,
   designs,
   hasLicense,
   onNewDesign,
@@ -42,10 +48,25 @@ export function HomeScreen({
 }: Props) {
   const photoInput = useRef<HTMLInputElement>(null);
   const [group, setGroup] = useState<(typeof GROUPS)[number]>('Redes sociales');
+  const tabMode = mode === 'tab';
+  useEffect(() => {
+    if (!tabMode || !onCancelTab) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCancelTab();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tabMode, onCancelTab]);
   const [sv, setSv] = useState<SizeValue>({ width: 1080, height: 1080, unit: 'px', dpi: DEFAULT_DPI });
 
   return (
     <div className="home-overlay">
+      {tabMode && (
+        <div className="home-tabbar" role="status">
+          <span>{t('Nueva pestaña: lo que elijas se abre aparte y no cambia el diseño actual.')}</span>
+          <button className="link-btn" onClick={onCancelTab}>
+            ← {t('Volver al diseño')}
+          </button>
+        </div>
+      )}
       <div className="home-brand">
         <span className="lg-c">C</span>ham<span className="lg-v">V</span>
         <span className="lg-a">a</span>

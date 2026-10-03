@@ -1,0 +1,157 @@
+/* ===== Tira de pestañas de documentos (sobre la barra superior) ===== */
+.tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 12px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 32px;
+}
+.tabstrip-list {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.tabstrip-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 200px;
+  min-width: 96px;
+  padding: 5px 6px 5px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  user-select: none;
+}
+.tabstrip-tab:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.tabstrip-tab.active {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+  font-weight: 600;
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.tabstrip-tab:focus-visible {
+  outline: 2px solid var(--c-cyan);
+  outline-offset: -2px;
+}
+.tabstrip-tab.dragging {
+  opacity: 0.45;
+}
+.tabstrip-tab.over {
+  box-shadow: inset 2px 0 0 var(--c-cyan);
+}
+.tabstrip-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabstrip-mark {
+  font-size: 9px;
+  line-height: 1;
+}
+.tabstrip-mark.busy {
+  color: var(--c-cyan-text);
+}
+.tabstrip-mark.error {
+  color: var(--danger);
+}
+.tabstrip-x,
+.tabstrip-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+.tabstrip-x {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  padding: 0;
+}
+.tabstrip-x:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.tabstrip-new {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 2px;
+  font-size: 18px;
+  line-height: 1;
+}
+.tabstrip-new:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.tabstrip-new:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tabstrip-new:focus-visible,
+.tabstrip-x:focus-visible {
+  outline: 2px solid var(--c-cyan);
+}
+
+/* Una sola pestaña: baja y discreta (no estorba, pero «+» sigue a mano) */
+.tabstrip.single {
+  min-height: 24px;
+  padding-top: 2px;
+}
+.tabstrip.single .tabstrip-tab {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  font-size: 12px;
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+  font-weight: 500;
+}
+.tabstrip.single .tabstrip-x {
+  opacity: 0.55;
+}
+.tabstrip.single .tabstrip-new {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 0;
+}
+
+html[data-focus] .tabstrip {
+  display: none;
+}
+@media (max-width: 640px) {
+  .tabstrip {
+    padding-inline: 8px;
+  }
+  .tabstrip-tab {
+    min-width: 84px;
+    max-width: 140px;
+  }
+  .tabstrip-x {
+    width: 26px;
+    height: 26px;
+  }
+}
