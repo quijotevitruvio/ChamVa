@@ -7,19 +7,24 @@ import {
 import { downloadBlob } from '../io/export';
 import { canUseWebCodecs, probeExportSupport, type ExportSupport } from '../video/engine/encoderConfig';
 import { ASPECTS, QUALITIES, lowerQuality, outputSize, type Aspect, type Container, type Quality } from '../video/engine/formats';
-import { ExportUnsupportedError, renderVideo, type RenderClip } from '../video/engine/render';
+import { ExportUnsupportedError, renderProject } from '../video/engine/render';
 import { openSink } from '../video/engine/sink';
 import { drawOverlays as drawEngineOverlays, drawVideoFrame, type Fit } from '../video/engine/timeline';
 import { MIME, deliver } from '../video/exportActions';
+import * as VM from '../video/model';
+import { EFFECTS } from '../video/model/effects';
 import { idbGet, idbSet, idbDelete } from '../io/idb';
 import { toast } from './toast';
 import { t } from '../i18n';
 
 type ClipType = 'video' | 'audio';
 
+// Vista de un clip para esta interfaz (1 pista de video + 1 de audio). Los datos
+// viven en el modelo v2 (src/video/model) y se leen/escriben a través de él.
 interface Clip {
   id: string;
   type: ClipType;
+  mediaId: string;
   url: string;
   name: string;
   duration: number;
@@ -31,27 +36,27 @@ interface Clip {
   fadeIn: number; // s de fundido de entrada (desde negro)
   fadeOut: number; // s de fundido de salida (a negro)
   thumb?: string; // miniatura (primer fotograma) para clips de video
-  blob?: Blob; // archivo original: permite guardar/recuperar el proyecto
 }
 
-// Filtros de voz / limpieza / efectos (Web Audio).
-// gate = activa una compuerta de ruido (silencia por debajo de un umbral).
-const EFFECTS: {
-  id: string;
-  label: string;
-  hp: number;
-  lp: number;
-  echo: number;
-  gate?: boolean;
-}[] = [
-  { id: 'none', label: 'Ninguno', hp: 20, lp: 20000, echo: 0 },
-  { id: 'clean', label: 'Limpiar voz', hp: 120, lp: 7000, echo: 0 },
-  { id: 'denoise', label: 'Reducir ruido', hp: 100, lp: 9000, echo: 0, gate: true },
-  { id: 'phone', label: 'Teléfono / Radio', hp: 500, lp: 3000, echo: 0 },
-  { id: 'deep', label: 'Voz grave', hp: 20, lp: 1200, echo: 0 },
-  { id: 'bright', label: 'Voz nítida', hp: 200, lp: 20000, echo: 0 },
-  { id: 'echo', label: 'Eco', hp: 20, lp: 20000, echo: 0.4 },
-];
+const idbIo: VM.KvIo = { get: idbGet, set: idbSet, delete: idbDelete };
+
+/** Pista principal de video: la de abajo (la última de video). */
+function mainVideoTrack(p: VM.VideoProject): VM.Track | undefined {
+  for (let i = p.tracks.length - 1; i >= 0; i--) if (p.tracks[i].kind === 'video') return p.tracks[i];
+  return undefined;
+}
+const mainAudioTrack = (p: VM.VideoProject) => p.tracks.find((t) => t.kind === 'audio');
+
+/** Garantiza la pista principal (con imán, como la secuencia de V1) y devuelve su id. */
+function ensureMain(p: VM.VideoProject, kind: ClipType): { p: VM.VideoProject; id: string } {
+  const have = kind === 'video' ? mainVideoTrack(p) : mainAudioTrack(p);
+  if (have) return { p, id: have.id };
+  const id = VM.uid();
+  let lastVideo = -1;
+  p.tracks.forEach((t, i) => t.kind === 'video' && (lastVideo = i));
+  const index = kind === 'video' ? lastVideo + 1 : p.tracks.length;
+  return { p: VM.addTrack(p, kind, { id, magnet: true, index, name: kind === 'video' ? 'Video' : 'Audio' }), id };
+}
 
 // Nodos de una cadena de efectos por pista (video o audio).
 interface Chain {
@@ -75,14 +80,10 @@ interface Overlay {
   xf: number; // centro X (0..1)
   yf: number; // centro Y (0..1)
   start: number; // s (aparece)
-  end: number; // s (desaparece)
-  blob?: Blob; // imagen original (persistencia)
+  end: number; // s (desaparece); 9999 = hasta el final
 }
 
-const uid = () =>
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `clip-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+const uid = VM.uid;
 
 function getDuration(url: string, type: ClipType): Promise<number> {
   return new Promise((resolve) => {
@@ -192,7 +193,92 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
 
   const micRec = useRef<MediaRecorder | null>(null);
 
-  const [clips, setClips] = useState<Clip[]>([]);
+  // ---- proyecto (modelo v2) + historial de deshacer ----
+  const [hist, setHist] = useState(() => VM.createHistory(VM.createProject()));
+  const histRef = useRef(hist);
+  histRef.current = hist;
+  const project = hist.present;
+  /** Cambio con paso de deshacer. `group`: los cambios seguidos del mismo grupo (arrastre, deslizador) son UN paso. */
+  const commitP = (fn: (p: VM.VideoProject) => VM.VideoProject, group?: string) => setHist((h) => VM.commit(h, fn(h.present), { group }));
+  const endGroup = () => setHist((h) => VM.endGroup(h));
+  const undoV = () => setHist((h) => VM.undo(h));
+  const redoV = () => setHist((h) => VM.redo(h));
+  /** Datos de un medio que llegan tarde (miniatura): en todas las instantáneas, sin paso. */
+  const patchMediaEverywhere = (id: string, m: Partial<VM.MediaAsset>) => setHist((h) => VM.mapHistory(h, (p) => VM.updateMedia(p, id, m)));
+  const storeRef = useRef<VM.VideoProjectStore | null>(null);
+  storeRef.current ??= new VM.VideoProjectStore(idbIo);
+  // URL de objeto e imágenes por medio (fuera del modelo: no se guardan ni se deshacen).
+  const urlCache = useRef(new Map<string, string>());
+  const imgCache = useRef(new Map<string, HTMLImageElement>());
+  const [, bumpImages] = useState(0);
+  const urlOf = (m: VM.MediaAsset | undefined): string => {
+    if (!m?.blob) return '';
+    let u = urlCache.current.get(m.id);
+    if (!u) {
+      u = URL.createObjectURL(m.blob);
+      urlCache.current.set(m.id, u);
+    }
+    return u;
+  };
+  const imageOf = (m: VM.MediaAsset | undefined): HTMLImageElement | null => {
+    if (!m?.blob) return null;
+    let img = imgCache.current.get(m.id);
+    if (!img) {
+      img = new window.Image();
+      img.onload = () => bumpImages((n) => n + 1);
+      img.src = urlOf(m);
+      imgCache.current.set(m.id, img);
+    }
+    return img;
+  };
+
+  const vTrack = mainVideoTrack(project);
+  const aTrack = mainAudioTrack(project);
+  const toView = (c: VM.Clip, type: ClipType): Clip => {
+    const m = c.mediaId ? project.media[c.mediaId] : undefined;
+    return {
+      id: c.id,
+      type,
+      mediaId: c.mediaId ?? '',
+      url: urlOf(m),
+      name: c.name ?? m?.name ?? '',
+      duration: m?.duration ?? 0,
+      inP: c.inP,
+      outP: c.outP,
+      effect: c.effect,
+      volume: c.volume,
+      speed: c.speed,
+      fadeIn: c.fadeIn,
+      fadeOut: c.fadeOut,
+      thumb: m?.thumb,
+    };
+  };
+  const clips: Clip[] = [
+    ...(vTrack?.clips.filter((c) => c.kind === 'video' && !project.media[c.mediaId ?? '']?.missing).map((c) => toView(c, 'video')) ?? []),
+    ...(aTrack?.clips.filter((c) => !project.media[c.mediaId ?? '']?.missing).map((c) => toView(c, 'audio')) ?? []),
+  ];
+  // Capas = clips de texto/imagen de las demás pistas de video, de abajo arriba (orden de dibujo).
+  const overlays: Overlay[] = [];
+  for (const { track } of VM.videoTracksBottomUp(project)) {
+    if (track === vTrack) continue;
+    for (const c of track.clips) {
+      if (c.kind !== 'text' && c.kind !== 'image') continue;
+      const m = c.mediaId ? project.media[c.mediaId] : undefined;
+      overlays.push({
+        id: c.id,
+        kind: c.kind,
+        text: c.text ?? '',
+        color: c.color ?? '#ffffff',
+        size: c.size ?? (c.kind === 'text' ? 60 : 0.3),
+        src: c.kind === 'image' ? urlOf(m) || undefined : undefined,
+        img: c.kind === 'image' ? imageOf(m) : undefined,
+        xf: c.transform.x,
+        yf: c.transform.y,
+        start: c.start,
+        end: c.toEnd ? 9999 : VM.clipEnd(c),
+      });
+    }
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportRes, setExportRes] = useState<Quality>(720); // lado corto en px (720 / 1080 / 4K)
@@ -207,13 +293,12 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     probeExportSupport().then(setSupport).catch(() => setSupport(null));
   }, []);
   const [recording, setRecording] = useState(false);
-  const [waveforms, setWaveforms] = useState<Record<string, number[]>>({});
-  const [eq, setEqState] = useState({ low: 0, mid: 0, high: 0 });
-  const [normalize, setNormState] = useState(false);
+  const [waveforms, setWaveforms] = useState<Record<string, number[]>>({}); // por id de medio
+  const eq = project.eq;
+  const normalize = project.normalize;
 
   // Fase B: capas (texto/imagen) superpuestas sobre el video.
   const overlayFileRef = useRef<HTMLInputElement>(null);
-  const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [selOverlay, setSelOverlay] = useState<string | null>(null);
 
   // Construye una cadena de efectos: src → hp → lp → gate → vol → mezcla (+ eco).
@@ -390,13 +475,25 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const selected = clips.find((c) => c.id === selectedId) ?? null;
   const maxDur = Math.max(1, ...clips.map((c) => c.duration));
 
-  // Línea de tiempo global: cada clip de video ocupa su duración real (recorte/velocidad).
-  const segments: { clip: Clip; start: number; end: number; dur: number }[] = [];
-  for (const c of videoClips) {
-    const start = segments.length ? segments[segments.length - 1].end : 0;
-    const dur = Math.max(0.01, (c.outP - c.inP) / (c.speed ?? 1));
-    segments.push({ clip: c, start, end: start + dur, dur });
-  }
+  // Tras deshacer/rehacer, la vista previa (Web Audio) vuelve a leer la EQ, «Normalizar»
+  // y el efecto/volumen del clip seleccionado (antes solo se ponían al tocar el control).
+  useEffect(() => {
+    if (!acRef.current) return;
+    if (eqLowRef.current) eqLowRef.current.gain.value = eq.low;
+    if (eqMidRef.current) eqMidRef.current.gain.value = eq.mid;
+    if (eqHighRef.current) eqHighRef.current.gain.value = eq.high;
+    setNormalize(normalize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eq.low, eq.mid, eq.high, normalize]);
+  useEffect(() => {
+    if (acRef.current && selected) applyEffect(selected);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, selected?.effect, selected?.volume]);
+
+  // Línea de tiempo global: la del modelo (pista principal con imán = secuencia sin huecos).
+  const segments: { clip: Clip; start: number; end: number; dur: number }[] = (vTrack?.clips ?? [])
+    .filter((c) => c.kind === 'video' && !project.media[c.mediaId ?? '']?.missing)
+    .map((c) => ({ clip: toView(c, 'video'), start: c.start, end: VM.clipEnd(c), dur: VM.clipDuration(c) }));
   const totalTime = segments.length ? segments[segments.length - 1].end : 0;
   const [playhead, setPlayhead] = useState(0); // posición del cabezal (s globales)
   const scrubRef = useRef<HTMLDivElement>(null);
@@ -425,10 +522,10 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     }
     if (td.edge === 'in') {
       const inP = Math.max(0, Math.min(srcTime, td.outP0 - 0.1));
-      patch(td.clipId, { inP });
+      patch(td.clipId, { inP }, 'trim:' + td.clipId);
     } else {
       const outP = Math.max(td.inP0 + 0.1, Math.min(srcTime, td.duration));
-      patch(td.clipId, { outP });
+      patch(td.clipId, { outP }, 'trim:' + td.clipId);
     }
   };
 
@@ -470,84 +567,78 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [tlZoom, setTlZoom] = useState(1);
 
   // Atajos: espacio = play/pausa · ←/→ = fotograma a fotograma · S = dividir ·
-  // Supr = borrar clip. (Se re-registra en cada render para leer estado fresco.)
+  // Supr = borrar clip · Ctrl+Z = deshacer · Ctrl+Shift+Z / Ctrl+Y = rehacer.
+  // En fase de CAPTURA y sin propagar: el editor de diseño (App) escucha las mismas
+  // teclas en window y, si no, deshacía/borraba en el diseño que queda detrás.
+  // (Se re-registra en cada render para leer estado fresco.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       const v = videoRef.current;
-      if (e.code === 'Space') {
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      const handled = () => {
         e.preventDefault();
+        e.stopPropagation();
+      };
+      if (mod && k === 'z' && !e.shiftKey) {
+        handled();
+        undoV();
+      } else if (mod && ((k === 'z' && e.shiftKey) || k === 'y')) {
+        handled();
+        redoV();
+      } else if (e.code === 'Space') {
+        handled();
         if (!v) return;
         if (v.paused) v.play().catch(() => {});
         else v.pause();
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        e.preventDefault();
+        handled();
         const step = e.shiftKey ? 1 : 1 / 30;
         seek(playhead + (e.key === 'ArrowRight' ? step : -step));
-      } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
+      } else if (k === 's' && !mod) {
+        handled();
         splitSelected();
       } else if (e.key === 'Delete' && selectedId) {
-        e.preventDefault();
+        handled();
         removeClip(selectedId);
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   });
 
   useEffect(() => {
+    const urls = urlCache.current;
     return () => {
-      clips.forEach((c) => URL.revokeObjectURL(c.url));
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      urls.clear();
       if (gateRaf.current) cancelAnimationFrame(gateRaf.current);
       acRef.current?.close().catch(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persistencia del proyecto de video (clips, capas, EQ) en IndexedDB: antes
-  // se perdía todo al cerrar el editor. Los archivos van como Blob.
-  const VIDEO_KEY = 'videoProject';
+  // Persistencia del proyecto de video en IndexedDB (clave `videoProject`, modelo v2).
+  // Un guardado de V1 se migra al cargar; el original se respalda antes del primer
+  // guardado y se retira solo cuando el v2 se relee bien (src/video/model/storage.ts).
   const restored = useRef(false);
   useEffect(() => {
     (async () => {
       try {
-        const saved = await idbGet<{
-          clips: Clip[];
-          overlays: Overlay[];
-          eq: { low: number; mid: number; high: number };
-          normalize: boolean;
-        }>(VIDEO_KEY);
-        if (saved && (saved.clips?.length || saved.overlays?.length)) {
-          const restoredClips = (saved.clips ?? [])
-            .filter((c) => c.blob)
-            .map((c) => ({ ...c, url: URL.createObjectURL(c.blob!) }));
-          const restoredOverlays: Overlay[] = [];
-          for (const o of saved.overlays ?? []) {
-            if (o.kind === 'image' && o.blob) {
-              const src = URL.createObjectURL(o.blob);
-              const img = new window.Image();
-              img.src = src;
-              await new Promise((r) => {
-                img.onload = r;
-                img.onerror = r;
-              });
-              restoredOverlays.push({ ...o, src, img });
-            } else restoredOverlays.push(o);
-          }
-          setClips(restoredClips);
-          setOverlays(restoredOverlays);
-          if (saved.eq) setEqState(saved.eq);
-          if (saved.normalize) setNormState(true);
-          restoredClips.forEach((c) => {
-            if (c.type === 'audio')
-              getWaveform(c.url).then(
-                (p) => p.length && setWaveforms((w) => ({ ...w, [c.id]: p })),
-              );
-          });
-          if (restoredClips.length) toast('Proyecto de video recuperado', 'info');
+        const store = storeRef.current!;
+        const res = await store.load();
+        if (res.from === 'future') toast('Este proyecto de video es de una versión más nueva de ChamVa: no se modificará.', 'error');
+        if (res.from === 1 || res.from === 'unknown' || res.fromBackup) console.info('[video] proyecto migrado a v2', res.report);
+        if (res.report.repaired.length) console.warn('[video] valores reparados al migrar:', res.report.repaired);
+        const past = await VM.loadUndo(idbIo, res.project);
+        setHist({ ...VM.createHistory(res.project), past });
+        for (const m of Object.values(res.project.media)) {
+          if (m.kind === 'audio' && m.blob)
+            getWaveform(urlOf(m)).then((p) => p.length && setWaveforms((w) => ({ ...w, [m.id]: p })));
+          if (m.kind === 'image') imageOf(m);
         }
+        if (res.project.tracks.some((t) => t.clips.length)) toast('Proyecto de video recuperado', 'info');
       } finally {
         restored.current = true;
       }
@@ -557,59 +648,52 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (!restored.current) return;
-    const id = setTimeout(() => {
-      idbSet(VIDEO_KEY, {
-        clips: clips.map((c) => ({ ...c, url: '' })),
-        overlays: overlays.map((o) => ({ ...o, img: undefined, src: undefined })),
-        eq,
-        normalize,
-      });
+    const id = setTimeout(async () => {
+      const store = storeRef.current!;
+      if (!store.writable) return;
+      if (await store.save(project)) await VM.saveUndo(idbIo, histRef.current.past, project);
     }, 2000);
     return () => clearTimeout(id);
-  }, [clips, overlays, eq, normalize]);
+  }, [project]);
 
   const newVideoProject = () => {
-    clips.forEach((c) => URL.revokeObjectURL(c.url));
-    setClips([]);
-    setOverlays([]);
+    urlCache.current.forEach((u) => URL.revokeObjectURL(u));
+    urlCache.current.clear();
+    imgCache.current.clear();
+    setHist(VM.createHistory(VM.createProject()));
     setSelectedId(null);
     setSelOverlay(null);
     setWaveforms({});
-    idbDelete(VIDEO_KEY);
+    void storeRef.current!.clear();
+  };
+
+  /** Añade un archivo como clip al final de la pista principal (un paso de deshacer). */
+  const addFileClip = (blob: Blob, name: string, duration: number, type: ClipType): { clipId: string; mediaId: string; url: string } => {
+    const mediaId = uid();
+    const clipId = uid();
+    const url = URL.createObjectURL(blob);
+    urlCache.current.set(mediaId, url);
+    commitP((p0) => {
+      let p = VM.addMedia(p0, { id: mediaId, kind: type, name, duration, blob });
+      const main = ensureMain(p, type);
+      p = main.p;
+      return VM.appendClip(p, main.id, VM.makeClip(type, { id: clipId, mediaId, name, inP: 0, outP: duration }));
+    });
+    return { clipId, mediaId, url };
   };
 
   const onImport = async (files: FileList | null, type: ClipType) => {
     if (!files) return;
     for (const file of Array.from(files)) {
-      const url = URL.createObjectURL(file);
-      const duration = await getDuration(url, type);
-      const clip: Clip = {
-        id: uid(),
-        type,
-        url,
-        name: file.name,
-        duration,
-        inP: 0,
-        outP: duration,
-        effect: 'none',
-        volume: 1,
-        speed: 1,
-        fadeIn: 0,
-        fadeOut: 0,
-        blob: file,
-      };
-      setClips((prev) => [...prev, clip]);
+      const probeUrl = URL.createObjectURL(file);
+      const duration = await getDuration(probeUrl, type);
+      URL.revokeObjectURL(probeUrl);
+      const { clipId, mediaId, url } = addFileClip(file, file.name, duration, type);
       if (type === 'video') {
-        setSelectedId(clip.id);
-        getVideoThumb(url).then(
-          (thumb) => thumb && patch(clip.id, { thumb }),
-        );
+        setSelectedId(clipId);
+        getVideoThumb(url).then((thumb) => thumb && patchMediaEverywhere(mediaId, { thumb }));
       } else {
-        getWaveform(url).then(
-          (peaks) =>
-            peaks.length &&
-            setWaveforms((w) => ({ ...w, [clip.id]: peaks })),
-        );
+        getWaveform(url).then((peaks) => peaks.length && setWaveforms((w) => ({ ...w, [mediaId]: peaks })));
       }
     }
   };
@@ -629,28 +713,25 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const patch = (id: string, p: Partial<Clip>) =>
-    setClips((prev) => prev.map((c) => (c.id === id ? { ...c, ...p } : c)));
+  /** Cambia un clip a través del modelo. `group`: deslizadores/arrastres = un solo paso de deshacer. */
+  const patch = (id: string, p: Partial<Pick<Clip, 'inP' | 'outP' | 'effect' | 'volume' | 'speed' | 'fadeIn' | 'fadeOut'>>, group?: string) =>
+    commitP((pr) => VM.updateClip(pr, id, p), group);
 
+  // El archivo NO se libera aquí: deshacer lo vuelve a necesitar.
   const removeClip = (id: string) => {
-    const c = clips.find((x) => x.id === id);
-    if (c) URL.revokeObjectURL(c.url);
-    setClips((prev) => prev.filter((x) => x.id !== id));
+    commitP((p) => VM.removeClip(p, id));
     if (selectedId === id) setSelectedId(null);
   };
 
-  // Reordena un clip antes de otro (dentro del array global; mismo tipo en la práctica).
+  // Reordena un clip antes de otro (dentro de su pista).
   const dragClipId = useRef<string | null>(null);
   const reorderClip = (fromId: string, toId: string) => {
     if (fromId === toId) return;
-    setClips((prev) => {
-      const from = prev.findIndex((c) => c.id === fromId);
-      const to = prev.findIndex((c) => c.id === toId);
-      if (from < 0 || to < 0) return prev;
-      const arr = [...prev];
-      const [moved] = arr.splice(from, 1);
-      arr.splice(to, 0, moved);
-      return arr;
+    commitP((p) => {
+      const a = VM.findClip(p, fromId);
+      const b = VM.findClip(p, toId);
+      if (!a || !b || a.track.id !== b.track.id) return p;
+      return VM.moveClipToIndex(p, fromId, b.clipIndex);
     });
   };
 
@@ -666,30 +747,12 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        const duration = await getDuration(url, 'audio');
+        const probeUrl = URL.createObjectURL(blob);
+        const duration = await getDuration(probeUrl, 'audio');
+        URL.revokeObjectURL(probeUrl);
         const n = clips.filter((c) => c.type === 'audio').length + 1;
-        const recClip: Clip = {
-          id: uid(),
-          type: 'audio',
-          url,
-          name: `Grabación ${n}`,
-          duration,
-          inP: 0,
-          outP: duration,
-          effect: 'none',
-          volume: 1,
-          speed: 1,
-          fadeIn: 0,
-          fadeOut: 0,
-          blob,
-        };
-        setClips((prev) => [...prev, recClip]);
-        getWaveform(url).then(
-          (peaks) =>
-            peaks.length &&
-            setWaveforms((w) => ({ ...w, [recClip.id]: peaks })),
-        );
+        const { mediaId, url } = addFileClip(blob, `Grabación ${n}`, duration, 'audio');
+        getWaveform(url).then((peaks) => peaks.length && setWaveforms((w) => ({ ...w, [mediaId]: peaks })));
         setRecording(false);
       };
       micRec.current = rec;
@@ -711,60 +774,76 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     const el = selected.type === 'video' ? videoRef.current : audioRef.current;
     const t = el?.currentTime ?? selected.inP + (selected.outP - selected.inP) / 2;
     if (t <= selected.inP + 0.05 || t >= selected.outP - 0.05) return;
-    const a: Clip = { ...selected, id: uid(), outP: t };
-    const b: Clip = { ...selected, id: uid(), inP: t };
-    setClips((prev) => prev.flatMap((c) => (c.id === selected.id ? [a, b] : [c])));
-    setSelectedId(a.id);
+    // tiempo del archivo → tiempo de la línea de tiempo (el modelo divide en la línea de tiempo)
+    commitP((p) => {
+      const loc = VM.findClip(p, selected.id);
+      if (!loc) return p;
+      const c = loc.clip;
+      return VM.splitClip(p, c.id, c.start + (t - c.inP) / (c.speed || 1));
+    });
   };
 
-  const addTextOverlay = () => {
-    const o: Overlay = {
-      id: uid(),
-      kind: 'text',
-      text: 'Texto',
-      color: '#ffffff',
-      size: 60,
-      xf: 0.5,
-      yf: 0.85,
-      start: 0,
-      end: 9999,
-    };
-    setOverlays((p) => [...p, o]);
-    setSelOverlay(o.id);
+  /** Cada capa nueva va en su propia pista, encima de todo (como V1: la última se dibuja encima). */
+  const addOverlayClip = (clip: VM.Clip, media?: VM.MediaAsset) => {
+    const trackId = uid();
+    commitP((p0) => {
+      let p = media ? VM.addMedia(p0, media) : p0;
+      p = VM.addTrack(p, 'video', { id: trackId, index: 0, name: clip.kind === 'text' ? 'Texto' : 'Imagen' });
+      return VM.addClip(p, trackId, clip);
+    });
+    setSelOverlay(clip.id);
   };
+
+  const addTextOverlay = () =>
+    addOverlayClip(VM.makeClip('text', { text: 'Texto', color: '#ffffff', size: 60, start: 0, outP: 9999, toEnd: true, transform: { ...VM.IDENTITY_TRANSFORM, x: 0.5, y: 0.85 } }));
 
   const addImageOverlay = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
-    const src = URL.createObjectURL(file);
-    const img = new window.Image();
-    img.src = src;
-    await new Promise((r) => {
-      img.onload = r;
-      img.onerror = r;
-    });
-    const o: Overlay = {
-      id: uid(),
-      kind: 'image',
-      text: '',
-      color: '#fff',
-      size: 0.3,
-      src,
-      img,
-      xf: 0.5,
-      yf: 0.5,
-      start: 0,
-      end: 9999,
-      blob: file,
-    };
-    setOverlays((p) => [...p, o]);
-    setSelOverlay(o.id);
+    const media: VM.MediaAsset = { id: uid(), kind: 'image', name: file.name, duration: 0, blob: file };
+    const img = imageOf(media);
+    if (img)
+      await new Promise((r) => {
+        if (img.complete) return r(null);
+        img.addEventListener('load', r, { once: true });
+        img.addEventListener('error', r, { once: true });
+      });
+    addOverlayClip(VM.makeClip('image', { mediaId: media.id, size: 0.3, start: 0, outP: 9999, toEnd: true }), media);
   };
 
-  const updOverlay = (id: string, p: Partial<Overlay>) =>
-    setOverlays((prev) => prev.map((o) => (o.id === id ? { ...o, ...p } : o)));
+  /** Cambia una capa (texto, color, tamaño, posición, inicio/fin) a través del modelo. */
+  const updOverlay = (id: string, o: Partial<Overlay>, group?: string) =>
+    commitP((p) => {
+      const loc = VM.findClip(p, id);
+      if (!loc) return p;
+      const c = loc.clip;
+      const patchC: Parameters<typeof VM.updateClip>[2] = {};
+      if (o.text !== undefined) patchC.text = o.text;
+      if (o.color !== undefined) patchC.color = o.color;
+      if (o.size !== undefined) patchC.size = o.size;
+      if (o.xf !== undefined || o.yf !== undefined) patchC.transform = { ...(o.xf !== undefined ? { x: o.xf } : {}), ...(o.yf !== undefined ? { y: o.yf } : {}) };
+      const end = o.end ?? (c.toEnd ? null : VM.clipEnd(c));
+      const start = o.start ?? c.start;
+      if (o.start !== undefined || o.end !== undefined) {
+        patchC.start = start;
+        if (end === null || end > 9000) {
+          patchC.toEnd = true;
+        } else {
+          patchC.toEnd = false;
+          patchC.inP = 0;
+          patchC.outP = Math.max(0, end - start);
+        }
+      }
+      return VM.updateClip(p, id, patchC);
+    }, group);
   const removeOverlay = (id: string) => {
-    setOverlays((prev) => prev.filter((o) => o.id !== id));
+    commitP((p0) => {
+      const loc = VM.findClip(p0, id);
+      if (!loc) return p0;
+      const p = VM.removeClip(p0, id);
+      const t = VM.findTrack(p, loc.track.id);
+      return t && !t.clips.length ? VM.removeTrack(p, t.id) : p;
+    });
     if (selOverlay === id) setSelOverlay(null);
   };
 
@@ -903,24 +982,6 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     return new Blob(chunks, { type: mime.split(';')[0] });
   };
 
-  const toRenderClip = (c: Clip): RenderClip => {
-    const fx = EFFECTS.find((e) => e.id === c.effect) ?? EFFECTS[0];
-    return {
-      blob: c.blob,
-      url: c.url,
-      inP: c.inP,
-      outP: c.outP,
-      speed: c.speed ?? 1,
-      fadeIn: c.fadeIn,
-      fadeOut: c.fadeOut,
-      volume: c.volume,
-      hp: fx.hp,
-      lp: fx.lp,
-      echo: fx.echo,
-      gate: !!fx.gate, // «Reducir ruido» ahora también se aplica al exportar
-    };
-  };
-
   // Exportación con el motor (WebCodecs, en streaming a disco) o, si el
   // navegador no tiene WebCodecs, grabación en tiempo real con MediaRecorder.
   const onExport = async (container: Container) => {
@@ -973,15 +1034,14 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       sizes.push({ ...sz, label: `${sz.width}×${sz.height}` });
     }
     try {
-      const res = await renderVideo({
+      // El motor exporta el proyecto v2 tal cual (todas las pistas, capas y mezcla).
+      const images = new Map<string, HTMLImageElement>();
+      imgCache.current.forEach((img, id) => img.naturalWidth && images.set(id, img));
+      const res = await renderProject(project, {
         container,
         sizes,
         fps: exportFps,
-        videoClips: videoClips.map(toRenderClip),
-        audioClips: audioClips.map(toRenderClip),
-        overlays,
-        eq,
-        normalize,
+        images,
         fit: exportFit,
         sink,
         signal: ac.signal,
@@ -1014,7 +1074,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="video-overlay">
+    <div className="video-overlay" onPointerUp={endGroup}>
       <div className="video-toolbar">
         <button onClick={onClose}>← {t('Volver al diseño')}</button>
         <span className="mask-title">🎬 {t('Editor de video')}</span>
@@ -1024,6 +1084,12 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           title="Vaciar el proyecto de video"
         >
           🗑 {t('Nuevo')}
+        </button>
+        <button onClick={undoV} disabled={!VM.canUndo(hist)} title="Deshacer (Ctrl+Z)">
+          ↶
+        </button>
+        <button onClick={redoV} disabled={!VM.canRedo(hist)} title="Rehacer (Ctrl+Shift+Z / Ctrl+Y)">
+          ↷
         </button>
         <button onClick={() => videoFileRef.current?.click()}>🎬 {t('Subir video')}</button>
         <button onClick={() => audioFileRef.current?.click()}>🎵 {t('Subir audio')}</button>
@@ -1175,9 +1241,10 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               value={eq[band]}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                setEqState((p) => ({ ...p, [band]: v }));
+                commitP((p) => VM.updateProject(p, { eq: { ...p.eq, [band]: v } }), 'eq:' + band);
                 setEq(band, v);
               }}
+              onPointerUp={endGroup}
             />
           </label>
         ))}
@@ -1185,7 +1252,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           className={normalize ? 'primary' : ''}
           onClick={() => {
             const n = !normalize;
-            setNormState(n);
+            commitP((p) => VM.updateProject(p, { normalize: n }));
             setNormalize(n);
           }}
         >
@@ -1268,7 +1335,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               onChange={(e) =>
                 patch(selected.id, {
                   inP: Math.min(Number(e.target.value), selected.outP - 0.1),
-                })
+                }, 'in:' + selected.id)
               }
             />
           </label>
@@ -1283,7 +1350,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               onChange={(e) =>
                 patch(selected.id, {
                   outP: Math.max(Number(e.target.value), selected.inP + 0.1),
-                })
+                }, 'out:' + selected.id)
               }
             />
           </label>
@@ -1313,7 +1380,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               value={selected.volume}
               onChange={(e) => {
                 const volume = Number(e.target.value);
-                patch(selected.id, { volume });
+                patch(selected.id, { volume }, 'vol:' + selected.id);
                 const ch =
                   selected.type === 'video'
                     ? vChainRef.current
@@ -1332,7 +1399,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               value={selected.speed ?? 1}
               onChange={(e) => {
                 const speed = Number(e.target.value);
-                patch(selected.id, { speed });
+                patch(selected.id, { speed }, 'speed:' + selected.id);
                 const el =
                   selected.type === 'video'
                     ? videoRef.current
@@ -1352,7 +1419,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={0.1}
                   value={selected.fadeIn}
                   onChange={(e) =>
-                    patch(selected.id, { fadeIn: Number(e.target.value) })
+                    patch(selected.id, { fadeIn: Number(e.target.value) }, 'fadeIn:' + selected.id)
                   }
                 />
               </label>
@@ -1365,7 +1432,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={0.1}
                   value={selected.fadeOut}
                   onChange={(e) =>
-                    patch(selected.id, { fadeOut: Number(e.target.value) })
+                    patch(selected.id, { fadeOut: Number(e.target.value) }, 'fadeOut:' + selected.id)
                   }
                 />
               </label>
@@ -1389,12 +1456,12 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   <input
                     type="text"
                     value={o.text}
-                    onChange={(e) => updOverlay(o.id, { text: e.target.value })}
+                    onChange={(e) => updOverlay(o.id, { text: e.target.value }, 'text:' + o.id)}
                   />
                   <input
                     type="color"
                     value={o.color}
-                    onChange={(e) => updOverlay(o.id, { color: e.target.value })}
+                    onChange={(e) => updOverlay(o.id, { color: e.target.value }, 'color:' + o.id)}
                   />
                 </>
               )}
@@ -1407,7 +1474,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={o.kind === 'text' ? 2 : 0.01}
                   value={o.size}
                   onChange={(e) =>
-                    updOverlay(o.id, { size: Number(e.target.value) })
+                    updOverlay(o.id, { size: Number(e.target.value) }, 'size:' + o.id)
                   }
                 />
               </label>
@@ -1420,7 +1487,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={0.01}
                   value={o.xf}
                   onChange={(e) =>
-                    updOverlay(o.id, { xf: Number(e.target.value) })
+                    updOverlay(o.id, { xf: Number(e.target.value) }, 'x:' + o.id)
                   }
                 />
               </label>
@@ -1433,7 +1500,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={0.01}
                   value={o.yf}
                   onChange={(e) =>
-                    updOverlay(o.id, { yf: Number(e.target.value) })
+                    updOverlay(o.id, { yf: Number(e.target.value) }, 'y:' + o.id)
                   }
                 />
               </label>
@@ -1446,7 +1513,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={0.5}
                   value={Math.min(o.start, seqDuration)}
                   onChange={(e) =>
-                    updOverlay(o.id, { start: Number(e.target.value) })
+                    updOverlay(o.id, { start: Number(e.target.value) }, 'start:' + o.id)
                   }
                 />
               </label>
@@ -1459,7 +1526,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   step={0.5}
                   value={Math.min(o.end, seqDuration)}
                   onChange={(e) =>
-                    updOverlay(o.id, { end: Number(e.target.value) })
+                    updOverlay(o.id, { end: Number(e.target.value) }, 'end:' + o.id)
                   }
                 />
               </label>
@@ -1632,13 +1699,13 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
                   dragClipId.current = null;
                 }}
               >
-                {waveforms[c.id] && (
+                {waveforms[c.mediaId] && (
                   <svg
                     className="vt-wave"
                     viewBox="0 0 100 24"
                     preserveAspectRatio="none"
                   >
-                    {waveforms[c.id].map((p, i) => (
+                    {waveforms[c.mediaId].map((p, i) => (
                       <rect
                         key={i}
                         x={i}

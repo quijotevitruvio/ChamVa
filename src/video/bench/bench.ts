@@ -2,7 +2,10 @@
 // Cada caso genera clips sintéticos, exporta con el motor REAL (render.ts) y
 // comprueba el resultado con <video>/decodeAudioData y con el decodificador.
 // Resultados en window.__bench (para automatizarlo desde el navegador).
-import { renderVideo, type RenderClip, type RenderResult } from '../engine/render';
+import { renderProject, renderVideo, type RenderClip, type RenderResult } from '../engine/render';
+import { renderVideoV1 } from './v1Engine';
+import * as VM from '../model';
+import { idbGet } from '../../io/idb';
 import { BlobPartsSink } from '../engine/sink';
 import { ASPECTS, QUALITIES, lowerQuality, outputSize, type Aspect, type Container, type Quality } from '../engine/formats';
 import { buildSegments, sourceTimeAt, segmentIndexAt, type RenderOverlay } from '../engine/timeline';
@@ -114,6 +117,125 @@ function expectedFrame(clips: { clip: RenderClip; synth: SynthClip }[], t: numbe
 function check(list: Check[], name: string, ok: boolean, detail: string) {
   list.push({ name, ok, detail });
 }
+
+// ---------------- multipista / comparación con V1 ----------------
+
+/**
+ * Huella FNV-1a de los píxeles del fotograma compuesto (antes de codificar). Se lee de
+ * una COPIA 1:1: leer el lienzo del motor con getImageData hace que Chromium lo pase
+ * de GPU a CPU a mitad de exportación y el escalado de imágenes cambia en ±1.
+ */
+let readCanvas: HTMLCanvasElement | null = null;
+function hashCtx(ctx: CanvasRenderingContext2D) {
+  const { width: w, height: h } = ctx.canvas;
+  readCanvas ??= document.createElement('canvas');
+  if (readCanvas.width !== w || readCanvas.height !== h) {
+    readCanvas.width = w;
+    readCanvas.height = h;
+  }
+  const rc = readCanvas.getContext('2d', { willReadFrequently: true })!;
+  rc.drawImage(ctx.canvas, 0, 0);
+  const d = new Uint32Array(rc.getImageData(0, 0, w, h).data.buffer);
+  let x = 2166136261;
+  for (let i = 0; i < d.length; i++) x = Math.imul(x ^ d[i], 16777619);
+  return x >>> 0;
+}
+function hashPcm(state: { h: number; n: number }, L: Float32Array, R: Float32Array, n: number) {
+  const a = new Uint32Array(L.buffer, L.byteOffset, n);
+  const b = new Uint32Array(R.buffer, R.byteOffset, n);
+  let x = state.h;
+  for (let i = 0; i < n; i++) x = Math.imul(Math.imul(x ^ a[i], 16777619) ^ b[i], 16777619);
+  state.h = x >>> 0;
+  state.n += n;
+}
+function tapper() {
+  const frames: number[] = [];
+  const audio = { h: 2166136261, n: 0 };
+  return { frames, audio, tap: { frame: (_i: number, ctx: CanvasRenderingContext2D) => frames.push(hashCtx(ctx)), audio: (L: Float32Array, R: Float32Array, n: number) => hashPcm(audio, L, R, n) } };
+}
+
+async function exportProject(p: VM.VideoProject, o: { aspect?: Aspect; quality?: Quality; fps?: number; tap?: ReturnType<typeof tapper>['tap']; images?: Map<string, HTMLImageElement> } = {}) {
+  const sink = new BlobPartsSink('video/mp4');
+  const res = await renderProject(p, { container: 'mp4', sizes: sizesFor(o.aspect ?? '16:9', o.quality ?? 720), fps: o.fps ?? 30, sink, tap: o.tap, images: o.images });
+  return { res, blob: res.blob! };
+}
+
+/** Lo que hacía el editor V1 con un proyecto guardado antes de exportar (toRenderClip + capas con su <img>). */
+async function v1RenderInput(raw: any) {
+  const EFX = VM.EFFECTS;
+  const clips = (raw.clips ?? []).filter((c: any) => c.blob);
+  const toRc = (c: any): RenderClip => {
+    const fx = EFX.find((e) => e.id === c.effect) ?? EFX[0];
+    return { blob: c.blob, url: URL.createObjectURL(c.blob), inP: c.inP, outP: c.outP, speed: c.speed ?? 1, fadeIn: c.fadeIn, fadeOut: c.fadeOut, volume: c.volume, hp: fx.hp, lp: fx.lp, echo: fx.echo, gate: !!fx.gate };
+  };
+  const overlays: RenderOverlay[] = [];
+  for (const o of raw.overlays ?? []) {
+    if (o.kind === 'image' && o.blob) {
+      const img = new Image();
+      img.src = URL.createObjectURL(o.blob);
+      await new Promise((r) => ((img.onload = r), (img.onerror = r)));
+      overlays.push({ ...o, img });
+    } else overlays.push(o);
+  }
+  return { videoClips: clips.filter((c: any) => c.type === 'video').map(toRc), audioClips: clips.filter((c: any) => c.type === 'audio').map(toRc), overlays, eq: raw.eq ?? { low: 0, mid: 0, high: 0 }, normalize: !!raw.normalize };
+}
+
+/** Exporta un guardado V1 con el motor V1 congelado y su migración con el motor v2; compara fotograma a fotograma. */
+async function compareV1(c: Check[], m: Record<string, number | string>, raw: any) {
+  const input = await v1RenderInput(raw);
+  const a = tapper();
+  const sinkA = new BlobPartsSink('video/mp4');
+  const v1 = await renderVideoV1({ container: 'mp4', sizes: sizesFor('16:9', 720), fps: 30, sink: sinkA, ...input, tap: a.tap });
+  const { project, report } = VM.migrateVideoProject(raw);
+  const b = tapper();
+  const { res: v2, blob } = await exportProject(project, { tap: b.tap });
+  const diff = a.frames.findIndex((h, i) => h !== b.frames[i]);
+  m['fotogramas V1 / v2'] = `${v1.frames} / ${v2.frames}`;
+  m['duración V1 / v2 (s)'] = `${v1.duration.toFixed(4)} / ${v2.duration.toFixed(4)}`;
+  m['MB V1 / v2'] = `${(v1.blob!.size / 2 ** 20).toFixed(3)} / ${(blob.size / 2 ** 20).toFixed(3)}`;
+  m['pico tras limitador V1 / v2'] = `${v1.peakOut.toFixed(4)} / ${v2.peakOut.toFixed(4)}`;
+  check(c, 'migración completa', report.complete, JSON.stringify({ clips: report.clips, capas: report.overlays, huérfanos: report.orphanClips }));
+  check(c, 'misma duración y nº de fotogramas', v1.frames === v2.frames && v1.duration === v2.duration, `${v1.frames} vs ${v2.frames}`);
+  check(c, 'cada fotograma compuesto idéntico (huella de píxeles)', diff < 0 && a.frames.length === b.frames.length, diff < 0 ? `${a.frames.length} fotogramas iguales` : `primero distinto: ${diff}`);
+  check(c, 'audio mezclado idéntico (huella PCM)', a.audio.h === b.audio.h && a.audio.n === b.audio.n, `${a.audio.n} muestras · ${a.audio.h.toString(16)} vs ${b.audio.h.toString(16)}`);
+  const el = await probeWithElement(blob, [0.5]);
+  check(c, 'el MP4 v2 se reproduce en el navegador', Math.abs(el.duration - v2.duration) < 0.1, `${el.duration.toFixed(3)} s`);
+}
+
+/** Proyecto v1 sintético con la forma que guarda el editor V1. */
+async function syntheticV1() {
+  const [a, b] = await audit();
+  const m = await synth('mus', { container: 'webm', width: 320, height: 180, fps: 30, seconds: 8, toneAmp: 0.5 });
+  const cnv = document.createElement('canvas');
+  cnv.width = 200;
+  cnv.height = 100;
+  const g = cnv.getContext('2d')!;
+  g.fillStyle = '#00ff88';
+  g.fillRect(0, 0, 200, 100);
+  const png = await new Promise<Blob>((r) => cnv.toBlob((x) => r(x!), 'image/png'));
+  const base = { url: '', effect: 'none', volume: 1, speed: 1, fadeIn: 0, fadeOut: 0 };
+  return {
+    clips: [
+      { ...base, id: 'c1', type: 'video', name: 'a', duration: 3, inP: 0.3, outP: 3, effect: 'clean', volume: 0.6, fadeIn: 0.5, blob: a.blob },
+      { ...base, id: 'c2', type: 'video', name: 'b', duration: 3, inP: 0, outP: 2, speed: 1.5, blob: b.blob },
+      { ...base, id: 'c3', type: 'video', name: 'b', duration: 3, inP: 2, outP: 3, speed: 1.5, fadeOut: 0.4, blob: b.blob },
+      { ...base, id: 'c4', type: 'audio', name: 'm', duration: 8, inP: 0, outP: 8, effect: 'echo', blob: m.blob },
+    ],
+    overlays: [
+      { id: 'o1', kind: 'image', text: '', color: '#fff', size: 0.3, xf: 0.5, yf: 0.5, start: 0, end: 9999, blob: png },
+      { id: 'o2', kind: 'text', text: 'HOLA V1', color: '#ffffff', size: 72, xf: 0.5, yf: 0.2, start: 1, end: 3 },
+    ],
+    eq: { low: 3, mid: 0, high: 0 },
+    normalize: true,
+  };
+}
+
+const mkProject = (tracks: { id: string; kind: 'video' | 'audio' }[]) => {
+  let p = VM.createProject();
+  for (const t of tracks) p = VM.addTrack(p, t.kind, { id: t.id, index: p.tracks.length });
+  return p;
+};
+const mediaOf = (id: string, s: SynthClip, kind: 'video' | 'audio' = 'video'): VM.MediaAsset => ({ id, kind, name: id, duration: s.opts.seconds, blob: s.blob });
 
 // ---------------- casos ----------------
 
@@ -364,6 +486,117 @@ const CASES: Case[] = [
       check(c, 'duración 120 s y 3600 fotogramas', Math.abs(res.duration - 120) < 0.05 && dec.count === 3600, `${res.duration} s, ${dec.count}`);
       check(c, 'fotogramas exactos al principio, a mitad y al final', dec.frames.every((f, i) => f.code === Math.round([0, 59.5, 119.9][i] * 30) % 4096), dec.frames.map((f) => f.code).join(','));
       check(c, 'memoria JS acotada (< 150 MB sobre el inicio)', heapPeakMB < 150, `${heapPeakMB.toFixed(1)} MB`);
+    },
+  },
+  {
+    id: 'mt-opacity',
+    title: 'Multipista: 2 videos superpuestos (el de arriba al 50 % de opacidad) + texto encima',
+    run: async (c) => {
+      const [a, b] = await audit(); // a: rojo→azul→amarillo · b: azul→amarillo→morado
+      let p = mkProject([
+        { id: 'T', kind: 'video' },
+        { id: 'TOP', kind: 'video' },
+        { id: 'BOT', kind: 'video' },
+      ]);
+      p = VM.addMedia(VM.addMedia(p, mediaOf('a', a)), mediaOf('b', b));
+      p = VM.addClip(p, 'BOT', VM.makeClip('video', { id: 'abajo', mediaId: 'a', outP: 3 }));
+      p = VM.addClip(p, 'TOP', VM.makeClip('video', { id: 'arriba', mediaId: 'b', start: 1, inP: 1, outP: 2, transform: { ...VM.IDENTITY_TRANSFORM, opacity: 0.5 } }));
+      p = VM.addClip(p, 'T', VM.makeClip('text', { id: 't', text: 'HOLA', color: '#ffffff', size: 60, outP: 3, transform: { ...VM.IDENTITY_TRANSFORM, x: 0.37, y: 0.17 } }));
+      const { res, blob } = await exportProject(p);
+      const el = await probeWithElement(blob, [0.5, 1.5, 2.5]);
+      const mix = (x: [number, number, number], y: [number, number, number]) => [0, 1, 2].map((k) => (x[k] + y[k]) / 2) as [number, number, number];
+      check(c, 'duración 3 s (el clip de abajo)', Math.abs(res.duration - 3) < 1 / 30, res.duration.toFixed(3));
+      check(c, 't=0,5: solo el de abajo', colorClose(el.frames[0].sample, colorAt(0.5, 0), 30), JSON.stringify(el.frames[0].sample));
+      check(c, 't=1,5: mezcla 50/50 de los dos', colorClose(el.frames[1].sample, mix(colorAt(1.5, 0), colorAt(1.5, 1)), 30), `${JSON.stringify(el.frames[1].sample)} esperado ≈ ${mix(colorAt(1.5, 0), colorAt(1.5, 1))}`);
+      check(c, 't=2,5: el de arriba ya terminó', colorClose(el.frames[2].sample, colorAt(2.5, 0), 30), JSON.stringify(el.frames[2].sample));
+      check(c, 'el texto (pista superior) se ve encima', el.frames[1].textHeight > 20, `${el.frames[1].textHeight} px`);
+    },
+  },
+  {
+    id: 'mt-audio3',
+    title: 'Multipista: 3 pistas de audio fuertes (0,9) mezcladas, entrando en 0 / 1 / 2 s, + limitador',
+    run: async (c, m) => {
+      const v = await synth('mtv', { container: 'mp4', width: 640, height: 360, fps: 30, seconds: 3, audio: false });
+      const tones = await Promise.all([0, 1, 2].map((k) => synth(`mta${k}`, { container: 'webm', width: 160, height: 90, fps: 30, seconds: 3, toneAmp: 0.9 })));
+      let p = mkProject([
+        { id: 'V', kind: 'video' },
+        { id: 'A1', kind: 'audio' },
+        { id: 'A2', kind: 'audio' },
+        { id: 'A3', kind: 'audio' },
+      ]);
+      p = VM.addMedia(p, mediaOf('v', v));
+      p = VM.addClip(p, 'V', VM.makeClip('video', { id: 'v', mediaId: 'v', outP: 3 }));
+      tones.forEach((s, k) => {
+        p = VM.addMedia(p, mediaOf(`t${k}`, s, 'audio'));
+        p = VM.addClip(p, `A${k + 1}`, VM.makeClip('audio', { id: `a${k}`, mediaId: `t${k}`, start: k, outP: 3 }));
+      });
+      const { res, blob } = await exportProject(p);
+      const au = await probeAudio(blob);
+      m['pico antes del limitador'] = +res.peakIn.toFixed(3);
+      m['pico tras el limitador'] = +res.peakOut.toFixed(4);
+      m['RMS 0–1 / 1–2 / 2–3 s'] = au ? [au.rms(0.2, 0.9), au.rms(1.2, 1.9), au.rms(2.2, 2.9)].map((x) => x.toFixed(3)).join(' / ') : '-';
+      check(c, 'las 3 pistas suenan a la vez (pico de entrada > 2)', res.peakIn > 2, res.peakIn.toFixed(3));
+      check(c, 'limitador ≤ −1 dBFS antes de codificar', res.peakOut <= LIMIT_CEILING + 1e-6, res.peakOut.toFixed(4));
+      check(c, 'pico del archivo decodificado < 1,0', !!au && au.peak < 1, au ? au.peak.toFixed(3) : 'sin audio');
+      check(c, 'hay sonido en los tres tramos', !!au && au.rms(0.2, 0.9) > 0.2 && au.rms(2.2, 2.9) > 0.2, String(m['RMS 0–1 / 1–2 / 2–3 s']));
+    },
+  },
+  {
+    id: 'mt-transform',
+    title: 'Multipista: clip con transformación (escala 0,5, centro en ¼,¼, girado 180°) sobre fondo negro',
+    run: async (c) => {
+      const s = await synth('fmt', { container: 'mp4', width: 1280, height: 720, fps: 30, seconds: 1 });
+      let p = mkProject([{ id: 'V', kind: 'video' }]);
+      p = VM.addMedia(p, mediaOf('s', s));
+      p = VM.addClip(p, 'V', VM.makeClip('video', { id: 'x', mediaId: 's', outP: 1, transform: { x: 0.25, y: 0.25, scale: 0.5, rotation: 180, opacity: 1 } }));
+      const { blob } = await exportProject(p);
+      const out = await probeWithElement(blob, [0.5]);
+      const cv = document.createElement('canvas');
+      cv.width = 1280;
+      cv.height = 720;
+      const g = cv.getContext('2d', { willReadFrequently: true })!;
+      const v = document.createElement('video');
+      v.muted = true;
+      v.src = URL.createObjectURL(blob);
+      await new Promise((r) => (v.onloadeddata = r));
+      v.currentTime = 0.5;
+      await new Promise((r) => (v.onseeked = r));
+      await new Promise((r) => setTimeout(r, 200));
+      g.drawImage(v, 0, 0, 1280, 720);
+      const px = (x: number, y: number) => {
+        const d = g.getImageData(Math.round(x * 1280), Math.round(y * 720), 1, 1).data;
+        return { r: d[0], g: d[1], b: d[2] };
+      };
+      const green = (q: { r: number; g: number; b: number }) => q.g > 140 && q.r < 90 && q.b < 90;
+      const black = (q: { r: number; g: number; b: number }) => q.r < 25 && q.g < 25 && q.b < 25;
+      check(c, 'resolución 1280×720', out.width === 1280 && out.height === 720, `${out.width}×${out.height}`);
+      check(c, 'centro del clip (¼,¼) = color del centro del origen', colorClose(px(0.25, 0.25), colorAt(0.5)), JSON.stringify(px(0.25, 0.25)));
+      check(c, 'girado 180°: la marca verde (arriba-izq. del origen) queda abajo-dcha. del clip', green(px(0.47, 0.47)) && !green(px(0.25, 0.47)), JSON.stringify(px(0.47, 0.47)));
+      check(c, 'fuera del clip, negro (no hay pista debajo)', black(px(0.75, 0.75)) && black(px(0.75, 0.25)), JSON.stringify([px(0.75, 0.75), px(0.75, 0.25)]));
+    },
+  },
+  {
+    id: 'v1-equal',
+    title: 'Migración: proyecto V1 sintético (2 videos, uno dividido a 1,5×, música con eco, imagen, texto, EQ, Normalizar) · motor V1 vs. v2',
+    run: async (c, m) => compareV1(c, m, await syntheticV1()),
+  },
+  {
+    id: 'v1-idb',
+    title: 'Migración: el proyecto V1 GUARDADO en este navegador (IndexedDB «videoProject» o su copia) · motor V1 vs. v2',
+    run: async (c, m) => {
+      let raw = await idbGet<any>(VM.VIDEO_KEY);
+      let from = VM.VIDEO_KEY;
+      if (VM.detectVersion(raw) !== 1) {
+        raw = await idbGet<any>(VM.VIDEO_BACKUP_KEY);
+        from = VM.VIDEO_BACKUP_KEY;
+      }
+      if (VM.detectVersion(raw) !== 1) {
+        check(c, 'hay un proyecto V1 guardado', false, 'no hay ninguno (ábrelo antes con el editor V1)');
+        return;
+      }
+      m['clave'] = from;
+      m['clips / capas'] = `${raw.clips?.length ?? 0} / ${raw.overlays?.length ?? 0}`;
+      await compareV1(c, m, raw);
     },
   },
 ];

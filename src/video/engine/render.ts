@@ -1,33 +1,28 @@
-// Motor de exportación de video (V1): línea de tiempo → MP4 (H.264 + AAC/Opus)
-// o WebM (VP9/VP8 + Opus), fotograma a fotograma y en streaming:
+// Motor de exportación de video: proyecto multipista (modelo v2) → MP4 (H.264 +
+// AAC/Opus) o WebM (VP9/VP8 + Opus), fotograma a fotograma y en streaming:
 //
-//   archivo ─(lectura por trozos)→ VideoDecoder/AudioDecoder → lienzo + mezclador
+//   archivo ─(lectura por trozos)→ VideoDecoder/AudioDecoder → lienzo por capas + mezclador
 //          → VideoEncoder/AudioEncoder → mp4-muxer/webm-muxer → destino por trozos
 //
 // Nada se carga entero en memoria: ni los archivos de entrada, ni el audio de
 // toda la duración, ni el archivo de salida. Se puede cancelar con AbortSignal.
+// `renderVideo` (API de V1: 1 pista de video + 1 de audio + capas) se traduce al
+// modelo v2 con la misma colocación que la migración y pasa por el mismo camino.
 import { Muxer as Mp4Muxer, StreamTarget as Mp4StreamTarget } from 'mp4-muxer';
 import { Muxer as WebmMuxer, StreamTarget as WebmStreamTarget } from 'webm-muxer';
+import { sequenceToProject, type SeqOverlay } from '../model/migrate';
+import { makeClip } from '../model/ops';
+import { clipFadeAlpha, clipsAt, isStill, projectDuration, sourceTimeAt, videoTracksBottomUp } from '../model/query';
+import { IDENTITY_TRANSFORM, type Clip, type MediaAsset, type VideoProject } from '../model/types';
 import { BufferAudioSource, DecoderAudioSource, audioDecoderConfig } from './audioSource';
+import { buildProjectMixEntries, drawStillClip, drawVideoClip, type StillImage } from './compose';
 import { type DemuxedFile, demux } from './demux';
 import type { ClipAudioFx } from './dsp';
 import { findAudioConfig, negotiateVideo, type AudioChoice, type VideoChoice } from './encoderConfig';
 import { AUDIO_SAMPLE_RATE, type Container } from './formats';
-import { TimelineMixer, buildMixEntries, type PcmSource } from './mixer';
+import { TimelineMixer, type PcmSource } from './mixer';
 import type { ByteSink } from './sink';
-import {
-  type Fit,
-  type RenderOverlay,
-  type Segment,
-  buildSegments,
-  drawOverlays,
-  drawVideoFrame,
-  fadeAlpha,
-  frameCount,
-  segmentIndexAt,
-  sourceTimeAt,
-  totalDuration,
-} from './timeline';
+import { type Fit, type RenderOverlay, frameCount } from './timeline';
 import { DecoderFrameSource, ElementFrameSource, type FrameSource, videoDecoderConfig } from './videoSource';
 
 export interface RenderClip extends ClipAudioFx {
@@ -50,22 +45,34 @@ export interface RenderProgress {
   eta?: number;
 }
 
-export interface RenderVideoOptions {
+/** Ganchos de prueba: ven el fotograma compuesto y el audio mezclado ANTES de codificar. */
+export interface RenderTap {
+  frame?: (i: number, ctx: CanvasRenderingContext2D) => void;
+  audio?: (L: Float32Array, R: Float32Array, n: number) => void;
+}
+
+export interface RenderProjectOptions {
   container: Container;
   /** Tamaños a intentar, del pedido a los de respaldo. */
   sizes: { width: number; height: number; label: string }[];
   fps: number;
-  videoClips: RenderClip[];
-  audioClips: RenderClip[];
-  overlays: RenderOverlay[];
-  eq: { low: number; mid: number; high: number };
-  normalize: boolean;
   fit?: Fit;
   sink: ByteSink;
   signal?: AbortSignal;
   onProgress?: (p: RenderProgress) => void;
   /** Avisos de degradación (en español) para mostrar al usuario. */
   onNotice?: (msg: string) => void;
+  /** Imágenes ya cargadas por id de medio (si faltan, se cargan del Blob). */
+  images?: Map<string, StillImage>;
+  tap?: RenderTap;
+}
+
+export interface RenderVideoOptions extends Omit<RenderProjectOptions, 'images'> {
+  videoClips: RenderClip[];
+  audioClips: RenderClip[];
+  overlays: RenderOverlay[];
+  eq: { low: number; mid: number; high: number };
+  normalize: boolean;
 }
 
 export interface RenderResult {
@@ -100,30 +107,6 @@ interface Probe {
   error?: string;
 }
 
-/** Desmultiplexa (solo índices) cada archivo distinto una vez. */
-async function probeAll(clips: RenderClip[]): Promise<Map<RenderClip, Probe>> {
-  const byKey = new Map<Blob | string, Promise<Probe>>();
-  const out = new Map<RenderClip, Probe>();
-  for (const c of clips) {
-    const key = c.blob ?? c.url;
-    if (!byKey.has(key))
-      byKey.set(
-        key,
-        (async () => {
-          const blob = c.blob ?? (await (await fetch(c.url)).blob());
-          try {
-            return { blob, file: await demux(blob) };
-          } catch (e) {
-            console.warn('[video] no se pudo leer por trozos, se usa la ruta de respaldo:', e);
-            return { blob, file: null, error: (e as Error).message };
-          }
-        })(),
-      );
-    out.set(c, await byKey.get(key)!);
-  }
-  return out;
-}
-
 export interface MuxerHandle {
   addVideo: (c: EncodedVideoChunk, m?: EncodedVideoChunkMetadata) => void;
   addAudio: (c: EncodedAudioChunk, m?: EncodedAudioChunkMetadata) => void;
@@ -153,8 +136,21 @@ export function createMuxer(container: Container, vc: VideoChoice, ac: AudioChoi
   return { addVideo: (c, m) => mux.addVideoChunk(c, m), addAudio: (c, m) => mux.addAudioChunk(c, m), finalize: () => mux.finalize() };
 }
 
-export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResult> {
+/** Medio utilizable para exportar (tiene archivo o URL). */
+const usable = (m: MediaAsset | undefined): m is MediaAsset => !!m && !m.missing && (!!m.blob || !!m.url);
+
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = url;
+  });
+}
+
+export async function renderProject(project: VideoProject, opts: RenderProjectOptions): Promise<RenderResult> {
   const t0 = performance.now();
+  const p = project;
   const { container, sink, signal } = opts;
   const fit = opts.fit ?? 'contain';
   const notices: string[] = [];
@@ -162,9 +158,9 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
     notices.push(m);
     opts.onNotice?.(m);
   };
-  const segs = buildSegments(opts.videoClips);
-  const timelineDur = totalDuration(segs);
-  if (!segs.length || timelineDur <= 0) throw new Error('No hay clips de video');
+  const timelineDur = projectDuration(p);
+  if (!(timelineDur > 0)) throw new Error('No hay clips de video');
+  if (!Number.isFinite(timelineDur)) throw new Error('Un clip no tiene duración conocida: recórtalo antes de exportar.');
   opts.onProgress?.({ ratio: 0, stage: 'preparando', frame: 0, frames: 0 });
 
   // --- códecs ---
@@ -179,14 +175,85 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
   const vc: VideoChoice = neg.video;
   const { width: w, height: h, fps } = vc;
 
-  const probes = await probeAll([...opts.videoClips, ...opts.audioClips]);
+  // --- medios: cada archivo distinto se desmultiplexa (solo índices) una vez ---
+  const createdUrls: string[] = [];
+  const urlOf = (m: MediaAsset) => {
+    if (m.url) return m.url;
+    const u = URL.createObjectURL(m.blob!);
+    createdUrls.push(u);
+    return u;
+  };
+  const visualVideo: Clip[] = [];
+  const stills: Clip[] = [];
+  for (const { track } of videoTracksBottomUp(p))
+    for (const c of track.clips) {
+      if (c.kind === 'video' && (!track.hidden || !track.muted)) visualVideo.push(c);
+      else if (isStill(c) && !track.hidden) stills.push(c);
+    }
+  const audioOnly: Clip[] = [];
+  for (const t of p.tracks) if (t.kind === 'audio' && !t.muted) audioOnly.push(...t.clips);
+  const byKey = new Map<Blob | string, Promise<Probe>>();
+  const probeOf = new Map<string, Probe>(); // id de medio → sondeo
+  for (const c of [...visualVideo, ...audioOnly]) {
+    const m = c.mediaId ? p.media[c.mediaId] : undefined;
+    if (!usable(m) || probeOf.has(m.id)) continue;
+    const key = m.blob ?? m.url!;
+    if (!byKey.has(key))
+      byKey.set(
+        key,
+        (async () => {
+          const blob = m.blob ?? (await (await fetch(m.url!)).blob());
+          try {
+            return { blob, file: await demux(blob) };
+          } catch (e) {
+            console.warn('[video] no se pudo leer por trozos, se usa la ruta de respaldo:', e);
+            return { blob, file: null, error: (e as Error).message };
+          }
+        })(),
+      );
+    probeOf.set(m.id, await byKey.get(key)!);
+  }
   if (signal?.aborted) throw abortError();
-  const anyAudio = [...probes.values()].some((p) => !p.file || !!p.file.audio);
+  const playable = (c: Clip) => !!c.mediaId && probeOf.has(c.mediaId);
+
+  const frames = frameCount(timelineDur, fps);
+  const duration = frames / fps;
+  const openPcm = (clip: Clip) => async (): Promise<PcmSource | null> => {
+    const pr = probeOf.get(clip.mediaId!)!;
+    if (pr.file) {
+      if (!pr.file.audio) return null;
+      const cfg = await audioDecoderConfig(pr.file.audio);
+      if (cfg) return new DecoderAudioSource(pr.file.audio, pr.blob, cfg, clip.inP);
+    }
+    // Respaldo: decodificar el archivo entero (solo formatos que el motor no sabe trocear).
+    try {
+      const ctx = new OfflineAudioContext(2, 1, AUDIO_SAMPLE_RATE);
+      return new BufferAudioSource(await ctx.decodeAudioData(await pr.blob.arrayBuffer()));
+    } catch {
+      return null;
+    }
+  };
+  const mixEntries = buildProjectMixEntries(p, duration, openPcm, playable);
+  // ¿Hace falta pista de audio? Como V1: si algún archivo que puede sonar tiene audio (o no se sabe).
+  const audible = [...videoTracksBottomUp(p).filter(({ track }) => !track.muted).flatMap(({ track }) => track.clips.filter((c) => c.kind === 'video')), ...audioOnly];
+  const anyAudio = audible.some((c) => {
+    const pr = playable(c) ? probeOf.get(c.mediaId!) : undefined;
+    return !!pr && (!pr.file || !!pr.file.audio);
+  });
   let ac: AudioChoice | null = null;
   if (anyAudio) {
     const a = await findAudioConfig(container);
     ac = a.audio;
     if (a.notice) notice(a.notice);
+  }
+
+  // --- imágenes ---
+  const images = new Map<string, StillImage | null>();
+  for (const c of stills) {
+    if (c.kind !== 'image' || !c.mediaId || images.has(c.mediaId)) continue;
+    const given = opts.images?.get(c.mediaId);
+    const m = p.media[c.mediaId];
+    images.set(c.mediaId, given ?? (usable(m) ? await loadImage(urlOf(m)) : null));
   }
 
   const { addVideo, addAudio, finalize: finalizeMux } = createMuxer(container, vc, ac, sink);
@@ -198,56 +265,39 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
   const audioEncoder = ac ? new AudioEncoder({ output: (c, m) => addAudio(c, m), error: fail }) : null;
   audioEncoder?.configure(ac!.config);
 
-  // --- fuentes ---
+  // --- fuentes de fotogramas: una por pista de video ---
   const sources: FrameSource[] = [];
-  let current: { src: FrameSource; seg: Segment<RenderClip>; blob: Blob } | null = null;
+  const current = new Map<string, { src: FrameSource; clip: Clip; blob: Blob }>();
   let fallbackFrames = 0;
-  const openFrameSource = async (seg: Segment<RenderClip>): Promise<FrameSource> => {
-    const p = probes.get(seg.clip)!;
-    // Reutilizar el decodificador si el tramo sigue al anterior en el mismo archivo
+  const openFrameSource = async (trackId: string, clip: Clip): Promise<FrameSource> => {
+    const pr = probeOf.get(clip.mediaId!)!;
+    const cur = current.get(trackId);
+    // Reutilizar el decodificador si el clip sigue al anterior en el mismo archivo
     // (clip dividido con «S»): no hay que volver a decodificar desde el clave.
     if (
-      current &&
-      current.blob === p.blob &&
-      (current.seg.clip.speed || 1) === (seg.clip.speed || 1) &&
-      seg.clip.inP >= current.src.lastTime &&
-      seg.clip.inP - current.src.lastTime < 1
+      cur &&
+      cur.blob === pr.blob &&
+      (cur.clip.speed || 1) === (clip.speed || 1) &&
+      clip.inP >= cur.src.lastTime &&
+      clip.inP - cur.src.lastTime < 1
     ) {
-      current.seg = seg;
-      return current.src;
+      cur.clip = clip;
+      return cur.src;
     }
-    if (current) current.src.close();
+    if (cur) cur.src.close();
     let src: FrameSource | null = null;
-    if (p.file?.video) {
-      const cfg = await videoDecoderConfig(p.file.video);
-      if (cfg) src = new DecoderFrameSource(p.file.video, p.blob, cfg, seg.clip.inP);
-      else notice(`El códec de video «${p.file.video.codec}» no se puede decodificar por trozos aquí; se usa la ruta lenta.`);
+    if (pr.file?.video) {
+      const cfg = await videoDecoderConfig(pr.file.video);
+      if (cfg) src = new DecoderFrameSource(pr.file.video, pr.blob, cfg, clip.inP);
+      else notice(`El códec de video «${pr.file.video.codec}» no se puede decodificar por trozos aquí; se usa la ruta lenta.`);
     }
-    if (!src) src = new ElementFrameSource(seg.clip.url);
+    if (!src) src = new ElementFrameSource(urlOf(p.media[clip.mediaId!]));
     sources.push(src);
-    current = { src, seg, blob: p.blob };
+    current.set(trackId, { src, clip, blob: pr.blob });
     return src;
   };
 
-  const openPcm = (clip: RenderClip) => async (): Promise<PcmSource | null> => {
-    const p = probes.get(clip)!;
-    if (p.file) {
-      if (!p.file.audio) return null;
-      const cfg = await audioDecoderConfig(p.file.audio);
-      if (cfg) return new DecoderAudioSource(p.file.audio, p.blob, cfg, clip.inP);
-    }
-    // Respaldo: decodificar el archivo entero (solo formatos que el motor no sabe trocear).
-    try {
-      const ctx = new OfflineAudioContext(2, 1, AUDIO_SAMPLE_RATE);
-      return new BufferAudioSource(await ctx.decodeAudioData(await p.blob.arrayBuffer()));
-    } catch {
-      return null;
-    }
-  };
-
-  const frames = frameCount(timelineDur, fps);
-  const duration = frames / fps;
-  const mixer = ac ? new TimelineMixer(buildMixEntries(segs, opts.audioClips, duration, openPcm), { eq: opts.eq, normalize: opts.normalize }, duration) : null;
+  const mixer = ac ? new TimelineMixer(mixEntries, { eq: p.eq, normalize: p.normalize }, duration) : null;
 
   const canvas = document.createElement('canvas');
   canvas.width = w;
@@ -259,6 +309,7 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
   const cleanup = () => {
     for (const s of sources) s.close();
     mixer?.close();
+    for (const u of createdUrls) URL.revokeObjectURL(u);
     for (const enc of [videoEncoder, audioEncoder])
       try {
         if (enc && enc.state !== 'closed') enc.close();
@@ -268,24 +319,37 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
   };
 
   try {
-    let segIdx = -1;
-    let src: FrameSource | null = null;
     for (let i = 0; i < frames; i++) {
       if (signal?.aborted) throw abortError();
       if (encodeError) throw encodeError;
       const t = i / fps;
-      const si = segmentIndexAt(segs, t);
-      const seg = segs[si];
-      if (si !== segIdx) {
-        src = await openFrameSource(seg);
-        segIdx = si;
-      }
-      const f = await src!.frameAt(sourceTimeAt(seg, t));
-      if (src instanceof ElementFrameSource) fallbackFrames++;
+      const { visual } = clipsAt(p, t, timelineDur);
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, w, h);
-      if (f) drawVideoFrame(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, fadeAlpha(seg, t));
-      drawOverlays(ctx, w, h, opts.overlays, t);
+      const seen = new Set<string>();
+      for (const { track, clip } of visual) {
+        const alpha = clipFadeAlpha(clip, t, timelineDur);
+        if (clip.kind === 'video') {
+          if (!playable(clip)) continue;
+          seen.add(track.id);
+          const cur = current.get(track.id);
+          const src = cur && cur.clip.id === clip.id ? cur.src : await openFrameSource(track.id, clip);
+          const f = await src.frameAt(sourceTimeAt(clip, t));
+          if (src instanceof ElementFrameSource) fallbackFrames++;
+          if (f) drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, clip, alpha);
+        } else {
+          drawStillClip(ctx, w, h, clip, clip.mediaId ? (images.get(clip.mediaId) ?? null) : null, alpha);
+        }
+      }
+      // Cerrar los decodificadores de pistas sin clip ahora ni en el próximo segundo.
+      for (const [trackId, cur] of current) {
+        if (seen.has(trackId)) continue;
+        const track = p.tracks.find((x) => x.id === trackId);
+        if (track?.clips.some((c) => c.kind === 'video' && c.start >= t && c.start - t < 1)) continue;
+        cur.src.close();
+        current.delete(trackId);
+      }
+      opts.tap?.frame?.(i, ctx);
       const frame = new VideoFrame(canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
       videoEncoder.encode(frame, { keyFrame: i % keyEvery === 0 });
       frame.close();
@@ -296,6 +360,7 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
         while (mixer.position < until) {
           const blk = await mixer.render(Math.min(AUDIO_BLOCK, until - mixer.position));
           if (!blk.frames) break;
+          opts.tap?.audio?.(blk.L, blk.R, blk.frames);
           const planar = new Float32Array(blk.frames * 2);
           planar.set(blk.L, 0);
           planar.set(blk.R, blk.frames);
@@ -355,4 +420,67 @@ export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResul
     await sink.abort();
     throw e;
   }
+}
+
+/**
+ * Traduce la entrada de V1 (secuencia de video + secuencia de audio + capas) al
+ * modelo v2, con la misma colocación que la migración del proyecto guardado.
+ */
+export function legacyInputToProject(o: Pick<RenderVideoOptions, 'videoClips' | 'audioClips' | 'overlays' | 'eq' | 'normalize'>): { project: VideoProject; images: Map<string, StillImage> } {
+  const media: Record<string, MediaAsset> = {};
+  const keys = new Map<Blob | string, string>();
+  const mediaOf = (c: RenderClip, kind: 'video' | 'audio') => {
+    const key = c.blob ?? c.url;
+    let id = keys.get(key);
+    if (!id) {
+      id = `m${keys.size}`;
+      keys.set(key, id);
+      media[id] = { id, kind, name: '', duration: 0, ...(c.blob ? { blob: c.blob } : {}), ...(c.url ? { url: c.url } : {}) };
+    }
+    return id;
+  };
+  let n = 0;
+  const toClip = (c: RenderClip, kind: 'video' | 'audio'): Clip =>
+    makeClip(kind, {
+      id: `c${n++}`,
+      mediaId: mediaOf(c, kind),
+      inP: c.inP,
+      outP: c.outP,
+      speed: c.speed,
+      volume: c.volume,
+      voice: { hp: c.hp, lp: c.lp, echo: c.echo, gate: !!c.gate },
+      fadeIn: c.fadeIn,
+      fadeOut: c.fadeOut,
+    });
+  const images = new Map<string, StillImage>();
+  const overlays: SeqOverlay[] = o.overlays.map((ov, i) => {
+    let mediaId: string | undefined;
+    if (ov.kind === 'image') {
+      mediaId = `img${i}`;
+      media[mediaId] = { id: mediaId, kind: 'image', name: '', duration: 0 };
+      if (ov.img) images.set(mediaId, ov.img);
+    }
+    const clip = makeClip(ov.kind, {
+      id: `o${i}`,
+      mediaId,
+      size: ov.size,
+      ...(ov.kind === 'text' ? { text: ov.text, color: ov.color } : {}),
+      transform: { ...IDENTITY_TRANSFORM, x: ov.xf, y: ov.yf },
+    });
+    return { clip, start: ov.start, end: ov.end };
+  });
+  // makeClip normaliza la velocidad: la de V1 se usa tal cual (`speed || 1`) para no cambiar tiempos.
+  const video = o.videoClips.map((c) => ({ ...toClip(c, 'video'), speed: c.speed }));
+  const audio = o.audioClips.map((c) => ({ ...toClip(c, 'audio'), speed: c.speed }));
+  const project = sequenceToProject({ media, video, audio, overlays, eq: o.eq, normalize: o.normalize });
+  return { project, images };
+}
+
+/** API de V1 (la usan el banco y la ruta antigua): pasa por el motor multipista. */
+export async function renderVideo(opts: RenderVideoOptions): Promise<RenderResult> {
+  if (!opts.videoClips.length) throw new Error('No hay clips de video');
+  const { project, images } = legacyInputToProject(opts);
+  // Las imágenes de V1 sin cargar no se ven (igual que antes): el motor no las busca en otra parte.
+  for (const [id, m] of Object.entries(project.media)) if (m.kind === 'image' && !images.has(id)) m.missing = true;
+  return renderProject(project, { ...opts, images });
 }

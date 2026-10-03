@@ -23,6 +23,9 @@ export interface MixEntry {
   outP: number;
   speed: number;
   fx: ClipAudioFx;
+  /** Fundido del sonido (s) al principio y al final del tramo (0 = sin fundido). */
+  fadeIn?: number;
+  fadeOut?: number;
   /** Abre la fuente (null = el archivo no tiene audio). */
   open: () => Promise<PcmSource | null>;
 }
@@ -110,6 +113,19 @@ export class TimelineMixer {
             tr[i] = 0;
           }
         }
+        // Fundidos de sonido (lineales), antes de la cadena del clip como el volumen de la fuente.
+        const fi = e.fadeIn ?? 0;
+        const fo = e.fadeOut ?? 0;
+        if (fi > 0 || fo > 0)
+          for (let i = firstIn; i < lastIn; i++) {
+            const tt = (this.pos + i) / sr;
+            let g = 1;
+            if (fi > 0 && tt - e.start < fi) g = (tt - e.start) / fi;
+            if (fo > 0 && e.end - tt < fo) g = Math.min(g, (e.end - tt) / fo);
+            g = Math.max(0, Math.min(1, g));
+            tl[i] *= g;
+            tr[i] *= g;
+          }
       }
       a.chain.process(tl, tr, count);
       for (let i = 0; i < count; i++) {

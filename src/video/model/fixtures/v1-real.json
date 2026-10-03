@@ -1,0 +1,15 @@
+{
+  "_nota": "Guardado REAL de la clave videoProject hecho por el editor V1 (0bdf437) en Chromium el 2026-10-03: 2 videos subidos (el 2.º dividido con S y a 1,5×), música, capa de imagen, capa de texto, EQ y Normalizar. Los Blob se sustituyen por {__blob, size, type} (mismo __blob = mismo Blob) y las miniaturas se acortan.",
+  "clips": [
+    { "id": "b96d1b19-31e4-4d53-98bb-28a6fa52111b", "type": "video", "url": "", "name": "rojo.webm", "duration": 3, "inP": 0.3, "outP": 3, "effect": "clean", "volume": 0.6, "speed": 1, "fadeIn": 0.5, "fadeOut": 0, "blob": { "__blob": "blob0", "size": 136398, "type": "video/webm" }, "thumb": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ" },
+    { "id": "77ed3522-428b-4fa7-a126-6035c32b37ef", "type": "video", "url": "", "name": "amarillo.mp4", "duration": 4.010667, "inP": 0, "outP": 2, "effect": "none", "volume": 1, "speed": 1.5, "fadeIn": 0, "fadeOut": 0, "blob": { "__blob": "blob1", "size": 184706, "type": "video/mp4" }, "thumb": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ" },
+    { "id": "7fccaf11-cb88-4a3f-b36f-b246130d5101", "type": "video", "url": "", "name": "amarillo.mp4", "duration": 4.010667, "inP": 2, "outP": 4.010667, "effect": "none", "volume": 1, "speed": 1.5, "fadeIn": 0, "fadeOut": 0, "blob": { "__blob": "blob1", "size": 184706, "type": "video/mp4" }, "thumb": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ" },
+    { "id": "a11e713c-2314-4495-85dd-5cc44d0fb63d", "type": "audio", "url": "", "name": "musica.webm", "duration": 8, "inP": 0, "outP": 8, "effect": "none", "volume": 1, "speed": 1, "fadeIn": 0, "fadeOut": 0, "blob": { "__blob": "blob2", "size": 278868, "type": "audio/webm" } }
+  ],
+  "overlays": [
+    { "id": "80bc2f91-1d28-4795-98c7-ca406402e59a", "kind": "image", "text": "", "color": "#fff", "size": 0.3, "xf": 0.5, "yf": 0.5, "start": 0, "end": 9999, "blob": { "__blob": "blob3", "size": 893, "type": "image/png" } },
+    { "id": "1eec9e03-f11a-4cf1-90f2-9b4d7f6293d5", "kind": "text", "text": "HOLA V1", "color": "#ffffff", "size": 72, "xf": 0.5, "yf": 0.2, "start": 1, "end": 9999 }
+  ],
+  "eq": { "low": 3, "mid": 0, "high": 0 },
+  "normalize": true
+}
