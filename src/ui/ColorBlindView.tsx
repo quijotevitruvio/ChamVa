@@ -18,7 +18,7 @@ export function ColorBlindView() {
           <feColorMatrix type="matrix" values={values} />
         </filter>
       </svg>
-      <style>{`.canvas-area .konvajs-content{filter:url(#${FILTER_ID})}`}</style>
+      <style>{`.canvas-area .konvajs-content,.canvas-area .page-still{filter:url(#${FILTER_ID})}`}</style>
       <div className="cb-badge" role="status">
         Vista: {COLORBLIND_LABELS[kind]}
         <button type="button" onClick={() => useColorBlind.getState().setKind(null)}>

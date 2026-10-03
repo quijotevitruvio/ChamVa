@@ -1,0 +1,115 @@
+/* Modo apilado: páginas una bajo otra con scroll continuo. Plano, con la paleta de marca. */
+.canvas-area.stacked {
+  display: block;
+}
+.ps-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+  padding: 16px 24px 48px;
+  box-sizing: border-box;
+}
+.ps-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+}
+.ps-head {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ps-card.active .ps-head .ps-num {
+  color: var(--accent);
+  font-weight: 600;
+}
+.ps-title {
+  flex: 1;
+  min-width: 60px;
+  height: 24px;
+  padding: 0 6px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.ps-title:hover,
+.ps-title:focus {
+  border-color: var(--border);
+  background: var(--panel);
+  outline: none;
+}
+.ps-flag {
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+.ps-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.ps-actions button,
+.ps-add {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ps-actions button:hover:not(:disabled),
+.ps-add:hover {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
+}
+.ps-actions button.on {
+  color: var(--accent);
+}
+.ps-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ps-slot {
+  position: relative;
+  flex: none;
+  background: #fff;
+  outline: 1px solid rgba(128, 128, 128, 0.45);
+  cursor: pointer;
+}
+.ps-slot:hover {
+  outline-color: var(--accent);
+}
+.ps-checker {
+  background: conic-gradient(var(--checker-b, #d9d9d6) 25%, var(--checker-a, #fff) 0 50%, var(--checker-b, #d9d9d6) 0 75%, var(--checker-a, #fff) 0) 0 0 / 16px 16px;
+}
+.page-still {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ps-card.is-hidden .ps-slot,
+.ps-card.is-hidden .page-stage {
+  opacity: 0.45;
+}
+.ps-add {
+  align-self: center;
+  margin: 4px 0;
+  flex: none;
+}
+.ps-card.active .page-stage {
+  margin: 0 auto;
+}

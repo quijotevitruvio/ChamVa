@@ -19,6 +19,7 @@ export const ACTIONS: ShortcutAction[] = [
   { id: 'palette', label: 'Buscar cualquier acción', desc: 'Abre la paleta de comandos', group: 'General', def: 'Ctrl+K' },
   { id: 'shortcuts', label: 'Atajos de teclado', desc: 'Muestra la lista de atajos', group: 'General', def: '?', extra: ['F1'] },
   { id: 'focus', label: 'Modo concentración', desc: 'Oculta barras y paneles; Esc para salir', group: 'General', def: 'F' },
+  { id: 'pageView', label: 'Páginas apiladas', desc: 'Alterna entre una página y todas una bajo otra', group: 'General', def: 'Ctrl+Alt+P' },
   { id: 'undo', label: 'Deshacer', group: 'Edición', def: 'Ctrl+Z' },
   { id: 'redo', label: 'Rehacer', group: 'Edición', def: 'Ctrl+Y', extra: ['Ctrl+Shift+Z'] },
   { id: 'copy', label: 'Copiar capa', group: 'Edición', def: 'Ctrl+C' },

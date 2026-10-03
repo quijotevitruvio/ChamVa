@@ -371,6 +371,9 @@ export default function App() {
       if (act === 'palette') {
         e.preventDefault();
         setShowPalette((v) => !v);
+      } else if (act === 'pageView') {
+        e.preventDefault();
+        st.togglePageView();
       } else if (act === 'focus') {
         e.preventDefault();
         toggleFocusMode();
@@ -1157,6 +1160,7 @@ export default function App() {
       c('Imagen', 'bg-white', 'Fondo blanco', () => setBackground({ type: 'solid', color: '#ffffff' })),
       c('Imagen', 'bg-black', 'Fondo negro', () => setBackground({ type: 'solid', color: '#000000' })),
       c('Ver', 'rulers', 'Mostrar u ocultar reglas', () => st.toggleRulers(), { keywords: 'medidas pixeles' }),
+      c('Ver', 'pageview', 'Páginas apiladas (todas una bajo otra)', () => st.togglePageView(), { shortcut: getShortcut('pageView'), keywords: 'paginas vertical scroll continuo modo' }),
       c('Ver', 'grid', 'Mostrar u ocultar cuadrícula', () => st.toggleGrid(), { keywords: 'rejilla' }),
       c('Ver', 'guides', 'Mostrar u ocultar guías', () => st.toggleGuides(), { keywords: 'lineas' }),
       c('Ver', 'snap', 'Activar o desactivar imán a la cuadrícula', () => st.toggleSnapToGrid(), { keywords: 'ajustar alinear' }),

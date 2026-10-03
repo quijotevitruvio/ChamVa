@@ -235,6 +235,7 @@ interface EditorState {
   zoom: number; // multiplicador de zoom del usuario (1 = ajustar)
   viewScale: number; // escala aplicada real (para mostrar %)
   showRulers: boolean;
+  pageView: 'single' | 'stack'; // clásico (una página) o páginas apiladas
   showGrid: boolean;
   showGuides: boolean;
   snapToGrid: boolean;
@@ -381,6 +382,7 @@ interface EditorState {
   setZoom: (z: number) => void;
   setViewScale: (s: number) => void;
   toggleRulers: () => void;
+  togglePageView: () => void;
   toggleGrid: () => void;
   toggleGuides: () => void;
   toggleSnapToGrid: () => void;
@@ -467,13 +469,14 @@ interface ViewPrefs {
   grid: boolean;
   guides: boolean;
   snap: boolean;
+  pageView: 'single' | 'stack';
 }
 function loadView(): ViewPrefs {
   try {
     const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}');
-    return { rulers: !!v.rulers, grid: !!v.grid, guides: v.guides !== false, snap: !!v.snap };
+    return { rulers: !!v.rulers, grid: !!v.grid, guides: v.guides !== false, snap: !!v.snap, pageView: v.pageView === 'stack' ? 'stack' : 'single' };
   } catch {
-    return { rulers: false, grid: false, guides: true, snap: false };
+    return { rulers: false, grid: false, guides: true, snap: false, pageView: 'single' };
   }
 }
 function saveView(v: ViewPrefs) {
@@ -485,7 +488,7 @@ function saveView(v: ViewPrefs) {
 }
 
 function viewPrefs(s: EditorState): ViewPrefs {
-  return { rulers: s.showRulers, grid: s.showGrid, guides: s.showGuides, snap: s.snapToGrid };
+  return { rulers: s.showRulers, grid: s.showGrid, guides: s.showGuides, snap: s.snapToGrid, pageView: s.pageView };
 }
 
 // Espejo del kit activo en los campos planos (brandColors/brandLogos/brandFonts).
@@ -541,6 +544,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   zoom: 1,
   viewScale: 1,
   showRulers: loadView().rulers,
+  pageView: loadView().pageView,
   showGrid: loadView().grid,
   showGuides: loadView().guides,
   snapToGrid: loadView().snap,
@@ -1633,6 +1637,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   setViewScale: (s) => set({ viewScale: s }),
   toggleRulers: () => {
     set({ showRulers: !get().showRulers });
+    saveView(viewPrefs(get()));
+  },
+  togglePageView: () => {
+    set({ pageView: get().pageView === 'stack' ? 'single' : 'stack' });
     saveView(viewPrefs(get()));
   },
   toggleGrid: () => {

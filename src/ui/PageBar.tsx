@@ -9,6 +9,8 @@ import { PageSorter } from './PageSorter';
 import { setPageMaster, setPageMasterId, setPageTitle, setPageHidden, setPageLocked } from './pageActions';
 import './organize.css';
 import './pagefields.css';
+import { scrollStackToPage } from '../editor/canvas/PageStack';
+import { getShortcut } from '../editor/core/shortcuts';
 import { setMinimapOn, useMinimapOn } from './tabletMode';
 
 // Barra inferior: miniaturas de páginas, añadir/duplicar, zoom y ayuda.
@@ -27,6 +29,8 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const showRulers = useEditor((s) => s.showRulers);
   const showGrid = useEditor((s) => s.showGrid);
   const toggleRulers = useEditor((s) => s.toggleRulers);
+  const pageView = useEditor((s) => s.pageView);
+  const togglePageView = useEditor((s) => s.togglePageView);
   const toggleGrid = useEditor((s) => s.toggleGrid);
   const showGuides = useEditor((s) => s.showGuides);
   const snapToGrid = useEditor((s) => s.snapToGrid);
@@ -116,7 +120,10 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
           className={`page-tab ${i === pageIndex ? 'sel' : ''} ${(i === pageIndex ? doc : p).hidden ? 'page-hidden' : ''} ${
             dragPage !== null && dragPage !== i ? 'drop-target' : ''
           }`}
-          onClick={() => switchPage(i)}
+          onClick={() => {
+            switchPage(i);
+            if (pageView === 'stack') scrollStackToPage(i); // apilado: desplaza a esa página
+          }}
           title={`Página ${i + 1}${(i === pageIndex ? doc : p).title ? ` · ${(i === pageIndex ? doc : p).title}` : ''} (arrastra para reordenar; clic derecho: título, ocultar, bloquear)`}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -267,6 +274,11 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
                 <i>{snapToGrid ? '✓' : ''}</i>
                 {t('Imán')}
                 <small>salta a la cuadrícula</small>
+              </button>
+              <button role="menuitemcheckbox" aria-checked={pageView === 'stack'} onClick={togglePageView}>
+                <i>{pageView === 'stack' ? '✓' : ''}</i>
+                {t('Páginas apiladas')}
+                <small>{getShortcut('pageView')} · todas una bajo otra</small>
               </button>
               <button role="menuitemcheckbox" aria-checked={minimapOn} onClick={() => setMinimapOn(!minimapOn)}>
                 <i>{minimapOn ? '✓' : ''}</i>

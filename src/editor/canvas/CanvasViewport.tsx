@@ -8,6 +8,7 @@ import { useTouchGestures } from './useTouchGestures';
 import { useMinimapOn } from '../../ui/tabletMode';
 import '../../ui/touch.css';
 import type { Doc } from '../core/types';
+import { stackScale } from './stackLayout';
 
 // Editores de texto con foco: los atajos del lienzo no deben actuar.
 export function isTypingTarget(t: EventTarget | null): boolean {
@@ -33,10 +34,13 @@ export interface CanvasBridge {
 export function CanvasViewport({
   doc,
   bridge,
+  stack,
   children,
 }: {
   doc: Doc;
   bridge: CanvasBridge;
+  // Modo apilado: tamaños de TODAS las páginas (escala común, Ctrl+rueda = zoom, sin minimapa).
+  stack?: { width: number; height: number }[];
   children: (scale: number) => ReactNode;
 }) {
   const zoom = useEditor((s) => s.zoom);
@@ -46,6 +50,7 @@ export function CanvasViewport({
   const containerRef = bridge.areaRef as RefObject<HTMLDivElement>;
   const stageRef = bridge.stageRef;
   const [scale, setScale] = useState(1);
+  const stackKey = stack ? stack.map((p) => `${p.width}x${p.height}`).join(',') : '';
 
   // Paneo del lienzo: con la barra espaciadora o el botón central del ratón.
   const [spaceDown, setSpaceDown] = useState(false);
@@ -81,6 +86,12 @@ export function CanvasViewport({
     const fit = () => {
       const el = containerRef.current;
       if (!el || el.clientWidth === 0) return; // aún sin layout
+      if (stack) {
+        const final = stackScale(stack, { width: el.clientWidth, height: el.clientHeight }, zoom);
+        setScale(final);
+        setViewScale(final);
+        return;
+      }
       const pad = 48;
       const sx = (el.clientWidth - pad) / doc.width;
       const sy = (el.clientHeight - pad) / doc.height;
@@ -96,7 +107,20 @@ export function CanvasViewport({
       ro.disconnect();
       window.removeEventListener('resize', fit);
     };
-  }, [doc.width, doc.height, zoom, setViewScale]);
+  }, [doc.width, doc.height, zoom, setViewScale, stackKey]);
+
+  // En modo apilado la rueda desplaza y solo Ctrl+rueda hace zoom: hay que poder
+  // cancelar el zoom del navegador (listener no pasivo).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!stack || !el) return;
+    const stop = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) e.preventDefault();
+    };
+    el.addEventListener('wheel', stop, { passive: false });
+    return () => el.removeEventListener('wheel', stop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!stack]);
 
   return (
     <div className={`canvas-wrap${showRulers ? ' with-rulers' : ''}`}>
@@ -112,11 +136,12 @@ export function CanvasViewport({
         </span>
       )}
     <div
-      className={`canvas-area ${spaceDown ? 'panning' : ''}`}
+      className={`canvas-area ${spaceDown ? 'panning' : ''}${stack ? ' stacked' : ''}`}
       ref={containerRef}
       onDrop={(e) => bridge.dropRef.current?.(e)}
       onWheel={(e) => {
         if (e.deltaY === 0) return;
+        if (stack && !(e.ctrlKey || e.metaKey)) return; // apilado: la rueda sola desplaza
         // Zoom hacia el cursor: tras el cambio de escala, reajustar el scroll
         // para que el punto bajo el puntero se quede (aprox.) en su sitio.
         const el = containerRef.current;
@@ -169,7 +194,7 @@ export function CanvasViewport({
     >
       {children(scale)}
     </div>
-      {minimapOn && <Minimap areaRef={containerRef} doc={doc} scale={scale} />}
+      {minimapOn && !stack && <Minimap areaRef={containerRef} doc={doc} scale={scale} />}
     </div>
   );
 }
