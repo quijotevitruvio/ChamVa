@@ -56,6 +56,7 @@ import { DesignNameField } from './ui/DesignNameField';
 import { SaveIndicator } from './ui/SaveIndicator';
 import './ui/topbar.css';
 import { restoreUndoFor, startUndoPersistence, type UndoStoreApi } from './io/undoStore';
+import { loadTabs } from './io/tabsStore';
 import { readDesignMeta } from './editor/state/designIdentity';
 import { checkBackupReminder } from './io/backup';
 import { SizeMenu } from './ui/SizeMenu';
@@ -479,11 +480,25 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        // designId/designName solo existen desde v0.6: sin ellos, la identidad de siempre.
-        const saved = await idbGet<{ pages: Doc[]; index: number; designId?: string; designName?: string }>('autosave');
-        if (saved?.pages?.length) {
-          loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0, readDesignMeta(saved));
-          await restoreUndoFor(UNDO_API); // recupera los últimos pasos de deshacer
+        // Pestañas guardadas (P8). Sin índice `tabs` (primer arranque con P8, o nada que
+        // leer) se recupera `autosave` como siempre: esa es la migración, y no borra nada.
+        const restored = await loadTabs().catch(() => null);
+        if (restored && useEditor.getState().restoreTabs(restored.tabs, restored.activeId)) {
+          if (restored.dropped.length)
+            toast(
+              restored.dropped.length === 1
+                ? 'Una pestaña guardada estaba dañada y no se pudo abrir. Las demás se recuperaron.'
+                : `${restored.dropped.length} pestañas guardadas estaban dañadas y no se pudieron abrir. Las demás se recuperaron.`,
+              'error',
+            );
+          await restoreUndoFor(UNDO_API); // deshacer de la activa; las demás, al activarlas
+        } else {
+          // designId/designName solo existen desde v0.6: sin ellos, la identidad de siempre.
+          const saved = await idbGet<{ pages: Doc[]; index: number; designId?: string; designName?: string }>('autosave');
+          if (saved?.pages?.length) {
+            loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0, readDesignMeta(saved));
+            await restoreUndoFor(UNDO_API); // recupera los últimos pasos de deshacer
+          }
         }
       } catch {
         /* sin recuperación si falla */
@@ -503,6 +518,15 @@ export default function App() {
       stop();
       clearTimeout(id);
     };
+  }, [autosaveReady]);
+
+  // Pestaña recuperada del disco que se activa por primera vez: llega sin historial en
+  // memoria; se recupera su deshacer guardado (`undo:<designId>`), como al abrir un diseño.
+  useEffect(() => {
+    if (!autosaveReady) return;
+    return useEditor.subscribe((s, prev) => {
+      if (s.activeTabId !== prev.activeTabId && s.past.length === 0) void restoreUndoFor(UNDO_API);
+    });
   }, [autosaveReady]);
 
   // Autoguardado (io/autosave.ts): 1,2 s tras el último cambio; galería y copias cada 30 s.

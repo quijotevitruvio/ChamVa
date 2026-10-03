@@ -52,6 +52,15 @@ export interface BackupFile {
 
 export const DB_KEYS = ['designs', 'designFolders', 'templates', 'uploads', 'brandKitLogos', 'snapshots'] as const;
 
+/**
+ * Claves de la SESIÓN de trabajo (lo que está abierto ahora): pestañas `tabs`/`tab:<id>`
+ * y el autoguardado. No forman parte de la copia (se exporta la biblioteca; el contenido
+ * de las pestañas ya está en `designs`). Si un archivo las trae (p. ej. de una versión
+ * futura), se IGNORAN al validar en vez de rechazarlo, y nunca se escriben al importar:
+ * importar una copia no puede pisar las pestañas abiertas.
+ */
+export const isSessionKey = (k: string) => k === 'tabs' || k.startsWith('tab:') || k === 'autosave' || k === 'autosave.history';
+
 /** Preferencias que NUNCA viajan (licencia, estado propio de las copias). */
 export const PREF_EXCLUDED = ['chamva.license'];
 export const PREF_EXCLUDED_PREFIX = 'chamva.backup';
@@ -131,7 +140,12 @@ export function validateBackup(raw: unknown): Validation {
   }
   if (data.brandKitLogos !== undefined && !recordOf(data.brandKitLogos, isImage)) return bad('logos del kit');
   if (data.snapshots !== undefined && !recordOf(data.snapshots, isSnap)) return bad('versiones');
-  for (const k of Object.keys(data)) if (!(DB_KEYS as readonly string[]).includes(k)) return bad(`clave desconocida «${k}»`);
+  const libData: Record<string, unknown> = {};
+  for (const k of Object.keys(data)) {
+    if (isSessionKey(k)) continue; // sesión de trabajo: se ignora (ver isSessionKey)
+    if (!(DB_KEYS as readonly string[]).includes(k)) return bad(`clave desconocida «${k}»`);
+    libData[k] = data[k];
+  }
 
   const fonts = raw.fonts ?? [];
   if (!Array.isArray(fonts) || fonts.length > 500) return bad('fuentes');
@@ -157,7 +171,7 @@ export function validateBackup(raw: unknown): Validation {
       version: raw.version as number,
       createdAt: raw.createdAt as number,
       appVersion: isStr(raw.appVersion) ? raw.appVersion : undefined,
-      data: data as BackupDb,
+      data: libData as BackupDb,
       fonts: fonts as FontEntry[],
       assets: assets as Record<string, string>,
       prefs: prefs as Record<string, string>,

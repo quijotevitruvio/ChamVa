@@ -4,6 +4,11 @@
 // vencer se escribe la clave `autosave`. Galería (`upsertDesign`), copias
 // (`pushBackup`) y versión automática se actualizan como mucho cada 30 s.
 // Las imágenes van por referencia (io/assets.ts): cada escritura pesa KB.
+//
+// Pestañas (P8): si el estado trae `activeTabId`/`tabs`, cada guardado escribe además
+// `tab:<pestaña activa>` y el índice `tabs` (io/tabsStore.ts), en ese orden y ANTES de
+// `autosave`, que se sigue escribiendo igual (compatibilidad hacia atrás). Una pestaña
+// aparcada queda escrita por el «guardar ya» que se hace al aparcarla.
 import type { Doc } from '../editor/core/types';
 import { idbSet } from './idb';
 import { dehydrateDocs } from './assets';
@@ -12,6 +17,7 @@ import { maybeSaveAutoVersion } from './autoVersions';
 import { renderDocToCanvas } from './export';
 import { designTitle } from '../editor/state/designIdentity';
 import { markError, markPending, markSaved, markSaving } from './saveStatus';
+import { saveTab, saveTabsIndex } from './tabsStore';
 
 export const AUTOSAVE_DEBOUNCE_MS = 1200;
 export const GALLERY_EVERY_MS = 30_000;
@@ -23,6 +29,9 @@ export interface AutosaveState {
   pageIndex: number;
   designId: string;
   designName: string | null;
+  // Pestañas (opcionales: sin ellas solo se escribe `autosave`, como antes de P8).
+  activeTabId?: string;
+  tabs?: { id: string }[];
 }
 export interface AutosaveApi {
   getState: () => AutosaveState;
@@ -37,8 +46,8 @@ export const scheduleSave = () => current?.schedule();
  * Guarda ya (p. ej. antes de abrir otro diseño o de cambiar de pestaña). Lee el estado
  * en el MISMO tick en que se llama (antes del primer `await`), así que se puede cambiar
  * de documento justo después sin que se guarde el nuevo en lugar del viejo.
- * Resuelve `true` si se escribió todo lo que tocaba (`autosave` y, si el diseño tiene
- * contenido, la galería); `false` si el almacenamiento falló. Sin autoguardado activo: `true`.
+ * Resuelve `true` si se escribió todo lo que tocaba (`autosave`, `tab:<id>` y `tabs` y, si el
+ * diseño tiene contenido, la galería); `false` si el almacenamiento falló. Sin autoguardado activo: `true`.
  */
 export const flushSave = (): Promise<boolean> => current?.flush() ?? Promise.resolve(true);
 
@@ -47,22 +56,42 @@ export function startAutosave(api: AutosaveApi): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let version = 0; // sube con cada cambio: un guardado solo marca «guardado» si nadie cambió nada mientras tanto
   let lastGallery = 0;
+  let round = 0; // cada guardado tiene su número: uno viejo que termina tarde no pisa al nuevo
+  let autosaveRound = 0; // última ronda que escribió `autosave`
 
   const run = async (force = false): Promise<boolean> => {
     const mine = version;
+    const seq = ++round;
     markSaving();
     try {
+      // TODO lo que se guarda se lee aquí, antes del primer await (flushSave + cambio de pestaña).
       const st = api.getState();
       const snapshot = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
+      const tabId = st.activeTabId;
+      const order = st.tabs?.map((t) => t.id);
       const light = await dehydrateDocs(snapshot);
       const designId = st.designId;
       const ownName = st.designName ?? undefined;
-      const ok = await idbSet('autosave', {
-        pages: light,
-        index: st.pageIndex,
-        designId,
-        ...(ownName ? { designName: ownName } : {}),
-      });
+      let tabsOk = true;
+      if (tabId && order) {
+        const session = { pages: light, index: st.pageIndex, designId, designName: ownName };
+        // Registro antes que índice: el índice nunca apunta a una pestaña sin guardar.
+        tabsOk = (await saveTab(tabId, session, seq)) && (await saveTabsIndex(order, tabId, seq));
+      }
+      // Con pestañas, un «guardar ya» de la saliente (con fotos que deshidratar) puede
+      // terminar DESPUÉS que el guardado de la entrante: `autosave` debe quedar con la
+      // activa, así que una ronda vieja no lo pisa (IndexedDB aplica en orden de llamada).
+      let autosaveOk = true;
+      if (seq > autosaveRound) {
+        autosaveRound = seq;
+        autosaveOk = await idbSet('autosave', {
+          pages: light,
+          index: st.pageIndex,
+          designId,
+          ...(ownName ? { designName: ownName } : {}),
+        });
+      }
+      const ok = autosaveOk && tabsOk;
       if (!ok) markError();
       else if (version === mine) markSaved();
       else markPending();
@@ -117,15 +146,27 @@ export function startAutosave(api: AutosaveApi): () => void {
     return run(true); // run() lee el estado antes de su primer await
   };
 
+  const order = (s: AutosaveState) => (s.tabs ? s.tabs.map((t) => t.id).join('|') : '');
   const unsub = api.subscribe((s, prev) => {
-    if (s.doc !== prev.doc || s.pages !== prev.pages || s.pageIndex !== prev.pageIndex || s.designName !== prev.designName)
+    if (
+      s.doc !== prev.doc ||
+      s.pages !== prev.pages ||
+      s.pageIndex !== prev.pageIndex ||
+      s.designName !== prev.designName ||
+      s.activeTabId !== prev.activeTabId ||
+      // Abrir, cerrar u ordenar pestañas (no el estado de guardado de cada una).
+      (s.tabs !== prev.tabs && order(s) !== order(prev))
+    )
       schedule();
   });
-  // Al ocultar la pestaña, si hay un cambio esperando, se guarda sin esperar al retardo.
-  const onHide = () => {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden' && timer) void flush();
+  // Al ocultar la ventana o cerrarla, si hay un cambio esperando, se guarda sin esperar al
+  // retardo (`pagehide` cubre la descarga de la página, donde `visibilitychange` no siempre llega).
+  const onHide = (e?: Event) => {
+    if (typeof document === 'undefined' || !timer) return;
+    if (e?.type === 'pagehide' || document.visibilityState === 'hidden') void flush();
   };
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onHide);
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', onHide);
 
   const me = { schedule, flush };
   current = me;
@@ -134,6 +175,7 @@ export function startAutosave(api: AutosaveApi): () => void {
   return () => {
     unsub();
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onHide);
+    if (typeof window !== 'undefined') window.removeEventListener('pagehide', onHide);
     if (timer) clearTimeout(timer);
     timer = undefined;
     if (current === me) current = null;

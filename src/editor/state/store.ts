@@ -32,6 +32,7 @@ import {
 } from './sessions';
 import { flushSave } from '../../io/autosave';
 import { flushUndo } from '../../io/undoStore';
+import { removeTab } from '../../io/tabsStore';
 import { insertAt, patchTouchesGeometry } from '../core/pageOps';
 import { resizeDocTo, type TargetSize } from '../core/libraryMeta';
 import { similarLayerIds, stylePatch } from '../core/layerStyle';
@@ -309,6 +310,12 @@ export interface EditorState {
     index: number,
     meta?: DesignMeta,
   ) => { status: 'active' | 'focused' | 'reused' | 'opened' | 'limit' | 'invalid'; tabId: string | null };
+  // Arranque (P8): sustituye TODAS las pestañas por las guardadas (io/tabsStore.ts loadTabs),
+  // con sus mismos ids (claves `tab:<id>`). Sin historial; la activa recupera el suyo aparte.
+  restoreTabs: (
+    list: { id: string; pages: Doc[]; index: number; designId: string; designName: string | null }[],
+    activeId: string,
+  ) => boolean;
 
   // documento / lienzo
   setCanvasSize: (width: number, height: number, meta?: { unit?: Unit; dpi?: number }) => void;
@@ -522,6 +529,13 @@ function leaveActiveSession() {
   });
 }
 
+// Pestaña cerrada: fuera del índice `tabs` y sin registro `tab:<id>` (su diseño sigue en
+// Inicio). Solo tras un cierre correcto o forzado; si el guardado falló, la pestaña vuelve.
+function forgetSavedTab(id: string) {
+  const s = useEditor.getState();
+  void removeTab(id, { order: s.tabs.map((t) => t.id), activeId: s.activeTabId }).catch(() => {});
+}
+
 // Aparca la activa y abre `snap` en una pestaña nueva (al final de la tira).
 function enterNewSession(snap: SessionSnapshot): string {
   leaveActiveSession();
@@ -705,6 +719,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         return { parked: rest, tabs: s.tabs.filter((t) => t.id !== id) };
       });
       tabSaves.delete(id);
+      forgetSavedTab(id);
       return true;
     }
     // Activa: se guarda (leyendo el estado ya), se cambia a la vecina AL MOMENTO (nada
@@ -737,6 +752,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     const ok = await saving;
     if (ok || force || blank) {
       if (tabSaves.get(id) === saving) tabSaves.delete(id);
+      forgetSavedTab(id);
       return true;
     }
     // No se pudo guardar: la pestaña no se pierde, vuelve a su sitio (aparcada, con error).
@@ -746,6 +762,26 @@ export const useEditor = create<EditorState>((set, get) => ({
       return { parked: { ...s.parked, [id]: closing }, tabs };
     });
     return false;
+  },
+
+  restoreTabs: (list, activeId) => {
+    const valid = list.filter((t, i) => t.id && t.pages.length && list.findIndex((o) => o.id === t.id) === i).slice(0, MAX_TABS);
+    const active = valid.find((t) => t.id === activeId) ?? valid[0];
+    if (!active) return false;
+    endBatchNow();
+    set((s) => {
+      const parked: Record<string, SessionSnapshot> = {};
+      for (const t of valid)
+        if (t !== active) parked[t.id] = freshSession(t.pages, t.index, { designId: t.designId, designName: t.designName }, s.pageView);
+      return {
+        ...freshSession(active.pages, active.index, { designId: active.designId, designName: active.designName }, s.pageView),
+        ...TRANSIENT_RESET,
+        parked,
+        activeTabId: active.id,
+        tabs: valid.map((t) => ({ id: t.id, save: 'saved' as const })),
+      };
+    });
+    return true;
   },
 
   reorderTabs: (from, to) =>

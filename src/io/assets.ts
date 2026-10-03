@@ -149,17 +149,43 @@ export function collectRefs(value: unknown, into: Set<string>) {
 
 // Claves de IndexedDB que referencian imágenes. 'brandKitLogos' (logos de todos
 // los kits de marca) sustituye a 'brandLogos' (kit único anterior, que se
-// sigue leyendo por si aún no se migró).
-export const GC_KEYS = ['autosave', 'autosave.history', 'designs', 'snapshots', 'uploads', 'templates', 'brandLogos', 'brandKitLogos', 'autoVersions'];
+// sigue leyendo por si aún no se migró). 'tabs' es el índice de pestañas (no lleva
+// imágenes hoy, pero se mira por si algún día las lleva).
+export const GC_KEYS = ['autosave', 'autosave.history', 'designs', 'snapshots', 'uploads', 'templates', 'brandLogos', 'brandKitLogos', 'autoVersions', 'tabs'];
+/**
+ * Familias de claves con una entrada por elemento: `undo:<diseño>` (io/undoStore.ts) y
+ * `tab:<pestaña>` (io/tabsStore.ts). Una imagen que SOLO usa una pestaña aparcada vive
+ * aquí: si una familia nueva no se añade, sus imágenes se borran a los 30 s del arranque.
+ */
+export const GC_PREFIXES = ['undo:', 'tab:'];
+
+/**
+ * Todas las referencias `asset:` vivas en IndexedDB (lo que gcAssets NO puede borrar).
+ * `allKeys` = lista de claves ya leída (gcAssets la pasa para usar UNA sola lectura).
+ * Devuelve null si una clave que existe no se pudo leer: sin la lista completa de vivas
+ * no se puede borrar nada con seguridad.
+ */
+export async function collectLiveRefs(allKeys?: string[]): Promise<Set<string> | null> {
+  const keys = allKeys ?? (await idbKeys());
+  const present = new Set(keys);
+  const live = new Set<string>();
+  const wanted = [...GC_KEYS, ...keys.filter((k) => GC_PREFIXES.some((p) => k.startsWith(p)))];
+  for (const key of wanted) {
+    const v = await idbGet(key);
+    if (v == null && present.has(key)) return null; // existe pero no se pudo leer (idbGet no lanza)
+    collectRefs(v, live);
+  }
+  return live;
+}
 
 export async function gcAssets(): Promise<number> {
-  const live = new Set<string>();
-  for (const key of GC_KEYS) {
-    collectRefs(await idbGet(key), live);
-  }
-  // Historial de deshacer persistido (io/undoStore.ts): una clave `undo:<diseño>` por diseño.
-  for (const key of await idbKeys('undo:')) collectRefs(await idbGet(key), live);
-  const keys = await idbKeys(PREFIX);
+  // Una sola lista de claves, leída ANTES que las referencias: una imagen guardada
+  // mientras el GC recorre las claves no está en la lista y no se puede borrar por error.
+  const all = await idbKeys();
+  const keys = all.filter((k) => k.startsWith(PREFIX));
+  if (!keys.length) return 0;
+  const live = await collectLiveRefs(all);
+  if (!live) return 0; // lectura fallida: mejor no borrar nada
   let removed = 0;
   for (const k of keys) {
     if (!live.has(k)) {
