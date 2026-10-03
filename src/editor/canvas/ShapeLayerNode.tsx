@@ -6,6 +6,7 @@ import type Konva from 'konva';
 import type { ShapeLayer } from '../core/types';
 import { isStrokeOnly, shapePath } from '../core/shapes';
 import { useEditor } from '../state/store';
+import { isLayerLocked } from '../core/pageOps';
 
 interface Props {
   layer: ShapeLayer;
@@ -17,6 +18,7 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
   const viewScale = useEditor((s) => s.viewScale);
+  const pageLocked = useEditor((s) => !!s.doc.locked);
 
   if (!layer.visible) return null;
 
@@ -48,7 +50,7 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
       shadowBlur={layer.shadowBlur}
       shadowOffsetX={layer.shadowX}
       shadowOffsetY={layer.shadowY}
-      draggable={!layer.locked}
+      draggable={!isLayerLocked({ locked: pageLocked }, layer)}
       globalCompositeOperation={
         layer.blendMode === 'normal' ? undefined : (layer.blendMode as any)
       }

@@ -6,8 +6,9 @@ import { LocalBadge } from './LocalBadge';
 import { LayoutPopover } from './LayoutPopover';
 import { SpeakerNotes } from './SpeakerNotes';
 import { PageSorter } from './PageSorter';
-import { setPageMaster, setPageMasterId } from './pageActions';
+import { setPageMaster, setPageMasterId, setPageTitle, setPageHidden, setPageLocked } from './pageActions';
 import './organize.css';
+import './pagefields.css';
 import { setMinimapOn, useMinimapOn } from './tabletMode';
 
 // Barra inferior: miniaturas de páginas, añadir/duplicar, zoom y ayuda.
@@ -42,6 +43,9 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   const [speakerOpen, setSpeakerOpen] = useState(false);
   const [sorterOpen, setSorterOpen] = useState(false);
   const [masterMenu, setMasterMenu] = useState(false);
+  // Menú contextual de una miniatura (clic derecho): título, ocultar y bloquear.
+  const [pageMenu, setPageMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const menuPage = pageMenu ? (pages.map((p, i) => (i === pageIndex ? doc : p)).find((p) => p.id === pageMenu.id) ?? null) : null;
   const masterBtn = useRef<HTMLButtonElement>(null);
   const masters = pages.map((p, i) => (i === pageIndex ? doc : p)).filter((p) => p.isMaster && p.id !== doc.id);
   const layoutBtn = useRef<HTMLButtonElement>(null);
@@ -66,15 +70,58 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
     <>
     {speakerOpen && <SpeakerNotes onClose={() => setSpeakerOpen(false)} />}
     {sorterOpen && <PageSorter onClose={() => setSorterOpen(false)} />}
+    {pageMenu && menuPage && (
+      <>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 59 }} onClick={() => setPageMenu(null)} onContextMenu={(e) => { e.preventDefault(); setPageMenu(null); }} />
+        <div className="pm-menu" style={{ left: Math.min(pageMenu.x, window.innerWidth - 240), bottom: Math.max(8, window.innerHeight - pageMenu.y) }}>
+          <span className="pm-title">{t('Título de la página')}</span>
+          <input
+            className="pf-title-input"
+            autoFocus
+            defaultValue={menuPage.title ?? ''}
+            placeholder={t('Agregar título de página')}
+            maxLength={120}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setPageTitle(menuPage.id, e.currentTarget.value);
+                setPageMenu(null);
+              } else if (e.key === 'Escape') setPageMenu(null);
+              e.stopPropagation();
+            }}
+            onBlur={(e) => setPageTitle(menuPage.id, e.currentTarget.value)}
+          />
+          <button
+            onClick={() => {
+              setPageHidden(menuPage.id, !menuPage.hidden);
+              setPageMenu(null);
+            }}
+          >
+            {menuPage.hidden ? t('Mostrar página') : t('Ocultar página (no se exporta ni se presenta)')}
+          </button>
+          <button
+            onClick={() => {
+              setPageLocked(menuPage.id, !menuPage.locked);
+              setPageMenu(null);
+            }}
+          >
+            {menuPage.locked ? `🔓 ${t('Desbloquear página')}` : `🔒 ${t('Bloquear página')}`}
+          </button>
+        </div>
+      </>
+    )}
     <footer className="page-bar">
       {pages.map((p, i) => (
         <button
           key={p.id}
-          className={`page-tab ${i === pageIndex ? 'sel' : ''} ${
+          className={`page-tab ${i === pageIndex ? 'sel' : ''} ${(i === pageIndex ? doc : p).hidden ? 'page-hidden' : ''} ${
             dragPage !== null && dragPage !== i ? 'drop-target' : ''
           }`}
           onClick={() => switchPage(i)}
-          title={`Página ${i + 1} (arrastra para reordenar)`}
+          title={`Página ${i + 1}${(i === pageIndex ? doc : p).title ? ` · ${(i === pageIndex ? doc : p).title}` : ''} (arrastra para reordenar; clic derecho: título, ocultar, bloquear)`}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setPageMenu({ id: p.id, x: e.clientX, y: e.clientY });
+          }}
           draggable
           onDragStart={() => setDragPage(i)}
           onDragOver={(e) => e.preventDefault()}
@@ -87,6 +134,12 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
           <PageThumb doc={i === pageIndex ? doc : p} />
           <span className="page-num">{i + 1}</span>
           {(i === pageIndex ? doc : p).isMaster && <span className="page-master">{t('Maestra')}</span>}
+          {((i === pageIndex ? doc : p).hidden || (i === pageIndex ? doc : p).locked) && (
+            <span className="page-flags">
+              {(i === pageIndex ? doc : p).hidden && <span title={t('Oculta: no se exporta ni se presenta')}>{t('Oculta')}</span>}
+              {(i === pageIndex ? doc : p).locked && <span title={t('Bloqueada')}>🔒</span>}
+            </span>
+          )}
           {pages.length > 1 && (
             <span
               className="page-del"

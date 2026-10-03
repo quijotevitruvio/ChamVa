@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
+import { exportableCount } from '../editor/core/pageOps';
 import { t } from '../i18n';
 import {
   getExtra,
@@ -38,7 +39,7 @@ const EXT: Record<string, string> = { png: 'png', jpeg: 'jpg', webp: 'webp', avi
 export function ExportSettings({ format, setFormat, scale, setScale, quality, setQuality, scope, setScope }: Props) {
   const x = useExtra();
   const doc = useEditor((s) => s.doc);
-  const pageCount = useEditor((s) => s.pages.length);
+  const pageCount = useEditor(exportableCount);
   const pageIndex = useEditor((s) => s.pageIndex);
   const uploads = useEditor((s) => s.uploads);
   const raster = format === 'png' || LOSSY.includes(format);

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { useEditor } from '../state/store';
+import { isLayerLocked } from '../core/pageOps';
 import { toast } from '../../ui/toast';
 import {
   angleDelta,
@@ -139,7 +140,7 @@ export function useTouchGestures(
       const st = useEditor.getState();
       if (!st.selectedId) return null;
       const l = st.doc.layers.find((x) => x.id === st.selectedId);
-      if (!l || l.locked || !l.visible) return null;
+      if (!l || isLayerLocked(st.doc, l) || !l.visible) return null;
       const node = nodeRefs.current?.get(l.id);
       return node ? { l, node } : null;
     };

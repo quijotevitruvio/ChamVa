@@ -45,6 +45,40 @@ export function deleteIndices(pages: Doc[], selected: number[]): Doc[] {
   return rest.length ? rest : pages;
 }
 
+// Páginas que se exportan/presentan: las ocultas se descartan (siguen en el proyecto).
+// Si todas están ocultas devuelve [] y quien llama avisa con un toast.
+export function exportablePages(pages: Doc[]): Doc[] {
+  return pages.filter((p) => !p.hidden);
+}
+
+// Lo mismo pero en índices (para conservar el número de página original al nombrar archivos).
+export function exportableIndices(pages: Doc[]): number[] {
+  const out: number[] = [];
+  pages.forEach((p, i) => {
+    if (!p.hidden) out.push(i);
+  });
+  return out;
+}
+
+// Cuántas páginas se exportan, con la página actual (`doc`) al día: `pages[pageIndex]` puede estar obsoleta.
+export function exportableCount(s: { pages: Doc[]; doc: Doc; pageIndex: number }): number {
+  return s.pages.filter((p, i) => !(i === s.pageIndex ? s.doc : p).hidden).length;
+}
+
+// ¿La capa está bloqueada? Su propio candado o el de la página.
+export function isLayerLocked(doc: { locked?: boolean }, layer: { locked?: boolean }): boolean {
+  return !!doc.locked || !!layer.locked;
+}
+
+// Aviso estándar cuando todas las páginas están ocultas.
+export const ALL_HIDDEN_MSG = 'Todas las páginas están ocultas: muestra al menos una para exportar o presentar.';
+
+// Campos de una capa que mueven o transforman (los bloquea el candado de la página).
+const GEOMETRY_KEYS = ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'width', 'height', 'flipX', 'flipY'];
+export function patchTouchesGeometry(patch: object): boolean {
+  return GEOMETRY_KEYS.some((k) => k in patch);
+}
+
 // Inserta `page` en la posición `index` (se limita a 0…pages.length: fuera de rango va al final o al principio).
 export function insertAt(pages: Doc[], index: number, page: Doc): Doc[] {
   const i = Number.isFinite(index) ? Math.max(0, Math.min(pages.length, Math.trunc(index))) : pages.length;

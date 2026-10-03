@@ -8,6 +8,7 @@ import { useEditor } from '../state/store';
 import { needsProcessing, processImage } from '../core/imageProcessing';
 import { shapePath } from '../core/shapes';
 import { drawGroundFx, hasGroundFx } from '../core/groundFx';
+import { isLayerLocked } from '../core/pageOps';
 
 // Resolución máxima de la vista previa del editor (la exportación usa resolución completa).
 const PREVIEW_MAX = 2048;
@@ -22,6 +23,7 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
   const clickSelect = useEditor((s) => s.clickSelect);
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
+  const pageLocked = useEditor((s) => !!s.doc.locked);
   const fxRef = useRef<Konva.Shape>(null); // reflejo / sombra proyectada (se mueve con la capa)
 
   const fxVersion = useFxImagesVersion(layer.adjust); // recalcula cuando llega la imagen de la doble exposición
@@ -59,7 +61,7 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     shadowBlur: layer.shadowBlur,
     shadowOffsetX: layer.shadowX,
     shadowOffsetY: layer.shadowY,
-    draggable: !layer.locked,
+    draggable: !isLayerLocked({ locked: pageLocked }, layer),
     globalCompositeOperation:
       layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>

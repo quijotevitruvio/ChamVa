@@ -3,6 +3,7 @@
 import type { Doc, Layer } from '../editor/core/types';
 import { TRANSPARENT_BG } from '../editor/core/types';
 import { useEditor } from '../editor/state/store';
+import { exportableIndices, ALL_HIDDEN_MSG } from '../editor/core/pageOps';
 import { downloadBlob, renderDocToCanvas, type ExportFormat } from './export';
 import { exportDocToSvg } from './exportSvg';
 import { getExtra, type ExtraSettings } from './exportExtra';
@@ -171,7 +172,12 @@ export async function runImageExport(opts: {
     }
     targets = [{ doc: { ...cropped, name: st.doc.name }, pagina: st.pageIndex + 1 }];
   } else if (scope === 'all') {
-    targets = allPages.map((d, i) => ({ doc: d, pagina: i + 1 }));
+    // Las páginas ocultas no se exportan; el número de página conserva el original.
+    targets = exportableIndices(allPages).map((i) => ({ doc: allPages[i], pagina: i + 1 }));
+    if (!targets.length) {
+      toast(ALL_HIDDEN_MSG, 'info');
+      return;
+    }
   } else {
     targets = [{ doc: st.doc, pagina: st.pageIndex + 1 }];
   }

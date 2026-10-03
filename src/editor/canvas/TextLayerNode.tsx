@@ -10,6 +10,7 @@ import { defaultFields } from '../core/textMacros';
 import { hasPathText, hasTextFx } from '../core/textFx';
 import { useTextFxImagesVersion } from './useTextFxImages';
 import { useEditor } from '../state/store';
+import { isLayerLocked } from '../core/pageOps';
 
 interface Props {
   layer: TextLayer;
@@ -24,6 +25,7 @@ export function TextLayerNode({ layer, registerRef }: Props) {
   const updateLayer = useEditor((s) => s.updateLayer);
   const requestTextEdit = useEditor((s) => s.requestTextEdit);
   const editing = useEditor((s) => s.editingTextId === layer.id);
+  const locked = useEditor((s) => isLayerLocked(s.doc, layer));
   // Valores de los campos dinámicos ({{pagina}}, {{total}}, {{diseno}}…).
   const pageNo = useEditor((s) => s.pageIndex + 1);
   const pageTotal = useEditor((s) => s.pages.length);
@@ -62,14 +64,14 @@ export function TextLayerNode({ layer, registerRef }: Props) {
     rotation: layer.rotation,
     // Mientras se edita encima del lienzo, el editor HTML ocupa su lugar.
     opacity: editing ? 0 : layer.opacity,
-    draggable: !layer.locked && !editing,
+    draggable: !locked && !editing,
     globalCompositeOperation:
       layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>
       clickSelect(layer.id, e.evt.shiftKey),
     onTap: () => clickSelect(layer.id, false),
-    onDblClick: () => !layer.locked && requestTextEdit(layer.id),
-    onDblTap: () => !layer.locked && requestTextEdit(layer.id),
+    onDblClick: () => !locked && requestTextEdit(layer.id),
+    onDblTap: () => !locked && requestTextEdit(layer.id),
     onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) =>
       updateLayer(layer.id, { x: e.target.x(), y: e.target.y() }),
     onTransformEnd: (e: Konva.KonvaEventObject<Event>) => {

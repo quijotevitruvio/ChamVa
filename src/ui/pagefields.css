@@ -1,0 +1,49 @@
+/* Campos de página: título, oculta y bloqueada (miniaturas, menú contextual y clasificador). */
+.page-tab.page-hidden .page-thumb,
+.ps-card.page-hidden img {
+  opacity: 0.4;
+}
+.page-tab .page-flags {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  gap: 2px;
+  font-size: 10px;
+  line-height: 1.3;
+}
+.page-tab .page-flags > span,
+.ps-flags > span {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.pf-title-input {
+  margin: 2px 4px 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ps-flags {
+  display: flex;
+  gap: 2px;
+  font-size: 10px;
+  margin-top: 2px;
+}
+.ps-title {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 2px 4px;
+  font-size: 11px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-sizing: border-box;
+}

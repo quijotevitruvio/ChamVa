@@ -550,6 +550,9 @@ export interface Doc {
   styles?: SharedStyle[]; // estilos de objeto compartidos
   isMaster?: boolean; // esta página es una página maestra
   masterId?: string; // id de la página maestra cuyas capas se muestran detrás (solo lectura)
+  title?: string; // título de la página (distinto de `name`, que es el nombre del diseño en la primera)
+  hidden?: boolean; // página oculta: no se exporta ni se presenta (sigue en el proyecto)
+  locked?: boolean; // página bloqueada: sus capas no se mueven, transforman ni borran
 }
 
 // Calcula los puntos inicio/fin de un degradado lineal según el ángulo y el tamaño.

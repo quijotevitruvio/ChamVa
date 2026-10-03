@@ -1,4 +1,5 @@
 import { RecolorWithPalette } from './BrandKitPanel';
+import { setPageLocked } from './pageActions';
 import { FillControl } from './GradientEditor';
 import { ContrastBadge } from './ContrastChecker';
 import { toHex6 } from '../editor/core/gradients';
@@ -392,6 +393,13 @@ export function PropertiesPanel(p: Props) {
             </button>
           )}
         </div>
+
+        {doc.locked && (
+          <p className="rail-sub">
+            🔒 {t('Página bloqueada: sus capas no se mueven, giran ni borran.')}{' '}
+            <button onClick={() => setPageLocked(doc.id, false)}>{t('Desbloquear página')}</button>
+          </p>
+        )}
 
         {(multi || inGroup) && (
           <Section id="group" title="Selección y grupo" defaultOpen>

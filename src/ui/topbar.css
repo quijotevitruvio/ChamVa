@@ -1,0 +1,79 @@
+/* ===== Barra superior: nombre del diseño, indicador de guardado, Redimensionar, Compartir ===== */
+.toolbar input.design-name {
+  box-sizing: content-box;
+  min-width: 0;
+  max-width: 34ch;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  transition: border-color 0.12s, background 0.12s;
+}
+.toolbar input.design-name:hover {
+  border-color: var(--border);
+}
+.toolbar input.design-name:focus {
+  outline: none;
+  background: var(--panel-2);
+  border-color: var(--c-cyan);
+}
+
+.save-ind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+}
+.save-ind.busy {
+  color: var(--c-cyan-text);
+}
+.save-ind.saved {
+  color: var(--c-green-text);
+}
+.toolbar button.save-ind.error,
+.save-ind.error {
+  color: var(--danger);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.toolbar button.save-ind.error:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+/* Redimensionar: la medida va aparte para poder ocultarla en pantallas estrechas */
+.toolbar .resize-btn .resize-dim {
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+/* Barra apretada: sin la medida, ni la etiqueta de Compartir, para que quepa en una fila */
+@media (max-width: 1400px) {
+  .toolbar .resize-btn .resize-dim,
+  .toolbar .share-btn .share-label {
+    display: none;
+  }
+}
+
+/* Móvil: la barra no se desborda; las etiquetas pasan a icono y el nombre se estrecha */
+@media (max-width: 768px) {
+  .toolbar input.design-name {
+    width: 14ch !important;
+    max-width: 30vw;
+    flex: none; /* la barra se desplaza en horizontal: el campo no se encoge hasta desaparecer */
+  }
+  .save-ind .save-ind-label,
+  .toolbar .resize-btn .resize-label,
+  .toolbar .share-btn .share-label {
+    display: none;
+  }
+}

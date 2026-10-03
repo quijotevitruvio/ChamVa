@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Doc } from './types';
-import { deleteIndices, duplicateIndices, insertAt, moveIndicesTo, reorderOne } from './pageOps';
+import {
+  deleteIndices,
+  duplicateIndices,
+  exportableIndices,
+  exportablePages,
+  insertAt,
+  isLayerLocked,
+  moveIndicesTo,
+  patchTouchesGeometry,
+  reorderOne,
+} from './pageOps';
 
 const page = (id: string, isMaster = false): Doc =>
   ({ id, name: id, width: 10, height: 10, background: { type: 'transparent' }, layers: [{ id: `${id}-l` }], version: 1, ...(isMaster ? { isMaster } : {}) }) as unknown as Doc;
@@ -49,5 +59,38 @@ describe('pageOps', () => {
     expect(ids(deleteIndices(P(), [0, 2]))).toEqual(['b', 'd']);
     const src = P();
     expect(deleteIndices(src, [0, 1, 2, 3])).toBe(src);
+  });
+});
+
+describe('páginas ocultas y bloqueadas', () => {
+  const withHidden = (hiddenIds: string[]) => P().map((p) => (hiddenIds.includes(p.id) ? { ...p, hidden: true } : p));
+
+  it('exportablePages descarta las ocultas y conserva el orden', () => {
+    expect(ids(exportablePages(withHidden(['b', 'd'])))).toEqual(['a', 'c']);
+    expect(ids(exportablePages(P()))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('exportablePages: todas ocultas → []', () => {
+    expect(exportablePages(withHidden(['a', 'b', 'c', 'd']))).toEqual([]);
+    expect(exportableIndices(withHidden(['a', 'b', 'c', 'd']))).toEqual([]);
+  });
+
+  it('exportableIndices conserva el índice original', () => {
+    expect(exportableIndices(withHidden(['a', 'c']))).toEqual([1, 3]);
+  });
+
+  it('isLayerLocked: candado de la capa o de la página', () => {
+    expect(isLayerLocked({}, {})).toBe(false);
+    expect(isLayerLocked({ locked: false }, { locked: false })).toBe(false);
+    expect(isLayerLocked({}, { locked: true })).toBe(true);
+    expect(isLayerLocked({ locked: true }, { locked: false })).toBe(true);
+    expect(isLayerLocked({ locked: true }, {})).toBe(true);
+  });
+
+  it('patchTouchesGeometry distingue mover/transformar de otros cambios', () => {
+    expect(patchTouchesGeometry({ x: 3 })).toBe(true);
+    expect(patchTouchesGeometry({ rotation: 5, opacity: 1 })).toBe(true);
+    expect(patchTouchesGeometry({ opacity: 0.5 })).toBe(false);
+    expect(patchTouchesGeometry({ locked: false })).toBe(false);
   });
 });

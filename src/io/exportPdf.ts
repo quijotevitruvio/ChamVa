@@ -154,7 +154,7 @@ export async function exportBookmarkedPdf(pages: Doc[]): Promise<Blob> {
     if (!pdf) pdf = new jsPDF({ orientation, unit: 'px', format: [page.width, page.height] });
     else pdf.addPage([page.width, page.height], orientation);
     pdf.addImage(url, 'JPEG', 0, 0, page.width, page.height);
-    pdf.outline.add(null, page.name?.trim() || `Página ${i + 1}`, { pageNumber: i + 1 });
+    pdf.outline.add(null, page.title?.trim() || page.name?.trim() || `Página ${i + 1}`, { pageNumber: i + 1 });
   }
   return (pdf as jsPDF).output('blob');
 }

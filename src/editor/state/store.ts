@@ -16,7 +16,7 @@ import {
 import { jumpInHistory } from './historyLogic';
 import { swap, type PageHist } from './pageHistory';
 import { resolveDesignMeta, type DesignMeta } from './designIdentity';
-import { insertAt } from '../core/pageOps';
+import { insertAt, patchTouchesGeometry } from '../core/pageOps';
 import { resizeDocTo, type TargetSize } from '../core/libraryMeta';
 import { similarLayerIds, stylePatch } from '../core/layerStyle';
 import { NOTE_COLORS } from '../core/layout';
@@ -1262,7 +1262,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   updateLayer: (id, patch) =>
     set((s) =>
-      commit(s, {
+      // Página bloqueada: no se mueve ni transforma (sí otros cambios, p. ej. el candado de la capa).
+      s.doc.locked && patchTouchesGeometry(patch) ? {} : commit(s, {
         ...s.doc,
         layers: s.doc.layers.map((l) => (l.id === id ? patchLayer(l, patch) : l)),
       }),
@@ -1270,6 +1271,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setLayerRotation: (id, deg, live) =>
     set((s) => {
+      if (s.doc.locked) return {};
       const layers = s.doc.layers.map((l) => {
         if (l.id !== id) return l;
         // Mantener fijo el centro: recolocar x,y según la nueva rotación.
@@ -1290,7 +1292,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }),
 
   updateLayerLive: (id, patch) =>
-    set((s) => ({
+    set((s) => s.doc.locked && patchTouchesGeometry(patch) ? {} : ({
       doc: {
         ...s.doc,
         layers: s.doc.layers.map((l) => (l.id === id ? patchLayer(l, patch) : l)),
@@ -1367,7 +1369,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     ),
 
   removeLayer: (id) =>
-    set((s) => ({
+    set((s) => s.doc.locked ? {} : ({
       ...commit(s, {
         ...s.doc,
         layers: s.doc.layers.filter((l) => l.id !== id),
@@ -1377,6 +1379,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   duplicateLayer: (id) =>
     set((s) => {
+      if (s.doc.locked) return {};
       const l = s.doc.layers.find((x) => x.id === id);
       if (!l) return {};
       const copy = { ...l, id: uid(), x: l.x + 24, y: l.y + 24, groupId: undefined } as Layer;
@@ -1388,6 +1391,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   pasteLayer: (layer) =>
     set((s) => {
+      if (s.doc.locked) return {};
       const copy = { ...layer, id: uid(), x: layer.x + 24, y: layer.y + 24, groupId: undefined } as Layer;
       return {
         ...commit(s, { ...s.doc, layers: [...s.doc.layers, copy] }),
@@ -1596,6 +1600,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   removeSelected: () =>
     set((s) => {
+      if (s.doc.locked) return {};
       const ids = s.selectedIds.length
         ? s.selectedIds
         : s.selectedId
@@ -1735,6 +1740,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   alignLayer: (id, kind) =>
     set((s) => {
+      if (s.doc.locked) return {};
       const l = s.doc.layers.find((x) => x.id === id);
       if (!l) return {};
       const { w, h } = layerBox(l);
@@ -1753,6 +1759,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   alignSelected: (kind) =>
     set((s) => {
+      if (s.doc.locked) return {};
       const items = s.selectedIds
         .map((id) => s.doc.layers.find((l) => l.id === id))
         .filter((l): l is Layer => !!l);
@@ -1784,6 +1791,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   distributeSelected: (axis) =>
     set((s) => {
+      if (s.doc.locked) return {};
       const items = s.selectedIds
         .map((id) => s.doc.layers.find((l) => l.id === id))
         .filter((l): l is Layer => !!l);

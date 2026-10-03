@@ -1,13 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useEditor } from './editor/state/store';
+import { isLayerLocked, exportablePages, exportableCount, ALL_HIDDEN_MSG } from './editor/core/pageOps';
 import { EditorCanvas, isTypingTarget } from './editor/canvas/EditorCanvas';
 import { TRANSPARENT_BG, type Doc, type ImageLayer, type Layer } from './editor/core/types';
 import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
 import { BatchShareHost, openBatchShare } from './ui/ExportQueuePanel';
 import { TextToolsHost, openFindReplace } from './ui/FindReplace';
-import { idbGet, idbSet, requestPersistentStorage, setStorageErrorHandler } from './io/idb';
-import { dehydrateDocs, rehydrateDocs, gcAssets } from './io/assets';
+import { idbGet, requestPersistentStorage, setStorageErrorHandler } from './io/idb';
+import { rehydrateDocs, gcAssets } from './io/assets';
 import { getStoredLicense, type LicenseInfo, type LicenseType } from './license';
 import { loadImageFile } from './io/import';
 import { addFontFromFile } from './editor/core/fonts';
@@ -38,9 +39,7 @@ import { UiPrefs, getFocusMode, setFocusMode, toggleFocusMode } from './ui/UiSca
 import { TipLayer } from './ui/Tip';
 import {
   loadDesigns,
-  upsertDesign,
   loadBackups,
-  pushBackup,
   type SavedDesign,
   type Backup,
 } from './io/designs';
@@ -52,9 +51,12 @@ import { RailPanels } from './ui/RailPanels';
 import { HomeScreen } from './ui/HomeScreen';
 import { SnapshotsDialog } from './ui/SnapshotsDialog';
 import { AutoVersionsDialog } from './ui/AutoVersionsDialog';
-import { maybeSaveAutoVersion } from './io/autoVersions';
+import { startAutosave, type AutosaveApi } from './io/autosave';
+import { DesignNameField } from './ui/DesignNameField';
+import { SaveIndicator } from './ui/SaveIndicator';
+import './ui/topbar.css';
 import { restoreUndoFor, startUndoPersistence, type UndoStoreApi } from './io/undoStore';
-import { designTitle, readDesignMeta } from './editor/state/designIdentity';
+import { readDesignMeta } from './editor/state/designIdentity';
 import { checkBackupReminder } from './io/backup';
 import { SizeMenu } from './ui/SizeMenu';
 import { sizeLabel } from './ui/sizeFieldsLogic';
@@ -109,6 +111,11 @@ const UNDO_API: UndoStoreApi = {
   subscribe: (fn) => useEditor.subscribe(fn),
   restoreHistory: (past, id) => useEditor.getState().restoreHistory(past, id),
 };
+// Enganche del store con el autoguardado (io/autosave.ts).
+const AUTOSAVE_API: AutosaveApi = {
+  getState: () => useEditor.getState(),
+  subscribe: (fn) => useEditor.subscribe(fn),
+};
 const EXPORT_LS = 'chamva.exportOpts';
 const BG_ENGINE_LS = 'chamva.bgEngine';
 
@@ -145,7 +152,6 @@ export default function App() {
   const selRect = useEditor((s) => s.selRect);
   const pages = useEditor((s) => s.pages);
   const pageIndex = useEditor((s) => s.pageIndex);
-  const designName = useEditor((s) => s.designName); // al renombrar el diseño también se autoguarda
   const newDesign = useEditor((s) => s.newDesign);
   const loadPages = useEditor((s) => s.loadPages);
   const undo = useEditor((s) => s.undo);
@@ -190,6 +196,14 @@ export default function App() {
   const [showFilters, setShowFilters] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
+  // Las páginas ocultas no se presentan: si todas lo están, avisa en lugar de abrir una pantalla vacía.
+  // Páginas que se presentan (sin las ocultas) y por cuál empieza: la actual, o la primera visible.
+  const presentPages = exportablePages(pages.map((p, i) => (i === pageIndex ? doc : p)));
+  const presentStart = Math.max(0, presentPages.findIndex((p) => p.id === doc.id));
+  const startPresent = () => {
+    if (!exportableCount(useEditor.getState())) toast(ALL_HIDDEN_MSG, 'info');
+    else setShowPresent(true);
+  };
   const [showHome, setShowHome] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showDonate, setShowDonate] = useState<string | false>(false);
@@ -396,11 +410,11 @@ export default function App() {
         e.preventDefault();
         // Las capas bloqueadas no se borran con la tecla (protege el fondo).
         const l = st.doc.layers.find((x) => x.id === selectedId);
-        if (!l?.locked) st.removeSelected();
+        if (!l || !isLayerLocked(st.doc, l)) st.removeSelected();
       } else if (e.key.startsWith('Arrow') && selectedId) {
         e.preventDefault();
         const l = st.doc.layers.find((x) => x.id === selectedId);
-        if (l && !l.locked) {
+        if (l && !isLayerLocked(st.doc, l)) {
           const step = e.shiftKey ? 10 : 1;
           const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
           const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
@@ -471,43 +485,11 @@ export default function App() {
     };
   }, [autosaveReady]);
 
-  // Las imágenes van por referencia (io/assets.ts): cada escritura pesa KB.
-  // Galería y copias, que releen/reescriben listas, van cada 30 s como mucho.
-  const lastGallery = useRef(0);
+  // Autoguardado (io/autosave.ts): 1,2 s tras el último cambio; galería y copias cada 30 s.
   useEffect(() => {
     if (!autosaveReady) return;
-    const id = setTimeout(async () => {
-      const st = useEditor.getState();
-      const snapshot = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
-      const light = await dehydrateDocs(snapshot);
-      const designId = st.designId;
-      const ownName = st.designName ?? undefined;
-      idbSet('autosave', { pages: light, index: st.pageIndex, designId, ...(ownName ? { designName: ownName } : {}) });
-      if (Date.now() - lastGallery.current < 30_000) return;
-      lastGallery.current = Date.now();
-      pushBackup(light, st.pageIndex, { designId, designName: ownName });
-      if (snapshot[0]?.layers.length || snapshot.length > 1) {
-        try {
-          const first = snapshot[0];
-          const s = Math.min(1, 160 / Math.max(first.width, first.height));
-          const thumb = (await renderDocToCanvas(first, s, '#ffffff')).toDataURL('image/jpeg', 0.6);
-          upsertDesign({
-            id: designId, // estable: reordenar o borrar la primera página no crea otro diseño
-            name: designTitle(ownName, snapshot),
-            ...(ownName ? { designName: ownName } : {}),
-            updatedAt: Date.now(),
-            pageIndex: st.pageIndex,
-            pages: light,
-            thumb,
-          });
-          maybeSaveAutoVersion(designId, light, st.pageIndex, thumb); // versión automática (cada ~10 min)
-        } catch {
-          /* miniatura opcional */
-        }
-      }
-    }, 1200);
-    return () => clearTimeout(id);
-  }, [doc, pages, pageIndex, designName, autosaveReady]);
+    return startAutosave(AUTOSAVE_API);
+  }, [autosaveReady]);
 
   // App abierta con doble clic sobre un .chamva (solo Tauri).
   useEffect(() => {
@@ -970,7 +952,14 @@ export default function App() {
     }
     try {
       const st = useEditor.getState();
-      const allPages = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
+      const synced = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
+      // Las páginas ocultas no entran en «todas», GIF ni PDF; «esta página» sí (acción explícita).
+      const allPages = exportablePages(synced);
+      const usesAll = format === 'gif' || (scope === 'all' && !['anim', 'anim-mp4', 'ico'].includes(format));
+      if (usesAll && !allPages.length) {
+        toast(ALL_HIDDEN_MSG, 'info');
+        return;
+      }
       if (format === 'gif') {
         downloadBlob(await exportPagesToGif(allPages, { maxSize: 800, delay: 800 }), `${baseName(allPages[0])}.gif`);
         return;
@@ -1175,7 +1164,7 @@ export default function App() {
       c('Ver', 'zoom-out', 'Alejar', () => st.setZoom(st.zoom / 1.2), { keywords: 'zoom reducir' }),
       c('Ver', 'zoom-fit', 'Ajustar zoom a la ventana', () => st.setZoom(1), { keywords: 'zoom encajar' }),
       c('Ver', 'focus', 'Modo concentración', toggleFocusMode, { shortcut: getShortcut('focus'), keywords: 'ocultar paneles barras solo lienzo zen' }),
-      c('Ver', 'present', 'Modo presentación', () => setShowPresent(true), { keywords: 'pantalla completa diapositivas' }),
+      c('Ver', 'present', 'Modo presentación', startPresent, { keywords: 'pantalla completa diapositivas' }),
       c('Ver', 'theme-light', 'Tema claro', () => setTheme('light'), { keywords: 'apariencia color' }),
       c('Ver', 'theme-dark', 'Tema oscuro', () => setTheme('dark'), { keywords: 'apariencia color' }),
       c('Ver', 'theme-contrast', 'Tema de alto contraste', () => setTheme('contrast'), { keywords: 'apariencia color accesibilidad blanco negro' }),
@@ -1204,6 +1193,9 @@ export default function App() {
           <span className="lg-c">C</span>ham<span className="lg-v">V</span>
           <span className="lg-a">a</span>
         </span>
+
+        <DesignNameField />
+        <SaveIndicator />
 
         <div className="menu-wrap">
           <button className={showFileMenu ? 'active' : ''} onClick={() => setShowFileMenu((v) => !v)} title="Archivo">
@@ -1268,8 +1260,14 @@ export default function App() {
         </div>
 
         <div className="menu-wrap">
-          <button className={showSizeMenu ? 'active' : ''} onClick={() => setShowSizeMenu((v) => !v)} title="Tamaño del lienzo">
-            📐 {sizeLabel(doc)}
+          <button
+            className={`resize-btn${showSizeMenu ? ' active' : ''}`}
+            onClick={() => setShowSizeMenu((v) => !v)}
+            title={`Redimensionar el lienzo (${sizeLabel(doc)})`}
+            aria-label="Redimensionar"
+          >
+            ⤢ <span className="resize-label">{t('Redimensionar')}</span>
+            <span className="resize-dim">{sizeLabel(doc)}</span>
           </button>
           {showSizeMenu && (
             <SizeMenu
@@ -1321,7 +1319,7 @@ export default function App() {
             <div className="dropdown" onClick={() => setShowMore(false)}>
               <button onClick={() => setShowVideo(true)}>🎬 {t('Editor de video')}</button>
               <button onClick={playAnimations}>▶ {t('Previsualizar animaciones')}</button>
-              <button onClick={() => setShowPresent(true)}>🖥 {t('Modo presentación')}</button>
+              <button onClick={startPresent}>🖥 {t('Modo presentación')}</button>
               <button onClick={() => setShowShortcuts(true)}>⌨ {t('Atajos de teclado')}</button>
               <button onClick={() => setShowSettings(true)} disabled={offlineBusy}>
                 ⬇ {t('Usar sin internet')}…
@@ -1369,6 +1367,10 @@ export default function App() {
 
         <span className="spacer" />
 
+        <button className="share-btn" onClick={openBatchShare} title="Lote y compartir…" aria-label="Compartir">
+          ⇪ <span className="share-label">{t('Compartir')}</span>
+        </button>
+
         <div className="download-wrap">
           <button
             className="cut-bg"
@@ -1397,7 +1399,7 @@ export default function App() {
               setQuality={setQuality}
               scope={scope}
               setScope={setScope}
-              pageCount={pages.length}
+              pageCount={exportableCount({ pages, doc, pageIndex })}
               transparentCanvas={doc.background.type === 'transparent'}
               onDownload={onDownload}
               onCopy={onCopyToClipboard}
@@ -1549,7 +1551,7 @@ export default function App() {
       {showVideo && <VideoEditor onClose={() => setShowVideo(false)} />}
 
       {showPresent && (
-        <Presentation pages={pages.map((p, i) => (i === pageIndex ? doc : p))} start={pageIndex} onClose={() => setShowPresent(false)} />
+        <Presentation pages={presentPages} start={presentStart} onClose={() => setShowPresent(false)} />
       )}
       </Suspense>
 

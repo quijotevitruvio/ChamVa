@@ -12,6 +12,7 @@ import {
 } from 'react-konva';
 import type Konva from 'konva';
 import { useEditor } from '../state/store';
+import { isLayerLocked } from '../core/pageOps';
 import { GradientBg, GrainBg } from './BackgroundFx';
 import { animTotalFor, layerAnimAt } from '../core/animations';
 import { getCheckerboard } from './useImage';
@@ -472,20 +473,20 @@ export function EditorCanvas() {
       : selectedIds
           .map((id) => doc.layers.find((l) => l.id === id))
           .filter(
-            (l): l is NonNullable<typeof l> => !!l && !l.locked && l.id !== editingTextId,
+            (l): l is NonNullable<typeof l> => !!l && !isLayerLocked(doc, l) && l.id !== editingTextId,
           )
           .map((l) => nodeRefs.current.get(l.id))
           .filter((n): n is Konva.Node => !!n);
     tr.nodes(nodes);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, doc.layers, cropMode, editingTextId]);
+  }, [selectedIds, doc.layers, doc.locked, cropMode, editingTextId]);
 
   // Doble clic en un texto (o "Editar texto"): abrir el editor sobre el lienzo.
   useEffect(() => {
     if (!textEditNonce) return;
     const st = useEditor.getState();
     const l = st.doc.layers.find((x) => x.id === st.selectedId);
-    if (l?.type === 'text' && !l.locked) setEditingText(l.id);
+    if (l?.type === 'text' && !isLayerLocked(st.doc, l)) setEditingText(l.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textEditNonce]);
 

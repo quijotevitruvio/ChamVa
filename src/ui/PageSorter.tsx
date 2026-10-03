@@ -4,9 +4,10 @@ import type { Doc } from '../editor/core/types';
 import { renderDocToCanvas } from '../io/export';
 import { clearMasterRefs, masterRevision } from '../editor/core/master';
 import { deleteIndices, duplicateIndices, moveIndicesTo, reorderOne } from '../editor/core/pageOps';
-import { setPageMaster } from './pageActions';
+import { setPageMaster, setPageTitle, setPageHidden, setPageLocked } from './pageActions';
 import { t } from '../i18n';
 import './organize.css';
+import './pagefields.css';
 
 const uid = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -139,7 +140,7 @@ export function PageSorter({ onClose }: { onClose: () => void }) {
           {pages.map((p, i) => (
             <div
               key={p.id}
-              className={`ps-card${sel.has(p.id) ? ' sel' : ''}${i === pageIndex ? ' cur' : ''}${over === i && dragFrom !== null && dragFrom !== i ? ' drop' : ''}`}
+              className={`ps-card${sel.has(p.id) ? ' sel' : ''}${i === pageIndex ? ' cur' : ''}${p.hidden ? ' page-hidden' : ''}${over === i && dragFrom !== null && dragFrom !== i ? ' drop' : ''}`}
               draggable
               onDragStart={(e) => {
                 setDragFrom(i);
@@ -181,6 +182,50 @@ export function PageSorter({ onClose }: { onClose: () => void }) {
                   {i + 1}. {p.name}
                 </span>
                 {p.isMaster && <small>{t('Maestra')}</small>}
+              </div>
+              <input
+                key={p.title ?? ''}
+                className="ps-title"
+                defaultValue={p.title ?? ''}
+                placeholder={t('Agregar título de página')}
+                maxLength={120}
+                draggable={false}
+                aria-label={`${t('Título de la página')} ${i + 1}`}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                onBlur={(e) => {
+                  if (e.currentTarget.value.trim() !== (p.title ?? '')) setPageTitle(p.id, e.currentTarget.value);
+                }}
+              />
+              <div className="ps-flags">
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title={p.hidden ? t('Mostrar página') : t('Ocultar página (no se exporta ni se presenta)')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPageHidden(p.id, !p.hidden);
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {p.hidden ? t('Oculta') : t('Visible')}
+                </span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  title={p.locked ? t('Desbloquear página') : t('Bloquear página')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPageLocked(p.id, !p.locked);
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {p.locked ? '🔒' : '🔓'}
+                </span>
               </div>
             </div>
           ))}

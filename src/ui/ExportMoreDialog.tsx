@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { t } from '../i18n';
 import { useEditor } from '../editor/state/store';
+import { exportablePages } from '../editor/core/pageOps';
 import { downloadBlob, renderDocToCanvas } from '../io/export';
 import {
   exportBleedPdf,
@@ -123,12 +124,12 @@ interface TabProps {
   run: Run;
 }
 
-// Todas las páginas del proyecto con la actual al día.
+// Páginas exportables del proyecto (sin las ocultas) con la actual al día.
 function usePages() {
   const pages = useEditor((s) => s.pages);
   const doc = useEditor((s) => s.doc);
   const pageIndex = useEditor((s) => s.pageIndex);
-  return useMemo(() => pages.map((p, i) => (i === pageIndex ? doc : p)), [pages, doc, pageIndex]);
+  return useMemo(() => exportablePages(pages.map((p, i) => (i === pageIndex ? doc : p))), [pages, doc, pageIndex]);
 }
 
 function Go({ busy, onClick, children, disabled }: { busy: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
@@ -197,6 +198,7 @@ function BleedTab({ busy, run }: TabProps) {
       </div>
       <Go
         busy={busy}
+        disabled={all && !pages.length}
         onClick={() =>
           run(async () => ({
             blob: await exportBleedPdf(all ? pages : [doc], { dpi, bleedMm: bleed, crop, registration: reg, fill }),
@@ -221,13 +223,13 @@ function MarksTab({ busy, run }: TabProps) {
       </p>
       <ul className="xm-desc">
         {pages.map((p, i) => (
-          <li key={p.id}>{p.name?.trim() || `${t('Página')} ${i + 1}`}</li>
+          <li key={p.id}>{p.title?.trim() || p.name?.trim() || `${t('Página')} ${i + 1}`}</li>
         ))}
       </ul>
       <p className="xm-partial">
         {t('Parcial: los enlaces por capa necesitan que las capas puedan tener un enlace; esa función aún no existe, así que por ahora solo se crean los marcadores.')}
       </p>
-      <Go busy={busy} onClick={() => run(async () => ({ blob: await exportBookmarkedPdf(pages), name: `${base}_marcadores.pdf` }))}>
+      <Go busy={busy} disabled={!pages.length} onClick={() => run(async () => ({ blob: await exportBookmarkedPdf(pages), name: `${base}_marcadores.pdf` }))}>
         ⬇ {t('Descargar PDF con marcadores')}
       </Go>
     </>
@@ -285,7 +287,7 @@ function NUpTab({ busy, run }: TabProps) {
       <p className="xm-note">
         {pages.length} {t('páginas')} → {Math.ceil(pages.length / count)} {t('hojas')}
       </p>
-      <Go busy={busy} onClick={() => run(async () => ({ blob: await exportNUpPdf(pages, { count, sheet, gutterMm: gutter, marginMm: margin, marks }), name: `${base}_${count}-por-hoja.pdf` }))}>
+      <Go busy={busy} disabled={!pages.length} onClick={() => run(async () => ({ blob: await exportNUpPdf(pages, { count, sheet, gutterMm: gutter, marginMm: margin, marks }), name: `${base}_${count}-por-hoja.pdf` }))}>
         ⬇ {t('Descargar PDF')}
       </Go>
     </>
@@ -318,7 +320,7 @@ function BookletTab({ busy, run }: TabProps) {
       <p className="xm-note">
         {pages.length} {t('páginas')} → {sheets} {t('hojas')} ({sheets * 2} {t('caras')}); {t('si faltan páginas para completar un cuadernillo se dejan en blanco.')}
       </p>
-      <Go busy={busy} onClick={() => run(async () => ({ blob: await exportBookletPdf(pages, { size, sheet }), name: `${base}_folleto.pdf` }))}>
+      <Go busy={busy} disabled={!pages.length} onClick={() => run(async () => ({ blob: await exportBookletPdf(pages, { size, sheet }), name: `${base}_folleto.pdf` }))}>
         ⬇ {t('Descargar PDF de folleto')}
       </Go>
     </>
@@ -528,6 +530,7 @@ function SpritesTab({ busy, run }: TabProps) {
       </div>
       <Go
         busy={busy}
+        disabled={source === 'pages' && !pages.length}
         onClick={() =>
           run(async () => {
             const src = await spriteSources(pages, source);

@@ -13,6 +13,7 @@ import { exportPagesToApngOrWebp, type AnimFormat } from '../io/exportAnimPages'
 import { buildResourceReport, fmtBytes, reportToText } from '../io/resourceReport';
 import { canShareFiles, shareOrDownload } from '../io/shareFile';
 import { toast } from './toast';
+import { exportablePages, exportableCount, ALL_HIDDEN_MSG } from '../editor/core/pageOps';
 import './batchshare.css';
 
 type Tab = 'lote' | 'compartir' | 'informe' | 'anim' | 'archivo';
@@ -290,9 +291,11 @@ function AnimTab() {
   const [format, setFormat] = useState<AnimFormat>('apng');
   const [delay, setDelay] = useState(800);
   const [maxSize, setMaxSize] = useState(800);
-  const pageCount = useEditor((s) => s.pages.length);
+  // Solo cuentan las páginas visibles (las ocultas no entran en la animación).
+  const pageCount = useEditor(exportableCount);
   const start = () => {
-    const { pages } = currentPages();
+    const pages = exportablePages(currentPages().pages);
+    if (pages.length < 2) return;
     runInQueue(`Animación ${format === 'apng' ? 'APNG' : 'WebP'} (${pages.length} páginas)`, async (ctx) => {
       const blob = await exportPagesToApngOrWebp(pages, format, {
         delay,
@@ -341,7 +344,11 @@ function FileTab() {
     });
   };
   const html = () => {
-    const { pages } = currentPages();
+    const pages = exportablePages(currentPages().pages);
+    if (!pages.length) {
+      toast(ALL_HIDDEN_MSG, 'info');
+      return;
+    }
     runInQueue(`Presentación HTML (${pages.length} páginas)`, async (ctx) => {
       await exportHtmlPresentation(pages, { onProgress: (i, n) => ctx.progress(i, n), isCancelled: ctx.isCancelled });
     });
