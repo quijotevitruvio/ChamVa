@@ -51,6 +51,8 @@ Ve a la [última release](https://github.com/quijotevitruvio/ChamVa/releases/lat
 - **Quitar fondo** inteligente con varios motores locales (MODNet, BiRefNet-lite y RMBG-1.4 vía transformers.js),
   con vista previa antes/después, modos de borde (foto / logo) y descontaminación de color para eliminar el halo,
   más **borrador mágico** (pincel para borrar/restaurar) e inpaint con OpenCV.
+- **Subtítulos automáticos (Whisper, en preparación)**: el audio **nunca sale de tu equipo**; solo se descarga el
+  modelo (43–589 MB, una vez, tras pedirte permiso con el tamaño) y después transcribe sin conexión.
 - **Ajustes tipo "Photoshop para dummies"**: auto-mejorar, estilos de un clic, luces/sombras, temperatura, tinte,
   intensidad, nitidez, desenfoque, grano, viñeta, pixelado, posterizar y contorno de sticker; **desenfocar fondo
   (retrato)** con un clic.

@@ -157,3 +157,32 @@ LICENSE, OpenCV empaquetado, la CSP y el auto-actualizador.
 4. Duotono: ponderar por alfa para evitar franjas en bordes semitransparentes.
 5. GIF con transparencia de 1 bit como opción de exportación.
 6. Tests de integración del editor (Playwright) sobre el flujo completo.
+
+## 6. Subtítulos automáticos (V5a, 2026-10-03): licencias verificadas
+
+Comprobado **en línea el 2026-10-03 leyendo el origen** (no de memoria). Código en `src/ai/transcribe/`.
+
+| Componente | Fuente exacta | Licencia | Cómo se verificó | Tamaño |
+|---|---|---|---|---|
+| Whisper (código y pesos) | github.com/openai/whisper | **MIT** | `LICENSE` («MIT License, Copyright (c) 2022 OpenAI») y README: «code and model weights are released under the MIT License» | — |
+| Fichas de pesos originales | huggingface.co/openai/whisper-{tiny,base,small} | Apache-2.0 (ficha HF) | API de HF `cardData.license` | — |
+| **Pesos ONNX usados** tiny | huggingface.co/Xenova/whisper-tiny @ `5332fcc` | **Apache-2.0** | ficha `README.md` («license: apache-2.0») + API | WASM 43,6 MB · WebGPU 122,4 MB |
+| **Pesos ONNX usados** base | huggingface.co/Xenova/whisper-base @ `64da572` | **Apache-2.0** | ídem | WASM 79,7 MB · WebGPU 208,9 MB |
+| **Pesos ONNX usados** small | huggingface.co/Xenova/whisper-small @ `2d67713` | **Apache-2.0** | ídem | WASM 251,9 MB · WebGPU 588,8 MB |
+| `@huggingface/transformers` 4.2.0 | github.com/huggingface/transformers.js + `node_modules/.../LICENSE` | **Apache-2.0** | `LICENSE` del repo y del paquete instalado | ya era dependencia |
+| `onnxruntime-web` 1.26.0-dev | github.com/microsoft/onnxruntime | **MIT** | `LICENSE` del repo («MIT License, Copyright (c) Microsoft Corporation»); `package.json` instalado: MIT | wasm ya empaquetado |
+| Detección de voz (VAD) | propia (energía por tramas, `windows.ts`) | MIT (ChamVa) | sin modelo: no hay nada que descargar ni licenciar | 0 |
+
+**Descartados:** `onnx-community/whisper-*_timestamped` (su ficha **no declara licencia**: sin verificar, no se usa);
+Silero VAD (no hace falta: el VAD por energía basta para trocear).
+
+**Descarga y privacidad:**
+- Nada se descarga sin consentimiento con el tamaño exacto (`downloadPlan` → `downloadModel({ consent })`).
+- Modelos fijados a un **commit** con tamaño y huella por archivo (sha256 LFS / sha1 de blob git): se verifica
+  todo; si no coincide, se borra. Descarga reanudable por trozos de 8 MB (IndexedDB + `Range`).
+- El worker de transcripción tiene la **red cortada** para Hugging Face: solo lee la caché `chamva-models-v1`; sin
+  modelo da un error legible («Falta el modelo…») y no descarga nada. El audio nunca sale del equipo.
+- **CSP:** no hizo falta tocarla. `connect-src` ya permitía `https://huggingface.co` y `https://*.hf.co`
+  (la redirección real de los pesos va a `us.aws.cdn.hf.co`, comprobado con `curl -I`). La CSP es global: lo que
+  limita la red a «solo esta descarga, solo tras permiso» es el código (lista cerrada del manifiesto + worker cortado).
+- Pendiente: `navigator.storage.estimate()` en Chromium tarda en reflejar el espacio liberado tras borrar.

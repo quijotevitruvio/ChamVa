@@ -223,6 +223,26 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
 - **Prueba:** audio de voz sintetizado o grabado a propósito con texto conocido; medir tasa de error
   de palabras y desfase de tiempos.
 - **Riesgos:** tamaño de descarga (75–480 MB), memoria en Android, idioma español.
+- **Hecho (V5a, motor; la interfaz va aparte):** `src/ai/transcribe/` — worker propio (chunk aparte, sin pesos en el
+  build), audio del proyecto/pista/rango a mono 16 kHz con el mezclador de V2, VAD por energía y ventanas de ≤ 30 s
+  cortadas en silencios (solape de 2 s si no hay silencio, fusión sin duplicar), marcas por palabra afinadas con la
+  energía, idioma automático o elegido, traducción a inglés, progreso y cancelación; `segmentsToSubtitles` → `Cue[]`
+  de V4. Descarga con consentimiento, reanudable, verificada (sha256/sha1) y borrable. Licencias: AUDITORIA.md §6.
+
+  | Modelo | Fuente (commit fijado) | Licencia verificada | WASM (q8) | WebGPU (fp32+q4) |
+  |---|---|---|---|---|
+  | tiny | Xenova/whisper-tiny @ 5332fcc | Apache-2.0 (pesos ONNX) · MIT (Whisper) | 43,6 MB | 122,4 MB |
+  | base | Xenova/whisper-base @ 64da572 | Apache-2.0 · MIT | 79,7 MB | 208,9 MB |
+  | small | Xenova/whisper-small @ 2d67713 | Apache-2.0 · MIT | 251,9 MB | 588,8 MB |
+
+  Medido en Chromium 152 (Windows, CPU de escritorio, 32 GB) con voz sintética de Windows (SAPI) troceada por palabras
+  con tiempos exactos: base/WASM 67 s de audio en 23–26 s (×0,34–0,39 del tiempo real), 3 ventanas, 124/124 palabras
+  en orden sin duplicados, 100 % a ±0,3 s (mediana 4 ms); tiny/WASM ×0,21–0,29, 29/30 a ±0,3 s. Sin el afinado por
+  energía Whisper llega 0,2–0,4 s tarde (mediana 0,21 s base, 0,38 s tiny). Memoria del renderizador: +1 GB pico con
+  base/WASM. WebGPU (tiny) fue MÁS lento que WASM en este equipo (×0,39 frente a ×0,24) y alineó peor.
+  Notas: ORT 1.26-dev necesita `graphOptimizationLevel: 'basic'` en WASM (el decodificador q8 falla con la
+  optimización completa). Para regenerar el manifiesto: API `/api/models/<repo>` (sha) y `/api/models/<repo>/tree/<sha>`
+  (tamaño, `lfs.oid` u `oid`). Pendiente: small sin medir, Android/macOS sin probar, voz real (no sintética).
 
 ### V6 · Transiciones, efectos, color y keyframes — **sonnet, esfuerzo medio**
 
