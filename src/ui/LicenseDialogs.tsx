@@ -244,7 +244,7 @@ export function SettingsDialog({
           <span className="settings-label">{t('Modelos de IA sin internet')}</span>
           <p className="support-desc">
             Descarga los modelos una vez y quitar fondo / optimizar funcionarán sin conexión
-            para siempre. También deja listo el conversor de video.
+            para siempre. (El video ya no necesita descargas: se exporta con el navegador.)
           </p>
           <button
             className="link-btn"

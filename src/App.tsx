@@ -18,7 +18,7 @@ import { exportPagesToPdf } from './io/exportPdf';
 import { runImageExport, cancelExport } from './io/runExport';
 import { runInQueue } from './io/exportQueue';
 import { exportAnimatedGif } from './io/exportAnim';
-import { gifToMp4, prefetchFFmpeg } from './io/ffmpegConvert';
+import { exportDocAnimationVideo } from './video/exportActions';
 import { exportIco } from './io/exportIco';
 import { saveProject, readProjectFile, parseProject } from './io/project';
 import {
@@ -671,9 +671,6 @@ export default function App() {
       setOfflineMsg('Cargando borrador mágico…');
       await loadOpenCV();
       stop();
-      setOfflineMsg('Descargando conversor de video…');
-      await prefetchFFmpeg();
-      stop();
       setOfflineMsg('✓ Listo para usar sin internet');
       setTimeout(() => setOfflineMsg(''), 4000);
     } catch (e) {
@@ -1098,7 +1095,8 @@ export default function App() {
         return;
       }
       if (format === 'anim-mp4') {
-        downloadBlob(await gifToMp4(await exportAnimatedGif(st.doc)), `${baseName(st.doc)}_anim.mp4`);
+        // Mismo motor que el editor de video (WebCodecs): sin GIF intermedio ni ffmpeg.
+        await exportDocAnimationVideo(st.doc, `${baseName(st.doc)}_anim`);
         return;
       }
       if (format === 'ico') {

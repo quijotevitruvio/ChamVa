@@ -13,8 +13,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "^0.12.15",
-    "@ffmpeg/util": "^0.12.2",
     "@fontsource/anton": "^5.3.0",
     "@fontsource/bebas-neue": "^5.3.0",
     "@fontsource/dancing-script": "^5.3.0",
@@ -45,6 +43,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-konva": "^19.2.5",
+    "webm-muxer": "5.1.4",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

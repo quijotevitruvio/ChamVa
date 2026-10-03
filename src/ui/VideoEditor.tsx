@@ -4,9 +4,13 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { webmToMp4 } from '../io/ffmpegConvert';
 import { downloadBlob } from '../io/export';
-import { canRenderMp4, renderMp4 } from '../io/videoRender';
+import { canUseWebCodecs, probeExportSupport, type ExportSupport } from '../video/engine/encoderConfig';
+import { ASPECTS, QUALITIES, lowerQuality, outputSize, type Aspect, type Container, type Quality } from '../video/engine/formats';
+import { ExportUnsupportedError, renderVideo, type RenderClip } from '../video/engine/render';
+import { openSink } from '../video/engine/sink';
+import { drawOverlays as drawEngineOverlays, drawVideoFrame, type Fit } from '../video/engine/timeline';
+import { MIME, deliver } from '../video/exportActions';
 import { idbGet, idbSet, idbDelete } from '../io/idb';
 import { toast } from './toast';
 import { t } from '../i18n';
@@ -191,9 +195,17 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportRes, setExportRes] = useState(720); // alto en px (720 / 1080)
+  const [exportRes, setExportRes] = useState<Quality>(720); // lado corto en px (720 / 1080 / 4K)
+  const [exportAspect, setExportAspect] = useState<Aspect>('16:9');
+  const [exportFit, setExportFit] = useState<Fit>('contain');
   const [exportFps, setExportFps] = useState(30);
   const [exportProgress, setExportProgress] = useState(0); // 0..1
+  const [exportLabel, setExportLabel] = useState('');
+  const [support, setSupport] = useState<ExportSupport | null>(null);
+  const exportAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    probeExportSupport().then(setSupport).catch(() => setSupport(null));
+  }, []);
   const [recording, setRecording] = useState(false);
   const [waveforms, setWaveforms] = useState<Record<string, number[]>>({});
   const [eq, setEqState] = useState({ low: 0, mid: 0, high: 0 });
@@ -236,7 +248,9 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     echo.connect(delay);
     delay.connect(feedback);
     feedback.connect(delay);
-    echo.connect(mix);
+    // Antes era echo.connect(mix): sonaba una copia sin retardo (subía el volumen) en
+    // vez de un eco. Ahora suena la línea de retardo, igual que en la exportación.
+    delay.connect(mix);
     return { hp, lp, vol, echo, gate, analyser, gateOn: false };
   };
 
@@ -754,30 +768,10 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     if (selOverlay === id) setSelOverlay(null);
   };
 
-  // Dibuja las capas superpuestas en el canvas (para la exportación).
-  const drawOverlays = (
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    t?: number,
-  ) => {
-    for (const o of overlays) {
-      if (t !== undefined && (t < o.start || t > o.end)) continue;
-      const cx = o.xf * w;
-      const cy = o.yf * h;
-      if (o.kind === 'text') {
-        ctx.fillStyle = o.color;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = `bold ${o.size}px Arial`;
-        ctx.fillText(o.text, cx, cy);
-      } else if (o.img && o.img.naturalWidth) {
-        const iw = o.size * w;
-        const ih = iw * (o.img.naturalHeight / o.img.naturalWidth);
-        ctx.drawImage(o.img, cx - iw / 2, cy - ih / 2, iw, ih);
-      }
-    }
-  };
+  // Dibuja las capas superpuestas: la MISMA función que el motor de exportación
+  // (antes la ruta WebM usaba el tamaño en px sin escalar y la MP4 lo escalaba).
+  const drawOverlays = (ctx: CanvasRenderingContext2D, w: number, h: number, t: number) =>
+    drawEngineOverlays(ctx, w, h, overlays, t);
 
   // Reproduce los clips de video en orden, respetando el recorte.
   const playSequence = async () => {
@@ -832,11 +826,13 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     }
   };
 
-  // Graba la secuencia (vídeo + audio del grafo) en un Blob WebM.
-  const recordWebM = async (): Promise<Blob> => {
+  // Ruta de respaldo SIN WebCodecs: graba la reproducción en tiempo real con
+  // MediaRecorder (WebM, o MP4 si el navegador lo admite, como Safari).
+  const recordFallback = async (mime: string, signal: AbortSignal): Promise<Blob> => {
     const canvas = document.createElement('canvas');
-    canvas.height = exportRes;
-    canvas.width = Math.round((exportRes * 16) / 9);
+    const size = outputSize(exportAspect, exportRes > 1080 ? 1080 : exportRes);
+    canvas.width = size.width;
+    canvas.height = size.height;
     const ctx = canvas.getContext('2d')!;
     const stream = canvas.captureStream(exportFps);
     // Duración real estimada (respeta recorte y velocidad de cada clip).
@@ -852,9 +848,6 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     recDestRef.current?.stream
       .getAudioTracks()
       .forEach((t) => stream.addTrack(t));
-    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
     const rec = new MediaRecorder(stream, { mimeType: mime });
     const chunks: BlobPart[] = [];
     rec.ondataavailable = (e) => {
@@ -884,12 +877,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             alpha = Math.min(alpha, (dur - localReal) / clip.fadeOut);
           alpha = Math.max(0, Math.min(1, alpha));
         }
-        const s = Math.min(canvas.width / v.videoWidth, canvas.height / v.videoHeight);
-        const dw = v.videoWidth * s;
-        const dh = v.videoHeight * s;
-        ctx.globalAlpha = alpha;
-        ctx.drawImage(v, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
-        ctx.globalAlpha = 1;
+        drawVideoFrame(ctx, v, v.videoWidth, v.videoHeight, canvas.width, canvas.height, exportFit, 0, alpha);
       }
       const elapsed = (performance.now() - recStart) / 1000;
       drawOverlays(ctx, canvas.width, canvas.height, elapsed);
@@ -900,77 +888,128 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     rec.start();
     await new Promise<void>((res) => {
       endCb.current = res;
+      signal.addEventListener('abort', () => {
+        videoRef.current?.pause();
+        playAll.current = false;
+        res();
+      });
       playSequence();
     });
     cancelAnimationFrame(raf);
     rec.stop();
     await stopped;
+    if (signal.aborted) throw new DOMException('Exportación cancelada', 'AbortError');
     setExportProgress(1);
-    return new Blob(chunks, { type: 'video/webm' });
+    return new Blob(chunks, { type: mime.split(';')[0] });
   };
 
-  const download = (blob: Blob, name: string) => downloadBlob(blob, name);
-
-  const onExportWebm = async () => {
-    if (videoClips.length === 0) return;
-    setExporting(true);
-    try {
-      download(await recordWebM(), 'chamva-video.webm');
-    } catch (e) {
-      console.error(e);
-      toast('No se pudo exportar el video: ' + (e as Error).message, 'error');
-    } finally {
-      setExporting(false);
-      setExportProgress(0);
-    }
+  const toRenderClip = (c: Clip): RenderClip => {
+    const fx = EFFECTS.find((e) => e.id === c.effect) ?? EFFECTS[0];
+    return {
+      blob: c.blob,
+      url: c.url,
+      inP: c.inP,
+      outP: c.outP,
+      speed: c.speed ?? 1,
+      fadeIn: c.fadeIn,
+      fadeOut: c.fadeOut,
+      volume: c.volume,
+      hp: fx.hp,
+      lp: fx.lp,
+      echo: fx.echo,
+      gate: !!fx.gate, // «Reducir ruido» ahora también se aplica al exportar
+    };
   };
 
-  const onExportMp4 = async () => {
-    if (videoClips.length === 0) return;
-    setExporting(true);
-    try {
-      if (canRenderMp4()) {
-        // Render determinista fotograma a fotograma (WebCodecs), sin
-        // depender del reloj ni perder fotogramas.
-        setExportProgress(0);
-        const toRender = (c: Clip) => {
-          const fx = EFFECTS.find((e) => e.id === c.effect) ?? EFFECTS[0];
-          return {
-            url: c.url,
-            inP: c.inP,
-            outP: c.outP,
-            speed: c.speed ?? 1,
-            fadeIn: c.fadeIn,
-            fadeOut: c.fadeOut,
-            volume: c.volume,
-            hp: fx.hp,
-            lp: fx.lp,
-            echo: fx.echo,
-          };
-        };
-        const mp4 = await renderMp4({
-          width: Math.round((exportRes * 16) / 9),
-          height: exportRes,
-          fps: exportFps,
-          videoClips: videoClips.map(toRender),
-          audioClips: audioClips.map(toRender),
-          overlays,
-          eq,
-          normalize,
-          onProgress: (r) => setExportProgress(r),
-        });
-        download(mp4, 'chamva-video.mp4');
-      } else {
-        const webm = await recordWebM();
-        const mp4 = await webmToMp4(webm);
-        download(mp4, 'chamva-video.mp4');
+  // Exportación con el motor (WebCodecs, en streaming a disco) o, si el
+  // navegador no tiene WebCodecs, grabación en tiempo real con MediaRecorder.
+  const onExport = async (container: Container) => {
+    if (videoClips.length === 0 || exporting) return;
+    const filename = `chamva-video.${container}`;
+    const ac = new AbortController();
+    exportAbort.current = ac;
+    setExportProgress(0);
+    setExportLabel('');
+    if (!canUseWebCodecs()) {
+      const mime =
+        container === 'mp4'
+          ? ['video/mp4;codecs=avc1,mp4a', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m))
+          : ['video/webm;codecs=vp9,opus', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
+      if (!mime) {
+        toast(
+          container === 'mp4'
+            ? 'Este navegador no puede crear MP4. Exporta en WebM.'
+            : 'Este navegador no puede crear WebM. Exporta en MP4.',
+          'error',
+        );
+        return;
       }
+      setExporting(true);
+      setExportLabel('grabando en tiempo real');
+      try {
+        downloadBlob(await recordFallback(mime, ac.signal), filename);
+      } catch (e) {
+        if ((e as DOMException)?.name !== 'AbortError') toast('No se pudo exportar el video: ' + (e as Error).message, 'error');
+      } finally {
+        setExporting(false);
+        setExportProgress(0);
+        exportAbort.current = null;
+      }
+      return;
+    }
+    // Pedir el destino primero (el selector de archivos exige el gesto del clic).
+    let sink;
+    try {
+      sink = await openSink({ filename, mime: MIME[container] });
     } catch (e) {
-      console.error(e);
-      toast('No se pudo convertir a MP4: ' + (e as Error).message, 'error');
+      toast('No se pudo abrir el archivo de destino: ' + (e as Error).message, 'error');
+      return;
+    }
+    if (!sink) return; // cancelado
+    setExporting(true);
+    const sizes: { width: number; height: number; label: string }[] = [];
+    for (let q: Quality | null = exportRes; q; q = lowerQuality(q)) {
+      const sz = outputSize(exportAspect, q);
+      sizes.push({ ...sz, label: `${sz.width}×${sz.height}` });
+    }
+    try {
+      const res = await renderVideo({
+        container,
+        sizes,
+        fps: exportFps,
+        videoClips: videoClips.map(toRenderClip),
+        audioClips: audioClips.map(toRenderClip),
+        overlays,
+        eq,
+        normalize,
+        fit: exportFit,
+        sink,
+        signal: ac.signal,
+        onNotice: (m) => toast(m, 'info'),
+        onProgress: (p) => {
+          setExportProgress(p.ratio);
+          setExportLabel(
+            p.stage === 'video'
+              ? `fotograma ${p.frame}/${p.frames}${p.eta !== undefined ? ` · quedan ~${Math.ceil(p.eta)} s` : ''}`
+              : p.stage,
+          );
+        },
+      });
+      deliver(sink, res.blob, filename);
+    } catch (e) {
+      if ((e as DOMException)?.name === 'AbortError') toast('Exportación cancelada', 'info');
+      else {
+        console.error(e);
+        toast(
+          e instanceof ExportUnsupportedError ? e.message : 'No se pudo exportar el video: ' + (e as Error).message,
+          'error',
+        );
+      }
     } finally {
       setExporting(false);
       setExportProgress(0);
+      setExportLabel('');
+      exportAbort.current = null;
     }
   };
 
@@ -1017,13 +1056,41 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         </button>
         <span className="spacer" />
         <select
-          value={exportRes}
-          onChange={(e) => setExportRes(Number(e.target.value))}
+          value={exportAspect}
+          onChange={(e) => setExportAspect(e.target.value as Aspect)}
           disabled={exporting}
-          title="Resolución de salida"
+          title="Proporción del video"
         >
-          <option value={720}>720p</option>
-          <option value={1080}>1080p</option>
+          {ASPECTS.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={exportRes}
+          onChange={(e) => setExportRes(Number(e.target.value) as Quality)}
+          disabled={exporting}
+          title="Resolución de salida (lado corto)"
+        >
+          {QUALITIES.map((q) => {
+            const no4k = q.id === 2160 && !!support && !support.mp4_4k && !support.webm_4k;
+            return (
+              <option key={q.id} value={q.id} disabled={no4k}>
+                {q.label}
+                {no4k ? ' (no disponible en este equipo)' : ''}
+              </option>
+            );
+          })}
+        </select>
+        <select
+          value={exportFit}
+          onChange={(e) => setExportFit(e.target.value as Fit)}
+          disabled={exporting}
+          title="Cómo encaja el video si su proporción no coincide"
+        >
+          <option value="contain">Encajar (bandas negras)</option>
+          <option value="cover">Rellenar (recorta)</option>
         </select>
         <select
           value={exportFps}
@@ -1036,17 +1103,21 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           <option value={60}>60 fps</option>
         </select>
         <button
-          onClick={onExportWebm}
-          disabled={videoClips.length === 0 || exporting}
-          title="Exportar la secuencia a WebM"
+          onClick={() => onExport('webm')}
+          disabled={videoClips.length === 0 || exporting || (!!support && support.webcodecs && !support.webm)}
+          title="Exportar a WebM (VP9 + Opus)"
         >
           {exporting ? `… ${t('Exportando')}` : '⬇ WebM'}
         </button>
         <button
           className="primary"
-          onClick={onExportMp4}
-          disabled={videoClips.length === 0 || exporting}
-          title="Exportar a MP4 (descarga ffmpeg la 1ª vez)"
+          onClick={() => onExport('mp4')}
+          disabled={videoClips.length === 0 || exporting || (!!support && support.webcodecs && !support.mp4)}
+          title={
+            support && support.webcodecs && !support.mp4
+              ? 'Este equipo no puede codificar H.264: usa WebM'
+              : 'Exportar a MP4 (H.264 + AAC), sin descargas'
+          }
         >
           {exporting ? '… Procesando' : '⬇ MP4'}
         </button>
@@ -1075,14 +1146,19 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       </div>
 
       {exporting && (
-        <div className="vt-progress">
-          <div
-            className="vt-progress-fill"
-            style={{ width: `${Math.round(exportProgress * 100)}%` }}
-          />
-          <span className="vt-progress-label">
-            {t('Exportando')}… {Math.round(exportProgress * 100)}%
-          </span>
+        <div className="vt-progress-row">
+          <div className="vt-progress">
+            <div
+              className="vt-progress-fill"
+              style={{ width: `${Math.round(exportProgress * 100)}%` }}
+            />
+            <span className="vt-progress-label">
+              {t('Exportando')}… {Math.round(exportProgress * 100)}%{exportLabel ? ` · ${exportLabel}` : ''}
+            </span>
+          </div>
+          <button onClick={() => exportAbort.current?.abort()} title="Cancelar la exportación">
+            ✕ Cancelar
+          </button>
         </div>
       )}
 

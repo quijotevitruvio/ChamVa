@@ -1462,10 +1462,27 @@ ul.layers .name {
   flex: 1;
 }
 
+.vt-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px;
+}
+
+.vt-progress-row button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .vt-progress {
   position: relative;
+  flex: 1;
   height: 18px;
-  margin: 0 16px;
   background: var(--panel-2);
   border-radius: 9px;
   overflow: hidden;

@@ -1,3 +1,5 @@
+// COPIA de src/io/videoRender.ts en 6180a97 (motor anterior), solo para medir «antes» en el banco de pruebas.
+// No se usa en la app.
 // Render de video fotograma a fotograma con WebCodecs → MP4 (H.264 + AAC).
 //
 // Antes la exportación GRABABA la reproducción en tiempo real (captureStream):

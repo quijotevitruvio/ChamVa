@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banco de pruebas de video</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; background: #fafafa; color: #111; }
+      table { border-collapse: collapse; margin-top: 12px; width: 100%; }
+      td, th { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+      .ok { color: #070; font-weight: 600; } .fail { color: #b00; font-weight: 600; }
+      code { font-size: 12px; }
+      button { margin-right: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>Banco de pruebas del motor de video (solo desarrollo)</h1>
+    <p>Genera clips sintéticos (barras de color con el número de fotograma en binario, tono y «bip» con destello),
+      los exporta con el motor real y comprueba el archivo resultante. No se incluye en el build.</p>
+    <div id="controls"></div>
+    <pre id="status"></pre>
+    <table id="results"></table>
+    <script type="module" src="/src/video/bench/bench.ts"></script>
+  </body>
+</html>

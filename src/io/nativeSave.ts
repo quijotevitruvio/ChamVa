@@ -69,6 +69,12 @@ function setLastDir(dir: string) {
   }
 }
 
+/** Para archivos escritos por trozos fuera de saveNative (exportación de video): recuerda la carpeta y avisa. */
+export function rememberSaved(path: string) {
+  setLastDir(dirOf(path));
+  emitSaved(path);
+}
+
 // Aviso de «guardado» para que la interfaz ofrezca «Abrir carpeta».
 const savedListeners = new Set<(path: string) => void>();
 export function onSaved(fn: (path: string) => void): () => void {
