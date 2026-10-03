@@ -69,3 +69,33 @@ const s = VM.snapClipStart(p, clipId, propuesto, { threshold: 0.1, playhead });
   dividir, unir, desplazar, ajustar a escenas, estilo), `presets.ts` (43 estilos de título, 10 pares, 8 de subtítulo).
 - Dibujo: `src/video/engine/titleDraw.ts` (reutiliza `drawStyledText` del editor de diseño). `composeFrame` lo llama,
   así que la exportación y la vista previa dibujan lo mismo.
+
+## V6: transiciones, efectos, fusión, capas de ajuste y fotogramas clave (campos aditivos: el formato sigue siendo `v: 2`)
+- Campos opcionales de `Clip`: `tin`/`tout` (transición de entrada/salida), `fx` (pila de efectos), `blend` (fusión),
+  `keys` (fotogramas clave) y el tipo `adjust` (capa de ajuste: clip de una pista de video, dura como una imagen; sus
+  efectos afectan a todo lo que hay debajo). `normalizeV2` los lee con `fx/sanitize.ts` (idempotente; datos corruptos se
+  limpian; un proyecto sin ellos se lee igual que antes y no gana ningún campo).
+- **Transiciones (semántica del solape).** No se solapa nada: el modelo sigue sin permitir clips solapados. En la UNIÓN de
+  dos clips contiguos de una pista (|fin(A) − inicio(B)| ≤ 0,02 s) la transición es `B.tin ?? A.tout` y se CENTRA en el corte:
+  ventana [corte − d/2, corte + d/2] con d = min(dur, dur(A), dur(B)) (0,1–3 s), así las ventanas de un clip nunca se pisan.
+  Durante la ventana se ven A y B a la vez: `clipsAt` devuelve el que no está activo con `ext: true` y usa los MÁRGENES DE
+  RECORTE del archivo (A sigue más allá de su salida y B empieza antes de su entrada, hasta los límites del archivo; sin margen
+  se queda en el último/primer fotograma: `extendedSourceTime`). Imágenes, textos y capas de ajuste no necesitan margen.
+  Sin vecino contiguo, `tin` es una entrada [inicio, inicio + d] y `tout` una salida [fin − d, fin] sobre lo que haya debajo.
+  Si los clips dejan de ser contiguos la transición no se pierde: pasa a ser de entrada/salida. La duración del proyecto y el
+  audio no cambian (no hay fundido cruzado de audio en la unión). Dividir un clip: la 1.ª mitad conserva `tin`, la 2.ª `tout`.
+- **Pila de efectos** (`fx/effects.ts`, 27 tipos en Color, Imagen, Forma y Croma + 24 preajustes de color): se aplican en el orden del
+  array sobre los píxeles ya dibujados del clip; `amount` (0..1) escala los parámetros numéricos (neutro 0); apagado o
+  intensidad 0 = se salta. Cálculo en CPU sobre ImageData (reutiliza `src/editor/core`: color, curvas, nitidez, pixelado,
+  aberración, glitch, desenfoque de movimiento) con tablas por canal que se fusionan (varios seguidos = una pasada); las máscaras,
+  el borde y la sombra usan operaciones de lienzo. Sin GPU: la ruta base es la única. `blend`: `globalCompositeOperation`.
+- **Fotogramas clave**: `Clip.keys[prop]` = lista ordenada de `{t, v, e, bz}` con `t` en segundos desde el inicio del clip;
+  propiedades `x y scale rotation opacity volume` y `fx.<id>.<parámetro|amount>`. Antes del primero y después del último
+  vale el extremo; entre dos, la interpolación del primero (lineal, suave, mantener, bézier). Al recortar el inicio los
+  fotogramas se quedan en su instante de la línea de tiempo; al dividir se reparten con un fotograma en el corte. El volumen
+  animado va como envolvente (`MixEntry.gain`) antes de la cadena del clip en la exportación.
+- Lógica pura en `src/video/fx/`: `ease.ts`, `keyframes.ts`, `transitions.ts`, `effects.ts`, `sanitize.ts`, `clipOps.ts`
+  (operaciones de proyecto, una llamada = un paso de deshacer), `pixel.ts`, `fxDraw.ts`, `transitionDraw.ts`, `thumbs.ts`
+  (miniaturas con el mismo motor, en caché). `composeFrame` es la única composición (exportación, vista previa y miniaturas).
+  Banco: `/dev/fx-bench.html` (`window.__fx`: transitions, effects, fxTimes, perf, export, exportFx, previewVsExport).
+

@@ -7,6 +7,7 @@
 //    (si una operación provoca un solape, el clip posterior se EMPUJA a la derecha; nunca se borra);
 //  - pista con imán: clips en secuencia desde 0 sin huecos, en el orden del array;
 //  - `toEnd` solo puede tenerlo el último clip de su pista.
+import { shiftKeys, splitKeys } from '../fx/keyframes';
 import { IDENTITY_TRANSFORM, type Clip, type ClipKind, type MediaAsset, type Track, type TrackKind, type Transform, type VideoProject, uid, VIDEO_PROJECT_VERSION } from './types';
 import { DEFAULT_SUBTITLE_STYLE } from '../title/style';
 import { MIN_CLIP, clipDuration, clipEnd, findClip, fitsTrack, isStill, projectDuration } from './query';
@@ -36,7 +37,7 @@ export function createTrack(kind: TrackKind, o: Partial<Omit<Track, 'kind'>> = {
 
 /** Clip con valores por defecto (los campos que falten se rellenan). */
 export function makeClip(kind: ClipKind, o: Partial<Clip> = {}): Clip {
-  const still = kind === 'image' || kind === 'text' || kind === 'subtitle';
+  const still = kind === 'image' || kind === 'text' || kind === 'subtitle' || kind === 'adjust';
   return {
     id: o.id ?? uid(),
     kind,
@@ -61,6 +62,11 @@ export function makeClip(kind: ClipKind, o: Partial<Clip> = {}): Clip {
     ...(o.tstyle ? { tstyle: o.tstyle } : {}),
     ...(o.anim ? { anim: o.anim } : {}),
     ...(o.words ? { words: o.words } : {}),
+    ...(o.tin ? { tin: o.tin } : {}),
+    ...(o.tout ? { tout: o.tout } : {}),
+    ...(o.fx && o.fx.length ? { fx: o.fx } : {}),
+    ...(o.blend && o.blend !== 'normal' ? { blend: o.blend } : {}),
+    ...(o.keys && Object.keys(o.keys).length ? { keys: o.keys } : {}),
   };
 }
 
@@ -272,6 +278,8 @@ export function updateClip(p: VideoProject, clipId: string, patch: ClipPatch): V
   next.speed = isStill(c) ? 1 : sp > 0 ? sp : c.speed;
   if (next.outP < next.inP) next.outP = next.inP;
   if ('toEnd' in patch && !patch.toEnd) delete next.toEnd;
+  // V6: un campo opcional puesto a undefined (o vacío) se quita del clip
+  for (const k of ['tin', 'tout', 'blend', 'keys', 'fx'] as const) if (k in patch && (next[k] === undefined || (k === 'fx' && !next.fx?.length) || (k === 'blend' && next.blend === 'normal'))) delete next[k];
   const changed = (Object.keys(next) as (keyof Clip)[]).some((k) => next[k] !== c[k]) || Object.keys(c).length !== Object.keys(next).length;
   if (!changed) return p;
   const clips = loc.track.clips.slice();
@@ -311,6 +319,19 @@ export function moveClipToIndex(p: VideoProject, clipId: string, toIndex: number
   return replaceTrack(p, loc.trackIndex, { ...loc.track, clips });
 }
 
+/** V6 al dividir: la 1.ª mitad se queda con la transición de entrada, la 2.ª con la de salida; los fotogramas clave se reparten. */
+function splitV6(c: Clip, a: Clip, b: Clip, local: number) {
+  delete a.tout;
+  delete b.tin;
+  if (c.keys) {
+    const { left, right } = splitKeys(c.keys, local);
+    if (left) a.keys = left;
+    else delete a.keys;
+    if (right) b.keys = right;
+    else delete b.keys;
+  }
+}
+
 /**
  * Divide un clip en el instante t de la línea de tiempo. La 1.ª mitad conserva el
  * id (y el fundido de entrada); la 2.ª recibe `newId` (y el fundido de salida).
@@ -327,12 +348,14 @@ export function splitClip(p: VideoProject, clipId: string, t: number, newId: str
     if (!(local > SPLIT_MARGIN && local < len - SPLIT_MARGIN)) return p;
     a = stripToEnd({ ...c, inP: 0, outP: local, fadeOut: 0, audioFadeOut: 0 });
     b = { ...c, id: newId, start: c.start + local, inP: 0, outP: Math.max(0, c.outP - c.inP - local), fadeIn: 0, audioFadeIn: 0 };
+    splitV6(c, a, b, local);
   } else {
     const src = c.inP + (t - c.start) * (c.speed || 1);
     if (!(src > c.inP + SPLIT_MARGIN && src < c.outP - SPLIT_MARGIN)) return p;
     a = { ...c, outP: src, fadeOut: 0, audioFadeOut: 0 };
     b = { ...c, id: newId, inP: src, fadeIn: 0, audioFadeIn: 0 };
     b.start = clipEnd(a);
+    splitV6(c, a, b, t - c.start);
   }
   const clips = loc.track.clips.slice();
   clips.splice(loc.clipIndex, 1, a, b);
@@ -366,7 +389,10 @@ export function trimClip(p: VideoProject, clipId: string, edge: 'in' | 'out', t:
     if (!ripple) delta = Math.max(delta, (prev ? clipEnd(prev) : 0) - c.start);
     if (delta === 0) return p;
     n = still ? { ...c, outP: c.outP - delta } : { ...c, inP: c.inP + delta * sp };
-    if (!ripple) n.start = c.start + delta;
+    if (!ripple) {
+      n.start = c.start + delta;
+      n = shiftKeys(n, -delta); // los fotogramas clave se quedan en el mismo instante de la línea de tiempo
+    }
   } else {
     if (c.toEnd) n = stripToEnd({ ...c, outP: Math.max(minLen, Math.min(c.outP, projectDuration(p) - c.start)) });
     else n = { ...c };

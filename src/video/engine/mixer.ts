@@ -26,6 +26,8 @@ export interface MixEntry {
   /** Fundido del sonido (s) al principio y al final del tramo (0 = sin fundido). */
   fadeIn?: number;
   fadeOut?: number;
+  /** Envolvente de ganancia (fotogramas clave de volumen): multiplica el sonido; recibe el instante de la línea de tiempo. */
+  gain?: (t: number) => number;
   /** Abre la fuente (null = el archivo no tiene audio). */
   open: () => Promise<PcmSource | null>;
 }
@@ -116,6 +118,12 @@ export class TimelineMixer {
         // Fundidos de sonido (lineales), antes de la cadena del clip como el volumen de la fuente.
         const fi = e.fadeIn ?? 0;
         const fo = e.fadeOut ?? 0;
+        if (e.gain)
+          for (let i = firstIn; i < lastIn; i++) {
+            const g = e.gain((this.pos + i) / sr);
+            tl[i] *= g;
+            tr[i] *= g;
+          }
         if (fi > 0 || fo > 0)
           for (let i = firstIn; i < lastIn; i++) {
             const tt = (this.pos + i) / sr;

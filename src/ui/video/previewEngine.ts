@@ -13,6 +13,7 @@
 //  - Calidad: lado corto 720/540/360 px, automática según el tiempo por fotograma.
 import * as VM from '../../video/model';
 import { composeFrame, type ComposedFrame, type StillImage } from '../../video/engine/compose';
+import { extendedSourceTime } from '../../video/fx/transitions';
 import { measureTitleClip } from '../../video/engine/titleDraw';
 import { ensureTitleFonts, titleFontsReady } from '../../video/engine/titleFonts';
 import { OVERLAY_FONT, overlayFontPx, type Fit } from '../../video/engine/timeline';
@@ -583,7 +584,7 @@ export class PreviewEngine {
         }
         e.strip?.setFade(0);
       }
-      if (e.strip && (it.active || it.play)) e.strip.setFx(VM.clipAudioFx(clip));
+      if (e.strip && (it.active || it.play)) e.strip.setFx(VM.clipAudioFx(clip, t));
     }
     // El resto: en pausa y silencio; se sueltan los que llevan tiempo sin usarse o exceden el tope.
     for (const e of this.entries.values()) {
@@ -678,10 +679,10 @@ export class PreviewEngine {
   }
 
   /** Fotograma de video de un clip en t: el del elemento si está en hora; si no, el más cercano de la caché. */
-  private videoFor(clip: VM.Clip, t: number): ComposedFrame | null {
+  private videoFor(clip: VM.Clip, t: number, ext = false): ComposedFrame | null {
     const e = this.entries.get(clip.id);
     const v = e?.el as HTMLVideoElement | undefined;
-    const want = VM.sourceTimeAt(clip, t);
+    const want = ext ? extendedSourceTime(clip, t, (clip.mediaId ? this.project.media[clip.mediaId]?.duration : 0) ?? 0) : VM.sourceTimeAt(clip, t);
     const live: ComposedFrame | null = v && v.videoWidth && v.readyState >= 2 ? { image: v, width: v.videoWidth, height: v.videoHeight, rotation: 0 } : null;
     const mid = clip.mediaId;
     if (this.playing && (!live || !v || v.seeking)) this.stalledNow = true;
@@ -710,7 +711,7 @@ export class PreviewEngine {
     const p = this.project;
     const dur = VM.projectDuration(p);
     composeFrame(ctx, p, t, dur, w, h, this.fit, {
-      video: (clip) => this.videoFor(clip, t),
+      video: (clip, ext) => this.videoFor(clip, t, !!ext),
       image: (clip) => {
         const m = clip.mediaId ? p.media[clip.mediaId] : undefined;
         const img = this.hooks.cache.imageOf(m);

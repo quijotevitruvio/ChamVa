@@ -1,10 +1,11 @@
 // Consultas puras sobre el modelo v2: duraciones, «qué está activo en t», tiempos de origen.
+import { resolveTransitions } from '../fx/transitions';
 import type { Clip, Track, Transform, VideoProject } from './types';
 
 /** Duración mínima de un clip de video/audio en la línea de tiempo (igual que V1). */
 export const MIN_CLIP = 0.01;
 
-export const isStill = (c: Pick<Clip, 'kind'>) => c.kind === 'image' || c.kind === 'text' || c.kind === 'subtitle';
+export const isStill = (c: Pick<Clip, 'kind'>) => c.kind === 'image' || c.kind === 'text' || c.kind === 'subtitle' || c.kind === 'adjust';
 export const isVisual = (c: Pick<Clip, 'kind'>) => c.kind !== 'audio';
 
 /** ¿Este clip puede ir en esta pista? (audio ↔ pista de audio; subtítulo ↔ pista de subtítulos; video/imagen/texto ↔ pista de video) */
@@ -55,6 +56,8 @@ export interface ActiveClip {
   /** índice de la pista en `project.tracks` */
   trackIndex: number;
   clip: Clip;
+  /** V6: el clip no está activo en t; se ve solo porque una transición de unión lo necesita (usa los márgenes de recorte) */
+  ext?: boolean;
 }
 
 /** Pistas de video en orden de dibujo: de la de abajo (última del array) a la de arriba. */
@@ -73,11 +76,21 @@ export function clipsAt(p: VideoProject, t: number, projectDur = projectDuration
   const visual: ActiveClip[] = [];
   const audible: ActiveClip[] = [];
   for (const { track, trackIndex } of videoTracksBottomUp(p)) {
+    const here: ActiveClip[] = [];
     for (const clip of track.clips) {
       if (!isActiveAt(clip, t, projectDur)) continue;
-      if (!track.hidden) visual.push({ track, trackIndex, clip });
+      here.push({ track, trackIndex, clip });
       if (!track.muted && clip.kind === 'video') audible.push({ track, trackIndex, clip });
     }
+    // V6: en la ventana de una transición de unión se ven los dos clips (el que ya acabó y el que aún no empieza)
+    if (!track.hidden && track.clips.some((c) => c.tin || c.tout)) {
+      for (const r of resolveTransitions(track, projectDur)) {
+        if (r.kind !== 'junction' || !(t >= r.t0 && t < r.t1)) continue;
+        for (const c of [r.a!, r.b!]) if (!here.some((h) => h.clip.id === c.id)) here.push({ track, trackIndex, clip: c, ext: true });
+      }
+      here.sort((x, y) => x.clip.start - y.clip.start);
+    }
+    if (!track.hidden) visual.push(...here);
   }
   // Subtítulos: encima de todas las capas (la pista de más arriba en `tracks` queda más arriba).
   for (let trackIndex = p.tracks.length - 1; trackIndex >= 0; trackIndex--) {

@@ -23,12 +23,15 @@ interface Props {
   wave?: Waveform;
   /** el clip se está arrastrando o recortando */
   active: boolean;
+  /** ancho (px) de la cuña de una transición de ENTRADA / SALIDA de un clip suelto (las de unión las dibuja la línea de tiempo) */
+  tinPx?: number;
+  toutPx?: number;
 }
 
-const KIND_LABEL: Record<Clip['kind'], string> = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo' };
+const KIND_LABEL: Record<Clip['kind'], string> = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo', adjust: 'Ajuste' };
 
 /** Un bloque de la línea de tiempo. Memoizado: al hacer scroll o arrastrar otro clip no se repinta. */
-export const ClipView = memo(function ClipView({ clip, locked, selected, pps, end, media, strip, wave, active }: Props) {
+export const ClipView = memo(function ClipView({ clip, locked, selected, pps, end, media, strip, wave, active, tinPx, toutPx }: Props) {
   const left = clip.start * pps;
   const width = Math.max(2, (end - clip.start) * pps);
   const style: CSSProperties = { left, width };
@@ -72,10 +75,13 @@ export const ClipView = memo(function ClipView({ clip, locked, selected, pps, en
     >
       {bg && <div className="vx-clip-bg" style={bg} />}
       {waveSvg}
+      {tinPx ? <i className="vx-tw in" style={{ width: Math.min(width / 2, Math.max(8, tinPx)) }} title="Transición de entrada" aria-hidden="true" /> : null}
+      {toutPx ? <i className="vx-tw out" style={{ width: Math.min(width / 2, Math.max(8, toutPx)) }} title="Transición de salida" aria-hidden="true" /> : null}
       {width > 34 && (
         <span className="vx-clip-label">
           <span className="vx-clip-name">{name}</span>
           {width > 90 && <span className="vx-clip-dur">{fmtDur(dur)}</span>}
+          {width > 60 && !!clip.fx?.length && <span className="vx-clip-fx" title={`${clip.fx.length} efecto(s)`}>fx</span>}
         </span>
       )}
       {(clip.fadeIn > 0 || clip.audioFadeIn > 0) && <i className="vx-fade in" style={{ width: Math.min(width / 2, Math.max(clip.fadeIn, clip.audioFadeIn) * pps) }} />}

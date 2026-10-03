@@ -13,6 +13,7 @@ import { Muxer as WebmMuxer, StreamTarget as WebmStreamTarget } from 'webm-muxer
 import { sequenceToProject, type SeqOverlay } from '../model/migrate';
 import { makeClip } from '../model/ops';
 import { clipsAt, isStill, projectDuration, sourceTimeAt, videoTracksBottomUp } from '../model/query';
+import { extendedSourceTime } from '../fx/transitions';
 import { IDENTITY_TRANSFORM, type Clip, type MediaAsset, type VideoProject } from '../model/types';
 import { BufferAudioSource, DecoderAudioSource, audioDecoderConfig } from './audioSource';
 import { ensureTitleFonts } from './titleFonts';
@@ -274,14 +275,17 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
 
   // --- fuentes de fotogramas: una por pista de video ---
   const sources: FrameSource[] = [];
+  // Una fuente por «ranura»: la de la pista (clip activo) y la `#x` (clip que solo se ve por una transición de unión).
   const current = new Map<string, { src: FrameSource; clip: Clip; blob: Blob }>();
+  const slotKey = (trackId: string, ext: boolean) => (ext ? `${trackId}#x` : trackId);
   let fallbackFrames = 0;
-  const openFrameSource = async (trackId: string, clip: Clip): Promise<FrameSource> => {
+  const openFrameSource = async (key: string, clip: Clip, ext: boolean, want: number): Promise<FrameSource> => {
     const pr = probeOf.get(clip.mediaId!)!;
-    const cur = current.get(trackId);
+    const cur = current.get(key);
     // Reutilizar el decodificador si el clip sigue al anterior en el mismo archivo
     // (clip dividido con «S»): no hay que volver a decodificar desde el clave.
     if (
+      !ext &&
       cur &&
       cur.blob === pr.blob &&
       (cur.clip.speed || 1) === (clip.speed || 1) &&
@@ -295,13 +299,28 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     let src: FrameSource | null = null;
     if (pr.file?.video) {
       const cfg = await videoDecoderConfig(pr.file.video);
-      if (cfg) src = new DecoderFrameSource(pr.file.video, pr.blob, cfg, clip.inP);
+      if (cfg) src = new DecoderFrameSource(pr.file.video, pr.blob, cfg, ext ? Math.min(clip.inP, want) : clip.inP);
       else notice(`El códec de video «${pr.file.video.codec}» no se puede decodificar por trozos aquí; se usa la ruta lenta.`);
     }
     if (!src) src = new ElementFrameSource(urlOf(p.media[clip.mediaId!]));
     sources.push(src);
-    current.set(trackId, { src, clip, blob: pr.blob });
+    current.set(key, { src, clip, blob: pr.blob });
     return src;
+  };
+  /** Fuente del clip: la que ya lo tenga (en cualquiera de las dos ranuras; si está en la otra se intercambian) o una nueva. */
+  const sourceFor = async (trackId: string, clip: Clip, ext: boolean, want: number): Promise<FrameSource> => {
+    const key = slotKey(trackId, ext);
+    const other = slotKey(trackId, !ext);
+    const cur = current.get(key);
+    if (cur && cur.clip.id === clip.id) return cur.src;
+    const oth = current.get(other);
+    if (oth && oth.clip.id === clip.id) {
+      current.set(key, oth);
+      if (cur) current.set(other, cur);
+      else current.delete(other);
+      return oth.src;
+    }
+    return openFrameSource(key, clip, ext, want);
   };
 
   const mixer = ac ? new TimelineMixer(mixEntries, { eq: p.eq, normalize: p.normalize }, duration) : null;
@@ -334,12 +353,13 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
       // Fotogramas de video de las capas (decodificación asíncrona) y composición común.
       const seen = new Set<string>();
       const got = new Map<string, ComposedFrame | null>();
-      for (const { track, clip } of visual) {
+      for (const { track, clip, ext } of visual) {
         if (clip.kind !== 'video' || !playable(clip)) continue;
-        seen.add(track.id);
-        const cur = current.get(track.id);
-        const src = cur && cur.clip.id === clip.id ? cur.src : await openFrameSource(track.id, clip);
-        const f = await src.frameAt(sourceTimeAt(clip, t));
+        seen.add(slotKey(track.id, !!ext));
+        // un clip que solo se ve por una transición usa los márgenes de recorte (hasta los límites del archivo)
+        const want = ext ? extendedSourceTime(clip, t, p.media[clip.mediaId!]?.duration ?? 0) : sourceTimeAt(clip, t);
+        const src = await sourceFor(track.id, clip, !!ext, want);
+        const f = await src.frameAt(want);
         if (src instanceof ElementFrameSource) fallbackFrames++;
         got.set(clip.id, f ? { image: f.image, width: f.width, height: f.height, rotation: f.rotation } : null);
       }
@@ -355,12 +375,12 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
         visual,
       );
       // Cerrar los decodificadores de pistas sin clip ahora ni en el próximo segundo.
-      for (const [trackId, cur] of current) {
-        if (seen.has(trackId)) continue;
-        const track = p.tracks.find((x) => x.id === trackId);
+      for (const [key, cur] of current) {
+        if (seen.has(key)) continue;
+        const track = p.tracks.find((x) => x.id === key.replace(/#x$/, ''));
         if (track?.clips.some((c) => c.kind === 'video' && c.start >= t && c.start - t < 1)) continue;
         cur.src.close();
-        current.delete(trackId);
+        current.delete(key);
       }
       opts.tap?.frame?.(i, ctx);
       const frame = new VideoFrame(canvas, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });

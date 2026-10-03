@@ -6,6 +6,8 @@ import type { PreviewEngine } from './previewEngine';
 import { QUALITY_MODES, isQualityMode } from './preview/quality';
 import { formatClock } from './timelineMath';
 import * as TM from './transformMath';
+import { setPropValue } from '../../video/fx/clipOps';
+import { transformAt } from '../../video/fx/keyframes';
 
 interface Props {
   engine: PreviewEngine;
@@ -17,6 +19,8 @@ interface Props {
   commit: (fn: (p: VM.VideoProject) => VM.VideoProject, group?: string) => void;
   endGroup: () => void;
   empty: boolean;
+  /** auto-fotograma: mover manijas sobre un clip escribe fotogramas en el cabezal en vez de cambiar el valor base */
+  autoKey?: boolean;
 }
 
 /** Hora actual: componente aparte para que solo él se repinte en cada fotograma. */
@@ -89,15 +93,25 @@ export function Transport({ engine, duration, onToggleSnap, snapOn }: { engine: 
 
 type Mode = 'move' | 'scale' | 'rotate';
 
-function TransformBox({ engine, clip, frame, fit, commit, endGroup }: { engine: PreviewEngine; clip: VM.Clip; frame: { w: number; h: number }; fit: Fit; commit: Props['commit']; endGroup: () => void }) {
+function TransformBox({ engine, clip, frame, fit, commit, endGroup, autoKey }: { engine: PreviewEngine; clip: VM.Clip; frame: { w: number; h: number }; fit: Fit; commit: Props['commit']; endGroup: () => void; autoKey: boolean }) {
   const [, force] = useState(0);
   useEffect(() => engine.subscribeState(() => force((n) => n + 1)), [engine]);
   const dims = engine.dimsFor(clip);
   const base = TM.baseBox(clip, engine.frameSize ? { w: engine.frameSize.width, h: engine.frameSize.height } : { w: 1, h: 1 }, dims, fit);
-  const h = TM.handlesFor(clip.transform, base);
+  // con fotogramas, las manijas siguen el valor ANIMADO en el cabezal (la hora solo repinta si el clip tiene fotogramas)
+  const animated = !!clip.keys;
+  const now = useSyncExternalStore(engine.subscribeTime, () => (animated ? engine.getTime() : 0));
+  const tr = animated ? transformAt(clip, now) : clip.transform;
+  const h = TM.handlesFor(tr, base);
   const drag = useRef<{ mode: Mode; sx: number; sy: number; tr: VM.Transform; center: { x: number; y: number } } | null>(null);
 
-  const patch = (tr: Partial<VM.Transform>, mode: Mode) => commit((p) => VM.updateClip(p, clip.id, { transform: tr }), `tf:${clip.id}:${mode}`);
+  // cada propiedad pasa por setPropValue: si está animada o el auto-fotograma está activo, escribe un fotograma en el cabezal
+  const patch = (part: Partial<VM.Transform>, mode: Mode) =>
+    commit((p) => {
+      let out = p;
+      for (const k of Object.keys(part) as (keyof VM.Transform)[]) out = setPropValue(out, clip.id, k, part[k] as number, engine.time, autoKey);
+      return out;
+    }, `tf:${clip.id}:${mode}`);
 
   const down = (mode: Mode) => (e: ReactPointerEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -107,7 +121,7 @@ function TransformBox({ engine, clip, frame, fit, commit, endGroup }: { engine: 
       mode,
       sx: e.clientX,
       sy: e.clientY,
-      tr: { ...clip.transform },
+      tr: { ...tr },
       center: { x: rect.left + clip.transform.x * rect.width, y: rect.top + clip.transform.y * rect.height },
     };
     try {
@@ -140,7 +154,6 @@ function TransformBox({ engine, clip, frame, fit, commit, endGroup }: { engine: 
   };
   const key = (e: ReactKeyboardEvent<HTMLElement>) => {
     const step = e.shiftKey ? 0.05 : 0.01;
-    const tr = clip.transform;
     const m: Record<string, Partial<VM.Transform>> = {
       ArrowLeft: { x: tr.x - step },
       ArrowRight: { x: tr.x + step },
@@ -175,7 +188,7 @@ function TransformBox({ engine, clip, frame, fit, commit, endGroup }: { engine: 
   );
 }
 
-export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit, endGroup, empty }: Props) {
+export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit, endGroup, empty, autoKey = false }: Props) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [box, setBox] = useState({ w: 320, h: 180 });
@@ -222,7 +235,7 @@ export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit,
       <div className="vx-stage" ref={stage}>
         <div className="vx-frame" style={{ width: box.w, height: box.h }} aria-label={`Vista previa, ${aspectLabel}`}>
           <canvas ref={canvas} className="vx-canvas" aria-hidden="true" />
-          {loc && activeNow && !loc.track.locked && <TransformBox engine={engine} clip={loc.clip} frame={box} fit={fit} commit={commit} endGroup={endGroup} />}
+          {loc && activeNow && !loc.track.locked && <TransformBox engine={engine} clip={loc.clip} frame={box} fit={fit} commit={commit} endGroup={endGroup} autoKey={autoKey} />}
           <DebugOverlay engine={engine} />
           {empty && <p className="vx-empty">Importa video, imágenes o audio para empezar.</p>}
         </div>

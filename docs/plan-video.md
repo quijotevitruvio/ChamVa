@@ -251,6 +251,14 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   rotación y opacidad con curvas; Ken Burns para fotos; congelar fotograma; fotograma a imagen.
 - **Prueba:** banco con colores esperados en el punto medio de cada transición; Vitest de la
   interpolación de keyframes.
+- **Hecho (V6, 2026-10-03):** 27 transiciones (unión centrada en el corte con márgenes de recorte, entrada/salida), pila de
+  27 efectos + 24 preajustes de color, croma por tonalidad, 12 modos de fusión, capas de ajuste, fotogramas clave
+  (lineal/suave/mantener/bézier, auto-key, copiar/pegar, 6 presets) y pestañas Transiciones/Efectos/Ajustes con
+  miniaturas del propio motor. Ver `src/video/model/README.md` (sección V6). Banco `/dev/fx-bench.html`: 27/27
+  transiciones por píxeles (borde de la cortina circular a 367 px = ¼ de la diagonal), croma, fusión, ajuste, máscaras,
+  escala 1→2 = 1,5 a mitad, exportación real con márgenes de recorte y vista previa = exportación (diferencia 0).
+  Rendimiento 720p, 3 capas + 2 efectos: 13,6 ms/fotograma (p95 18,5; con transición 14,2; 540p 8 ms; 360p 4 ms).
+  No hecho: importar `.cube`, congelar fotograma, fotograma a imagen, fundido cruzado de audio, GPU.
 
 ### V7 · Audio de verdad — **sonnet, esfuerzo alto**
 

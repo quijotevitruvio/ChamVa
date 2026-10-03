@@ -10,7 +10,7 @@ import type { ClipAudioFx } from '../engine/dsp';
 export const VIDEO_PROJECT_VERSION = 2 as const;
 
 export type TrackKind = 'video' | 'audio' | 'subtitle';
-export type ClipKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle';
+export type ClipKind = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'adjust';
 export type MediaKind = 'video' | 'audio' | 'image';
 
 export interface MediaAsset {
@@ -125,6 +125,48 @@ export interface SubtitleStyle {
   fade?: number;
 }
 
+// ---- V6: transiciones, efectos y keyframes (campos aditivos: el formato sigue siendo `v: 2`) ----
+
+/** Modos de fusión de un clip con lo que hay debajo (`globalCompositeOperation` del lienzo). */
+export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'add' | 'difference' | 'darken' | 'lighten' | 'softlight' | 'hardlight' | 'dodge' | 'burn' | 'exclusion';
+
+/** Curva de aceleración: lineal, suave, entrada, salida, rebote o bézier cúbica (`bz` = x1,y1,x2,y2 como en CSS). */
+export type EaseId = 'linear' | 'smooth' | 'in' | 'out' | 'bounce' | 'bezier';
+export type Bezier = [number, number, number, number];
+
+/** Transición de un clip: `type` es un id del catálogo (`video/fx/transitions.ts`). */
+export interface TransitionSpec {
+  type: string;
+  /** s (0,1–3) */
+  dur: number;
+  ease?: EaseId;
+  bz?: Bezier;
+}
+
+export type FxParams = Record<string, number | string>;
+
+/** Un efecto de la pila de un clip: se aplican en el orden del array. `amount` 0..1 = intensidad. */
+export interface FxInstance {
+  id: string;
+  /** id del catálogo (`video/fx/effects.ts`) */
+  type: string;
+  /** false = apagado (se conserva en la pila) */
+  on?: boolean;
+  amount: number;
+  /** parámetros propios del tipo (los que falten toman su valor por defecto) */
+  p?: FxParams;
+}
+
+/** Interpolación desde este fotograma clave hasta el siguiente. */
+export type KeyInterp = 'linear' | 'smooth' | 'hold' | 'bezier';
+/** Fotograma clave: `t` en segundos desde el inicio del clip (línea de tiempo, no del archivo). */
+export interface Keyframe {
+  t: number;
+  v: number;
+  e?: KeyInterp;
+  bz?: Bezier;
+}
+
 export interface Clip {
   id: string;
   kind: ClipKind;
@@ -162,6 +204,15 @@ export interface Clip {
   anim?: TitleAnim;
   /** subtítulo / texto: tiempo de cada palabra (karaoke); sin esto se reparte por letras */
   words?: WordTime[];
+  /** transición de entrada (en la unión con el clip anterior si es contiguo; si no, entra desde lo de debajo) */
+  tin?: TransitionSpec;
+  /** transición de salida (solo cuenta si el clip siguiente no es contiguo o no tiene `tin`) */
+  tout?: TransitionSpec;
+  /** pila de efectos y filtros (los de un clip `adjust` afectan a todo lo que hay debajo) */
+  fx?: FxInstance[];
+  blend?: BlendMode;
+  /** fotogramas clave por propiedad: x, y, scale, rotation, opacity, volume, `fx.<id>.amount` o `fx.<id>.<parámetro>` */
+  keys?: Record<string, Keyframe[]>;
 }
 
 export interface Track {

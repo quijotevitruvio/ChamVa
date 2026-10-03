@@ -8,6 +8,7 @@
 // (migrar dos veces da lo mismo); lo que V1 no podía usar (clips sin archivo, tipos
 // desconocidos) se guarda en `legacy` en vez de perderse; números inválidos se reparan
 // y se anotan en el informe. La imagen y el sonido resultantes son los mismos que V1.
+import { sanitizeBlend, sanitizeFxList, sanitizeKeys, sanitizeTransition } from '../fx/sanitize';
 import { IDENTITY_TRANSFORM, VIDEO_PROJECT_VERSION, type Clip, type ClipKind, type MediaAsset, type MediaKind, type Track, type Transform, type VideoProject } from './types';
 import { createProject, createTrack, normalizeTrack } from './ops';
 import { clipEnd } from './query';
@@ -252,7 +253,7 @@ function migrateV1(raw: Record<string, unknown>): { project: VideoProject; repor
 
 // ---------------- v2 tolerante ----------------
 
-const CLIP_KINDS: ClipKind[] = ['video', 'audio', 'image', 'text', 'subtitle'];
+const CLIP_KINDS: ClipKind[] = ['video', 'audio', 'image', 'text', 'subtitle', 'adjust'];
 const MEDIA_KINDS: MediaKind[] = ['video', 'audio', 'image'];
 
 /** Lee un v2 guardado rellenando lo que falte. No muta la entrada; descarta las URL (son de otra sesión). */
@@ -291,7 +292,7 @@ export function normalizeV2(raw: Record<string, unknown>): VideoProject {
       while (seen.has(id)) id += '~';
       seen.add(id);
       const ck = rc.kind as ClipKind;
-      const still = ck === 'image' || ck === 'text' || ck === 'subtitle';
+      const still = ck === 'image' || ck === 'text' || ck === 'subtitle' || ck === 'adjust';
       const rtr = isObj(rc.transform) ? rc.transform : {};
       const trn = (k: keyof Transform) => (isFin(rtr[k]) ? (rtr[k] as number) : IDENTITY_TRANSFORM[k]);
       const inP = isFin(rc.inP) && rc.inP >= 0 ? rc.inP : 0;
@@ -324,6 +325,21 @@ export function normalizeV2(raw: Record<string, unknown>): VideoProject {
       if (an && ck !== 'subtitle') c.anim = an;
       const wd = sanitizeWords(rc.words);
       if (wd && (ck === 'text' || ck === 'subtitle')) c.words = wd;
+      // V6 (todo opcional): transiciones, pila de efectos, fusión y fotogramas clave
+      if (ck !== 'audio' && ck !== 'subtitle') {
+        const tin = sanitizeTransition(rc.tin);
+        if (tin) c.tin = tin;
+        const tout = sanitizeTransition(rc.tout);
+        if (tout) c.tout = tout;
+        const fxl = sanitizeFxList(rc.fx);
+        if (fxl) c.fx = fxl;
+        const bl = sanitizeBlend(rc.blend);
+        if (bl && ck !== 'adjust') c.blend = bl;
+      }
+      if (ck !== 'subtitle') {
+        const ks = sanitizeKeys(rc.keys);
+        if (ks) c.keys = ks;
+      }
       clips.push(c);
     });
     const subStyle = kind === 'subtitle' ? (sanitizeSubtitleStyle(rt.subStyle) ?? { ...DEFAULT_SUBTITLE_STYLE, style: { ...DEFAULT_SUBTITLE_STYLE.style } }) : undefined;

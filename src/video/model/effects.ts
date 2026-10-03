@@ -2,6 +2,8 @@
 // la vista previa (Web Audio) y el motor de exportación (dsp.ts), así que viven
 // en el modelo y no en la interfaz.
 import type { ClipAudioFx } from '../engine/dsp';
+import { volumeAt } from '../fx/keyframes';
+import type { Keyframe } from './types';
 
 export interface VoiceEffect {
   id: string;
@@ -29,7 +31,9 @@ export function effectById(id: string | undefined): VoiceEffect {
 }
 
 /** Parámetros de audio de un clip: el efecto (o los valores a medida de `voice`) + el volumen. */
-export function clipAudioFx(c: { effect: string; volume: number; voice?: Omit<ClipAudioFx, 'volume'> }): ClipAudioFx {
+export function clipAudioFx(c: { effect: string; volume: number; voice?: Omit<ClipAudioFx, 'volume'>; keys?: Record<string, Keyframe[]>; start?: number }, t?: number): ClipAudioFx {
   const v = c.voice ?? effectById(c.effect);
-  return { volume: c.volume, hp: v.hp, lp: v.lp, echo: v.echo, gate: !!v.gate };
+  // V6: con fotogramas clave de volumen y un instante, el volumen animado (la vista previa lo pide en cada fotograma)
+  const volume = t !== undefined && c.keys?.volume?.length ? volumeAt({ keys: c.keys, start: c.start ?? 0, volume: c.volume }, t) : c.volume;
+  return { volume, hp: v.hp, lp: v.lp, echo: v.echo, gate: !!v.gate };
 }

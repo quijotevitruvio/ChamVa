@@ -4,6 +4,9 @@ import { moveClips } from './editing';
 import type { MediaCache } from './mediaCache';
 import type { PreviewEngine } from './previewEngine';
 import { ClipView } from './ClipView';
+import { KeyRow } from './KeyRow';
+import { resolveTransitions } from '../../video/fx/transitions';
+import { applyPayload, decodePayload, dragKind, FX_MIME, fxDropTarget, junctionMarks, type FxDropTarget, type FxKind, type JunctionMark } from './fxUi';
 import { TrackHeader } from './TrackHeader';
 import * as T from './timelineMath';
 
@@ -84,6 +87,8 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
   const [guide, setGuide] = useState<number | null>(null);
   const [box, setBox] = useState<T.Box | null>(null);
   const [drop, setDrop] = useState<{ trackId: string | null; t: number } | null>(null);
+  const [fxKind, setFxKind] = useState<FxKind | null>(null);
+  const [fxDrop, setFxDrop] = useState<FxDropTarget | null>(null);
   const [activeIds, setActiveIds] = useState<ReadonlySet<string>>(new Set());
   const dragRef = useRef<Drag | null>(null);
   const lastPtr = useRef<Ptr | null>(null);
@@ -100,6 +105,20 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
   const rows = useMemo(() => T.rowLayout(shown), [shown]);
   const tracks = useMemo(() => T.displayTracks(shown), [shown]);
   const dur = useMemo(() => VM.projectDuration(shown), [shown]);
+  // uniones entre clips contiguos (símbolo / zona de soltar) y cuñas de entrada y salida de clips sueltos
+  const fxInfo = useMemo(() => {
+    const joins = new Map<string, JunctionMark[]>();
+    const edges = new Map<string, { tin?: number; tout?: number }>();
+    for (const t of shown.tracks) {
+      if (t.kind !== 'video') continue;
+      joins.set(t.id, junctionMarks(t, dur));
+      for (const r of resolveTransitions(t, dur)) {
+        if (r.kind === 'in' && r.b) edges.set(r.b.id, { ...edges.get(r.b.id), tin: r.dur });
+        if (r.kind === 'out' && r.a) edges.set(r.a.id, { ...edges.get(r.a.id), tout: r.dur });
+      }
+    }
+    return { joins, edges };
+  }, [shown, dur]);
   const half = Math.max(80, viewW / 2);
   const win = T.renderWindow(bucket * half, viewW, pps);
   const laneW = Math.max(viewW - headerW, dur * pps + 40);
@@ -455,13 +474,42 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     return { trackId: row?.trackId ?? null, t: Math.max(0, s.time) };
   };
   const hasPayload = (e: ReactDragEvent) => e.dataTransfer.types.includes(MEDIA_MIME) || e.dataTransfer.types.includes('Files');
+  /** destino de lo que se arrastra desde las pestañas de transiciones / efectos / ajustes */
+  const fxTarget = (e: ReactDragEvent, k: FxKind) => fxDropTarget(project, rows, pps, contentX(e.clientX), contentY(e.clientY), k);
   const onDragOver = (e: ReactDragEvent) => {
+    const fk = dragKind(e.dataTransfer.types);
+    if (fk) {
+      const tgt = fxTarget(e, fk);
+      setFxKind(fk);
+      setFxDrop(tgt);
+      if (tgt) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }
+      return;
+    }
     if (!hasPayload(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setDrop(dropTarget(e));
   };
   const onDrop = (e: ReactDragEvent) => {
+    const fk = dragKind(e.dataTransfer.types);
+    if (fk) {
+      e.preventDefault();
+      const tgt = fxTarget(e, fk);
+      const payload = decodePayload(e.dataTransfer.getData(FX_MIME));
+      setFxDrop(null);
+      setFxKind(null);
+      if (tgt && payload) {
+        const next = applyPayload(project, tgt.clipId, payload, tgt.mode === 'clip' ? 'auto' : tgt.mode);
+        if (next !== project) {
+          commit(() => next);
+          setSelection([tgt.clipId]);
+        }
+      }
+      return;
+    }
     if (!hasPayload(e)) return;
     e.preventDefault();
     const tgt = dropTarget(e);
@@ -502,7 +550,11 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
         onPointerCancel={onPointerUp}
         onDragOver={onDragOver}
         onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) setDrop(null);
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setDrop(null);
+            setFxDrop(null);
+            setFxKind(null);
+          }
         }}
         onDrop={onDrop}
         role="application"
@@ -548,9 +600,32 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
                           strip={m ? cache.stripOf(m.id) : undefined}
                           wave={m ? cache.waveOf(m.id) : undefined}
                           active={activeIds.has(c.id)}
+                          tinPx={(fxInfo.edges.get(c.id)?.tin ?? 0) * pps}
+                          toutPx={(fxInfo.edges.get(c.id)?.tout ?? 0) * pps}
                         />
                       );
                     })}
+                    {selection.length === 1 && vis.map((c) => (selSet.has(c.id) && c.keys ? <KeyRow key={'k' + c.id} clip={c} width={Math.max(2, (T.drawEnd(c, dur) - c.start) * pps)} pps={pps} engine={engine} commit={commit} locked={track.locked} /> : null))}
+                    {(fxInfo.joins.get(track.id) ?? [])
+                      .filter((m) => (m.dur > 0 || fxKind === 'transition') && m.cut >= win.t0 - 2 && m.cut <= win.t1 + 2)
+                      .map((m) => {
+                        const wpx = Math.max(24, m.dur * pps);
+                        const hot = fxDrop?.mode === 'junction' && fxDrop.clipId === m.bId;
+                        return (
+                          <button
+                            key={m.bId}
+                            type="button"
+                            className={`vx-jn${m.type ? ' has' : ''}${fxKind === 'transition' ? ' plus' : ''}${hot ? ' hot' : ''}`}
+                            style={{ left: m.cut * pps - wpx / 2, width: wpx }}
+                            onClick={() => setSelection([m.bId])}
+                            title={m.type ? `Transición «${m.label}», ${m.dur.toFixed(2)} s (centrada en el corte). Clic: seleccionar el clip para editarla` : 'Unión sin transición: suelta aquí una transición'}
+                            aria-label={m.type ? `Transición «${m.label}» de ${m.dur.toFixed(1)} segundos en la unión; seleccionar el clip siguiente` : 'Unión de dos clips: zona para soltar una transición'}
+                          >
+                            {m.type && <span className="vx-jn-win" style={{ width: m.dur * pps }} aria-hidden="true" />}
+                            <span className="vx-jn-ic" aria-hidden="true">{m.type ? '◇' : '＋'}</span>
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
               );
@@ -566,6 +641,7 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
             {drop && <div className="vx-drop-line" style={{ left: headerW + drop.t * pps }} />}
           </div>
           <div ref={lineRef} className="vx-ph-line" style={{ left: headerW }} />
+          {fxDrop && <div className="vx-fxdrop" style={{ left: headerW + fxDrop.rect.x, top: T.RULER_H + fxDrop.rect.y, width: fxDrop.rect.w, height: fxDrop.rect.h }} />}
           {guide !== null && <div className="vx-guide" style={{ left: headerW + guide * pps }} />}
           {box && (
             <div

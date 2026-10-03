@@ -18,34 +18,41 @@ interface Props {
   onTab: (t: BinTab) => void;
   textPanel: ReactNode;
   subtitlePanel: ReactNode;
+  /** V6: transiciones, efectos y ajustes */
+  transPanel: ReactNode;
+  fxPanel: ReactNode;
+  adjustPanel: ReactNode;
 }
 
-export type BinTab = 'media' | 'text' | 'subs';
+export type BinTab = 'media' | 'text' | 'subs' | 'trans' | 'fx' | 'adjust';
 const TABS: { id: BinTab; label: string }[] = [
   { id: 'media', label: 'Medios' },
   { id: 'text', label: 'Texto' },
   { id: 'subs', label: 'Subtítulos' },
+  { id: 'trans', label: 'Transiciones' },
+  { id: 'fx', label: 'Efectos' },
+  { id: 'adjust', label: 'Ajustes' },
 ];
 
 const ICON = { video: '🎬', audio: '🎵', image: '🖼' } as const;
 
 /** Panel de medios: importar, ver lo importado y arrastrarlo a la línea de tiempo. */
-export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove, onAddText, onToggleRecord, tab, onTab, textPanel, subtitlePanel }: Props) {
+export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove, onAddText, onToggleRecord, tab, onTab, textPanel, subtitlePanel, transPanel, fxPanel, adjustPanel }: Props) {
   useSyncExternalStore(cache.subscribe, cache.getVersion);
   const file = useRef<HTMLInputElement>(null);
   const used = VM.usedMediaIds(project);
   const items = Object.values(project.media);
   const onTabKey = (e: KeyboardEvent) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return;
     e.preventDefault();
     e.stopPropagation();
     const i = TABS.findIndex((t) => t.id === tab);
-    const n = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    const n = e.key === 'Home' ? TABS[0] : e.key === 'End' ? TABS[TABS.length - 1] : TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
     onTab(n.id);
     requestAnimationFrame(() => document.getElementById('vx-tab-' + n.id)?.focus());
   };
   return (
-    <aside className={`vx-bin${tab === 'subs' ? ' wide' : ''}`} aria-label="Medios, texto y subtítulos">
+    <aside className={`vx-bin${tab === 'subs' ? ' wide' : ''}`} aria-label="Medios, texto, subtítulos, transiciones, efectos y ajustes">
       <div className="vx-tabs" role="tablist" aria-label="Panel de medios" onKeyDown={onTabKey}>
         {TABS.map((t) => (
           <button key={t.id} id={'vx-tab-' + t.id} type="button" role="tab" aria-selected={tab === t.id} aria-controls={'vx-tabpanel-' + t.id} tabIndex={tab === t.id ? 0 : -1} className={tab === t.id ? 'on' : ''} onClick={() => onTab(t.id)}>
@@ -55,6 +62,9 @@ export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove,
       </div>
       {tab === 'text' && <div id="vx-tabpanel-text" role="tabpanel" aria-labelledby="vx-tab-text" className="vx-tabpanel">{textPanel}</div>}
       {tab === 'subs' && <div id="vx-tabpanel-subs" role="tabpanel" aria-labelledby="vx-tab-subs" className="vx-tabpanel">{subtitlePanel}</div>}
+      {tab === 'trans' && <div id="vx-tabpanel-trans" role="tabpanel" aria-labelledby="vx-tab-trans" className="vx-tabpanel">{transPanel}</div>}
+      {tab === 'fx' && <div id="vx-tabpanel-fx" role="tabpanel" aria-labelledby="vx-tab-fx" className="vx-tabpanel">{fxPanel}</div>}
+      {tab === 'adjust' && <div id="vx-tabpanel-adjust" role="tabpanel" aria-labelledby="vx-tab-adjust" className="vx-tabpanel">{adjustPanel}</div>}
       {tab === 'media' && (
       <>
       <div className="vx-bin-head">

@@ -1,8 +1,12 @@
+import { useSyncExternalStore } from 'react';
 import * as VM from '../../video/model';
+import { clearClipKeys } from '../../video/fx/clipOps';
 import { EFFECTS } from '../../video/model/effects';
 import { fmtDur } from './ClipView';
 import { AnimControls } from './AnimControls';
 import { Field } from './Field';
+import { AnimField, AnimSection, EffectsSection, TransitionSection, type FxCtx, type KeyClipboard } from './FxInspector';
+import type { PreviewEngine } from './previewEngine';
 import { StyleControls } from './StyleControls';
 import { DEFAULT_TITLE_STYLE } from '../../video/title/style';
 import { setCueText, setCueTimes } from '../../video/title/subtitles';
@@ -16,9 +20,18 @@ interface Props {
   onDelete: (ripple: boolean) => void;
   /** abre la pestaña «Subtítulos» del panel de medios */
   onOpenSubtitles?: () => void;
+  /** V6: cabezal, auto-fotograma, portapapeles de fotogramas y selección */
+  engine: PreviewEngine;
+  autoKey: boolean;
+  setAutoKey: (v: boolean) => void;
+  keyClip: KeyClipboard;
+  setKeyClip: (v: KeyClipboard) => void;
+  onSelect: (ids: string[]) => void;
 }
 
-export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles }: Props) {
+export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles, engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect }: Props) {
+  // el cabezal: el inspector se repinta al moverlo (cuantizado mientras se reproduce, para no repintar 60 veces por segundo)
+  const t = useSyncExternalStore(engine.subscribeTime, () => (engine.isPlaying ? Math.round(engine.getTime() * 15) / 15 : engine.getTime()));
   const loc = selection.length === 1 ? VM.findClip(project, selection[0]) : null;
 
   if (selection.length === 0 || (selection.length === 1 && !loc)) {
@@ -66,10 +79,11 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
   const timed = c.kind === 'video' || c.kind === 'audio';
   const locked = track.locked;
   const upd = (patch: Parameters<typeof VM.updateClip>[2], group?: string) => commit((p) => VM.updateClip(p, c.id, patch), group ? `${group}:${c.id}` : undefined);
-  const upTr = (tr: Partial<VM.Transform>, g: string) => upd({ transform: tr }, g);
+  const adjust = c.kind === 'adjust';
+  const ctx: FxCtx = { project, clip: c, track, engine, t, commit, locked, autoKey, setAutoKey, keyClip, setKeyClip, onSelect };
   const dur = VM.clipDuration(c);
   const maxLen = timed && media ? Math.max(0.1, (media.duration - c.inP) / (c.speed || 1)) : 600;
-  const KIND = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo' }[c.kind];
+  const KIND = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo', adjust: 'Capa de ajuste' }[c.kind];
 
   return (
     <div className="vx-insp" aria-label={`Clip ${KIND}`}>
@@ -128,15 +142,27 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
         <Field label="Velocidad" value={c.speed || 1} min={0.25} max={3} step={0.05} unit="×" digits={2} disabled={locked} onChange={(v) => upd({ speed: v }, 'speed')} />
       )}
 
-      {visual && (
+      {visual && !adjust && (
         <>
           <h4>Transformación</h4>
-          <Field label="Posición X" value={c.transform.x} min={0} max={1} step={0.005} scale={100} unit=" %" digits={1} disabled={locked} onChange={(v) => upTr({ x: v }, 'tx')} />
-          <Field label="Posición Y" value={c.transform.y} min={0} max={1} step={0.005} scale={100} unit=" %" digits={1} disabled={locked} onChange={(v) => upTr({ y: v }, 'ty')} />
-          <Field label="Escala" value={c.transform.scale} min={0.1} max={4} step={0.01} scale={100} unit=" %" digits={0} disabled={locked} onChange={(v) => upTr({ scale: v }, 'ts')} />
-          <Field label="Rotación" value={c.transform.rotation} min={-180} max={180} step={1} unit="°" digits={0} disabled={locked} onChange={(v) => upTr({ rotation: v }, 'tr')} />
-          <Field label="Opacidad" value={c.transform.opacity} min={0} max={1} step={0.01} scale={100} unit=" %" digits={0} disabled={locked} onChange={(v) => upTr({ opacity: v }, 'to')} />
-          <button type="button" className="mini" disabled={locked} onClick={() => commit((p) => VM.updateClip(p, c.id, { transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1 } }))}>
+          <AnimField ctx={ctx} prop="x" label="Posición X" min={0} max={1} step={0.005} scale={100} unit=" %" digits={1} />
+          <AnimField ctx={ctx} prop="y" label="Posición Y" min={0} max={1} step={0.005} scale={100} unit=" %" digits={1} />
+          <AnimField ctx={ctx} prop="scale" label="Escala" min={0.1} max={4} step={0.01} scale={100} unit=" %" digits={0} />
+          <AnimField ctx={ctx} prop="rotation" label="Rotación" min={-180} max={180} step={1} unit="°" digits={0} />
+          <AnimField ctx={ctx} prop="opacity" label="Opacidad" min={0} max={1} step={0.01} scale={100} unit=" %" digits={0} />
+          <button
+            type="button"
+            className="mini"
+            disabled={locked}
+            title="Vuelve a la posición, escala, rotación y opacidad por defecto y quita sus fotogramas"
+            onClick={() =>
+              commit((p) => {
+                let q = VM.updateClip(p, c.id, { transform: { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1 } });
+                for (const k of ['x', 'y', 'scale', 'rotation', 'opacity']) q = clearClipKeys(q, c.id, k);
+                return q;
+              })
+            }
+          >
             Restablecer
           </button>
           {c.kind === 'image' && <Field label="Ancho base" value={c.size ?? 0.3} min={0.05} max={1} step={0.01} scale={100} unit=" %" disabled={locked} onChange={(v) => upd({ size: v }, 'size')} />}
@@ -145,11 +171,22 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
           <Field label="Fundido de salida" value={c.fadeOut} min={0} max={3} step={0.1} unit=" s" digits={1} disabled={locked} onChange={(v) => upd({ fadeOut: v }, 'fo')} />
         </>
       )}
+      {adjust && (
+        <>
+          <h4>Capa de ajuste</h4>
+          <p className="vx-note">Los efectos de esta capa se aplican a todo lo que hay debajo de ella durante su duración. Muévela y recórtala como un clip.</p>
+          <AnimField ctx={ctx} prop="opacity" label="Opacidad" min={0} max={1} step={0.01} scale={100} unit=" %" digits={0} />
+        </>
+      )}
+
+      {visual && !adjust && track.kind === 'video' && <TransitionSection ctx={ctx} />}
+      {visual && <EffectsSection ctx={ctx} />}
+      {!sub && <AnimSection ctx={ctx} />}
 
       {timed && (
         <>
           <h4>Audio</h4>
-          <Field label="Volumen" value={c.volume} min={0} max={2} step={0.05} scale={100} unit=" %" disabled={locked} onChange={(v) => upd({ volume: v }, 'vol')} />
+          <AnimField ctx={ctx} prop="volume" label="Volumen" min={0} max={2} step={0.05} scale={100} unit=" %" />
           <Field label="Fundido de entrada (audio)" value={c.audioFadeIn} min={0} max={5} step={0.1} unit=" s" digits={1} disabled={locked} onChange={(v) => upd({ audioFadeIn: v }, 'afi')} />
           <Field label="Fundido de salida (audio)" value={c.audioFadeOut} min={0} max={5} step={0.1} unit=" s" digits={1} disabled={locked} onChange={(v) => upd({ audioFadeOut: v }, 'afo')} />
           <div className="vx-field wide">

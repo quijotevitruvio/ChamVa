@@ -9,6 +9,10 @@ import { toast } from './toast';
 import { AutoSubsDialog } from './video/AutoSubsDialog';
 import * as AS from './video/autoSubs';
 import { Inspector } from './video/Inspector';
+import type { KeyClipboard } from './video/FxInspector';
+import { AdjustPanel, EffectsPanel, TransitionsPanel } from './video/FxPanels';
+import { addAdjustClip, newFxId } from '../video/fx/clipOps';
+import { makeFx } from '../video/fx/effects';
 import { MediaBin, type BinTab } from './video/MediaBin';
 import { SubtitlePanel } from './video/SubtitlePanel';
 import { TextPanel } from './video/TextPanel';
@@ -55,6 +59,9 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [snapOn, setSnapOn] = useState(true);
   const [binOpen, setBinOpen] = useState(false);
   const [binTab, setBinTab] = useState<BinTab>('media');
+  // V6: auto-fotograma (editar un valor crea un fotograma en el cabezal) y portapapeles de fotogramas
+  const [autoKey, setAutoKey] = useState(false);
+  const [keyClip, setKeyClip] = useState<KeyClipboard>([]);
   const [recording, setRecording] = useState(false);
   const [marks, setMarks] = useState<AS.Marks>({ in: null, out: null });
   const [auto, setAuto] = useState<AS.AutoScope | null>(null);
@@ -172,6 +179,18 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
 
   const addTrack = (kind: VM.TrackKind) => commit((p) => E.withNewTrack(p, kind).p);
 
+  /** Capa de ajuste (V6): pista de video nueva encima de todas, en el cabezal, 5 s o hasta el final del proyecto, con un efecto de color por defecto. */
+  const addAdjust = () => {
+    const id = VM.uid();
+    commit((p) => {
+      const t = engine.time;
+      const rest = VM.projectDuration(p) - t;
+      const nt = E.withNewTrack(p, 'video', 'Ajuste');
+      return addAdjustClip(nt.p, nt.id, t, rest > 0.5 ? rest : 5, { id, fx: [makeFx('saturation', { id: newFxId() })] });
+    });
+    setSelection([id]);
+  };
+
   const onImport = async (files: File[]) => {
     const empty = !vp.histRef.current.present.tracks.some((t) => t.clips.length);
     const r = await vp.importFiles(files, empty ? {} : false);
@@ -268,7 +287,11 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       if (isTyping(target)) return;
       if (auto) return; // con el diálogo abierto, el teclado es suyo
       // flechas sobre una pestaña del panel: cambian de pestaña (las atiende MediaBin), no mueven el cabezal
-      if (target?.getAttribute('role') === 'tab' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
+      if (target?.getAttribute('role') === 'tab' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End')) return;
+      // rombo de fotograma clave enfocado: Supr y flechas son suyos (quitar / mover el fotograma), no del clip
+      if (target?.hasAttribute('data-kd') && ['Delete', 'Backspace', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      // controles de la curva: las flechas mueven la manija
+      if (target?.getAttribute('role') === 'slider' && target.classList.contains('vx-cv-handle')) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const handled = () => {
@@ -420,13 +443,19 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             tab={binTab}
             onTab={setBinTab}
             textPanel={<TextPanel canApply={canApplyStyle} onAdd={addTitle} onApply={applyTitle} onAddPair={addPair} onAddPlain={addText} />}
+            transPanel={<TransitionsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} />}
+            fxPanel={<EffectsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} />}
+            adjustPanel={<AdjustPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} onAddAdjust={addAdjust} />}
             subtitlePanel={<SubtitlePanel project={project} engine={engine} selection={selection} setSelection={select} commit={commit} onAutoSubs={() => openAuto()} />}
           />
         )}
-        <PreviewPanel engine={engine} project={project} selectedId={selection.length === 1 ? selection[0] : null} aspect={exporter.aspect} fit={exporter.fit} commit={commit} endGroup={endGroup} empty={!hasClips} />
+        <PreviewPanel engine={engine} project={project} selectedId={selection.length === 1 ? selection[0] : null} aspect={exporter.aspect} fit={exporter.fit} commit={commit} endGroup={endGroup} empty={!hasClips} autoKey={autoKey} />
       <div className="vx-tl-section">
         <div className="vx-tl-bar">
           <Transport engine={engine} duration={duration} snapOn={snapOn} onToggleSnap={() => setSnapOn((v) => !v)} />
+          <button type="button" className={autoKey ? 'on' : ''} aria-pressed={autoKey} onClick={() => setAutoKey((v) => !v)} title="Auto-fotograma: al cambiar un valor (inspector o manijas de la vista previa) se crea un fotograma clave en el cabezal">
+            ◆ Auto-fotograma
+          </button>
           <div className="vx-zoom" role="group" aria-label="Zoom de la línea de tiempo">
             <button type="button" onClick={() => apiRef.current?.zoomBy(1 / 1.4)} aria-label="Alejar (−)" title="Alejar (−)">−</button>
             <button type="button" onClick={() => apiRef.current?.fit()} aria-label="Ajustar todo (F)" title="Ajustar todo (F)">⤢</button>
@@ -487,7 +516,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         />
       )}
       <div className="vx-side">
-        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} />
+        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} engine={engine} autoKey={autoKey} setAutoKey={setAutoKey} keyClip={keyClip} setKeyClip={setKeyClip} onSelect={select} />
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
 //  - Un clip que CONTINÚA al anterior (mismo archivo, mismo punto de salida/entrada, misma velocidad)
 //    reutiliza el elemento que ya suena: no necesita precarga.
 import { clipDuration, clipEnd, clipsAt, effectiveEnd, projectDuration, sourceTimeAt } from '../../../video/model/query';
+import { extendedSourceTime } from '../../../video/fx/transitions';
 import type { Clip, VideoProject } from '../../../video/model/types';
 
 export interface PlanItem {
@@ -28,6 +29,8 @@ export interface PlanItem {
   play: boolean;
   /** si continúa a otro clip: id del clip anterior cuyo elemento se reutiliza */
   continuesFrom?: string;
+  /** V6: se ve solo por una transición de unión (fuera de su rango: usa los márgenes de recorte del archivo) */
+  ext?: boolean;
 }
 
 export interface PlanOptions {
@@ -63,6 +66,7 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
   const dur = projectDuration(p);
   const { visual, audible } = clipsAt(p, t, dur);
   const items = new Map<string, PlanItem>();
+  const mediaDur = (c: Clip) => (c.mediaId ? p.media[c.mediaId]?.duration ?? 0 : 0);
   const add = (c: Clip, patch: Partial<PlanItem>) => {
     const prev = items.get(c.id);
     const speed = c.speed || 1;
@@ -80,7 +84,12 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
       play: false,
     };
     const it = { ...(prev ?? base), ...patch };
-    if (it.active) {
+    if (it.ext) {
+      // dentro de la ventana de una transición: corre desde donde le toca aunque su clip aún no haya empezado o ya haya acabado
+      it.active = true;
+      it.play = true;
+      it.seekTo = extendedSourceTime(c, t, mediaDur(c));
+    } else if (it.active) {
       it.seekTo = Math.min(c.outP, Math.max(c.inP, sourceTimeAt(c, t)));
       it.play = true;
     } else {
@@ -91,7 +100,10 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
     }
     items.set(c.id, it);
   };
-  for (const v of visual) if (v.clip.kind === 'video' && v.clip.mediaId) add(v.clip, { visible: true });
+  for (const v of visual) if (v.clip.kind === 'video' && v.clip.mediaId) add(v.clip, v.ext ? { visible: true, ext: true } : { visible: true });
+  // clips de una misma pista en transición: cada uno necesita su propio elemento (no se reutiliza el del anterior)
+  const inJunction = new Set<string>();
+  for (const v of visual) if (v.ext) for (const w of visual) if (w.track === v.track) inJunction.add(w.clip.id);
   for (const a of audible) if (a.clip.mediaId) add(a.clip, { audible: true });
 
   const up: Clip[] = [];
@@ -106,7 +118,7 @@ export function planPreload(p: VideoProject, t: number, opts: PlanOptions = {}):
   // quién continúa a quién (para reutilizar el elemento al cortar)
   for (const it of items.values()) {
     const c = findClipById(p, it.clipId);
-    const prev = c ? continuesFrom(p, c) : null;
+    const prev = c && !inJunction.has(c.id) ? continuesFrom(p, c) : null;
     if (prev) it.continuesFrom = prev.id;
   }
   return [...items.values()].sort((a, b) => a.startsIn - b.startsIn);
