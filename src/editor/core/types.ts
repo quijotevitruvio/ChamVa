@@ -475,7 +475,31 @@ export const SHAPE_OPTIONS: { kind: ShapeKind; label: string; icon: string }[] =
   { kind: 'parallelogram', label: 'Paralelogramo', icon: '▱' },
 ];
 
-export type Layer = ImageLayer | TextLayer | ShapeLayer;
+// Trazo a mano alzada (pinceles). Cada pincelada = UNA capa; la geometría se genera por código
+// (brush.ts) a partir de `pts`, así que el .chamva solo guarda los puntos suavizados.
+export type BrushStyle =
+  | 'pencil'
+  | 'pen'
+  | 'marker'
+  | 'brush'
+  | 'watercolor'
+  | 'airbrush'
+  | 'highlighter'
+  | 'chalk'
+  | 'calligraphy';
+
+export interface StrokeLayer extends LayerBase {
+  type: 'stroke';
+  brush: BrushStyle;
+  color: string;
+  size: number; // grosor base en px del documento
+  pts: number[]; // [x, y, presión 0..1, …] relativos al origen de la capa (x, y)
+  seed: number; // semilla del grano (aerógrafo, tiza, lápiz): mismo trazo = mismo dibujo
+  width: number; // caja de la capa (incluye margen del pincel)
+  height: number;
+}
+
+export type Layer = ImageLayer | TextLayer | ShapeLayer | StrokeLayer;
 
 export interface GradientStop {
   offset: number; // 0..1

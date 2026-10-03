@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "ChamVa",
+        "width": 1280,
+        "height": 800,
+        "decorations": false
+      }
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import { fillDither, fillGrain, grainActive } from '../editor/core/grain';
 import { needsProcessing, processImage } from '../editor/core/imageProcessing';
 import { drawGroundFx, hasGroundFx } from '../editor/core/groundFx';
 import { preloadFxImages } from '../editor/core/imageEffects';
+import { drawStroke } from '../editor/core/brush';
 import { isStrokeOnly, shapePath } from '../editor/core/shapes';
 import { layerAnimAt } from '../editor/core/animations';
 import { drawCurvedText, measureCurved } from '../editor/core/curvedText';
@@ -135,6 +136,18 @@ export async function renderDocToCanvas(
         continue;
       }
       drawStyledText(ctx, layer, textFields);
+      ctx.restore();
+    } else if (layer.type === 'stroke') {
+      ctx.save();
+      ctx.globalAlpha = layer.opacity * a.opacity;
+      if (layer.blendMode !== 'normal') {
+        ctx.globalCompositeOperation =
+          layer.blendMode as GlobalCompositeOperation;
+      }
+      ctx.translate(layer.x + a.dx * doc.width, layer.y + a.dy * doc.height);
+      ctx.rotate((layer.rotation * Math.PI) / 180);
+      ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
+      drawStroke(ctx, layer);
       ctx.restore();
     } else if (layer.type === 'shape') {
       ctx.save();

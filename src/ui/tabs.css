@@ -155,3 +155,59 @@ html[data-focus] .tabstrip {
     height: 26px;
   }
 }
+
+/* ===== Franja única superior: logo · pestañas · + · zona de arrastre · − ▢ ✕ ===== */
+.tabstrip {
+  align-items: center;
+  padding: 0 0 0 12px;
+  min-height: 38px;
+  gap: 6px;
+  -webkit-app-region: drag;
+}
+.tabstrip > *,
+.tabstrip-list > * {
+  -webkit-app-region: no-drag;
+}
+.tabstrip-brand {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-right: 4px;
+  border-radius: 6px;
+}
+.tabstrip-brand:hover { background: var(--panel-2); }
+.tabstrip .tabstrip-list { align-self: flex-end; flex: 0 1 auto; }
+.tabstrip .tabstrip-new { margin-bottom: 0; align-self: center; }
+.tabstrip-drag { flex: 1 1 24px; align-self: stretch; min-width: 24px; -webkit-app-region: drag; }
+.tabstrip.single { min-height: 38px; padding-top: 0; }
+.tabstrip.single .tabstrip-new { width: 26px; height: 26px; }
+
+.wc { display: flex; align-self: stretch; margin-left: 4px; }
+.wc-btn {
+  width: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.wc-btn:hover { background: var(--panel-2); }
+.wc-close:hover { background: #c42b1c; color: #fff; }
+.wc-btn:focus-visible { outline: 2px solid var(--c-cyan); outline-offset: -3px; }
+
+@media (max-width: 768px) {
+  .tabstrip { padding-left: 6px; min-height: 36px; }
+  .tabstrip-brand { font-size: 15px; padding: 4px 4px; }
+  .tabstrip-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tabstrip-drag { flex-basis: 4px; min-width: 4px; }
+}

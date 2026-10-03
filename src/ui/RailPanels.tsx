@@ -14,6 +14,7 @@ import { LayersTree } from './LayersTree';
 import { t } from '../i18n';
 import { BrandKitPanel } from './BrandKitPanel';
 import { ProjectsPanel } from './ProjectsPanel';
+import { BrushPanel, BrushShortcuts } from './BrushPanel';
 import type { SavedDesign } from '../io/designs';
 
 const TABS = [
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'subir', icon: 'upload', label: 'Subir' },
   { id: 'texto', icon: 'text', label: 'Texto' },
   { id: 'elementos', icon: 'shapes', label: 'Elementos' },
+  { id: 'pinceles', icon: 'brush', label: 'Pinceles' },
   { id: 'fondo', icon: 'palette', label: 'Fondo' },
   { id: 'plantillas', icon: 'templates', label: 'Plantillas' },
   { id: 'capas', icon: 'layers', label: 'Capas' },
@@ -114,6 +116,7 @@ export function RailPanels({
 
   return (
     <>
+      <BrushShortcuts />
       <nav className="rail">
         {TABS.map((tab) => (
           <button
@@ -259,6 +262,13 @@ export function RailPanels({
                   ▦
                 </button>
               </div>
+            </>
+          )}
+
+          {activeTab === 'pinceles' && (
+            <>
+              {head('Pinceles')}
+              <BrushPanel />
             </>
           )}
 

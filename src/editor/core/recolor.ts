@@ -52,6 +52,7 @@ function mapBackground(b: Background, fn: ColorFn): Background {
 }
 
 function mapLayer(l: Layer, fn: ColorFn): Layer {
+  if (l.type === 'stroke') return { ...l, color: mapOne(l.color, fn) };
   const shadow = l.shadowColor ? { shadowColor: mapOne(l.shadowColor, fn) } : {};
   if (l.type === 'shape') {
     return {

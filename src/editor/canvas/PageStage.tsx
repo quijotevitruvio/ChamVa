@@ -19,6 +19,9 @@ import { getCheckerboard } from './useImage';
 import { ImageLayerNode } from './ImageLayerNode';
 import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
+import { StrokeLayerNode } from './StrokeLayerNode';
+import { BrushOverlay } from './BrushOverlay';
+import { useBrush } from '../state/brushStore';
 import { InlineTextEditor } from './InlineTextEditor';
 import { StickyNotes } from './StickyNotes';
 import { MasterBackdrop } from './MasterBackdrop';
@@ -85,6 +88,7 @@ export function PageStage({
   const beginBatch = useEditor((s) => s.beginBatch);
   const endBatch = useEditor((s) => s.endBatch);
 
+  const brushOn = useBrush((s) => s.active);
   const [editorPos, setEditorPos] = useState<{ left: number; top: number } | null>(null);
 
   const containerRef = bridge.areaRef;
@@ -716,6 +720,14 @@ export function PageStage({
                   registerRef={registerRef}
                 />
               );
+            if (layer.type === 'stroke')
+              return (
+                <StrokeLayerNode
+                  key={layer.id}
+                  layer={layer}
+                  registerRef={registerRef}
+                />
+              );
             return null;
           })}
           <Transformer
@@ -926,6 +938,7 @@ export function PageStage({
         )}
       </Stage>
 
+      {brushOn && <BrushOverlay doc={doc} scale={scale} stageRef={stageRef} />}
       {showNotes && <StickyNotes scale={scale} origin={origin} />}
       <BeforeAfterSlider nodeRefs={nodeRefs} />
 

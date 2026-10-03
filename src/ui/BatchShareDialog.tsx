@@ -41,6 +41,7 @@ export function BatchShareDialog({ onClose }: { onClose: () => void }) {
           ✕
         </button>
         <h3>Lote y compartir</h3>
+        <p className="bs-hint">Envía tu diseño a otras apps o expórtalo en varios formatos y tamaños a la vez. Para una descarga simple usa «Descargar».</p>
         <div className="bs-tabs">
           {TABS.map(([id, label]) => (
             <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>

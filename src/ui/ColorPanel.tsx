@@ -490,45 +490,68 @@ export function ColorPanel({
 
       <section className="cp-sec">
         <h4>Armonías</h4>
-        <label className="cp-harm-pick">
-          <span>Partir de</span>
-          <input
-            type="color"
-            value={harmSeed}
-            onChange={(e) => setHarmBase(e.target.value)}
-          />
-          <span>{harmSeed}</span>
+        <div className="cp-harm-pick">
+          <span className="cp-harm-from">Partir de</span>
+          <label className="cp-harm-seed" title="Cambiar el color base">
+            <span className="cp-harm-dot" style={{ background: harmSeed }} aria-hidden="true" />
+            <code>{harmSeed}</code>
+            <input
+              type="color"
+              value={harmSeed}
+              aria-label="Color base de las armonías"
+              onChange={(e) => setHarmBase(e.target.value)}
+            />
+          </label>
           {harmBase && (
             <button className="cp-mini" onClick={() => setHarmBase(null)} type="button">
               Usar fondo
             </button>
           )}
-        </label>
+        </div>
         {(Object.keys(harm) as (keyof typeof harm)[]).map((k) => (
           <div className="cp-harm" key={k}>
-            <div className="cp-harm-name">{HARMONY_LABELS[k]}</div>
-            <div className="cp-harm-row">
-              {harm[k].map((c, i) => (
-                <button
-                  key={i}
-                  className="cp-swatch"
-                  style={{ background: c }}
-                  title={`${c} — clic derecho para copiar`}
-                  onClick={() => pickSolid(c)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    copyHex(c);
-                  }}
-                />
-              ))}
+            <div className="cp-harm-name">
+              <span>{HARMONY_LABELS[k]}</span>
               <button
                 className="cp-mini"
                 type="button"
-                title="Copiar los hex de esta familia"
+                title="Copiar los hex de esta armonía"
                 onClick={() => copyHex(harm[k].join(' '))}
               >
                 copiar hex
               </button>
+            </div>
+            <div className="cp-harm-row">
+              {harm[k].map((c, i) => (
+                <span className="cp-chip" key={i}>
+                  <button
+                    type="button"
+                    className="cp-swatch"
+                    style={{ background: c }}
+                    title={`${c} — clic: aplicar · doble clic: copiar · clic derecho: añadir al kit`}
+                    aria-label={`${c}, aplicar como color`}
+                    onClick={() => pickSolid(c)}
+                    onDoubleClick={() => copyHex(c)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      addBrandColor(c);
+                      toast(`${c} añadido al Kit de Marca`, 'success');
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="cp-chip-add"
+                    title="Añadir al Kit de Marca"
+                    aria-label={`Añadir ${c} al Kit de Marca`}
+                    onClick={() => {
+                      addBrandColor(c);
+                      toast(`${c} añadido al Kit de Marca`, 'success');
+                    }}
+                  >
+                    +
+                  </button>
+                </span>
+              ))}
             </div>
           </div>
         ))}

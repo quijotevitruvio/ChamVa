@@ -26,6 +26,9 @@ export function layerCssLines(l: Layer): string[] {
     if (l.shape === 'ellipse') add('border-radius', '50%');
     else if (l.shape === 'rect' && l.cornerRadius > 0) add('border-radius', px(l.cornerRadius));
     if (l.shadow) add('box-shadow', `${px(l.shadowX)} ${px(l.shadowY)} ${px(l.shadowBlur)} ${l.shadowColor}`);
+  } else if (l.type === 'stroke') {
+    add('width', px(l.width * Math.abs(l.scaleX)));
+    add('height', px(l.height * Math.abs(l.scaleY)));
   } else if (l.type === 'image') {
     add('width', px(l.naturalWidth * Math.abs(l.scaleX)));
     add('height', px(l.naturalHeight * Math.abs(l.scaleY)));

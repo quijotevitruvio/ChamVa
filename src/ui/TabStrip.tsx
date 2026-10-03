@@ -5,11 +5,13 @@ import { canAddTab, moveTabBy, neighborTab, tabLabel } from '../editor/state/tab
 import { MAX_TABS } from '../editor/state/sessions';
 import { getShortcut } from '../editor/core/shortcuts';
 import { t } from '../i18n';
+import { WindowControls } from './WindowControls';
 import './tabs.css';
 
 interface Props {
   onNew: () => void;
   onClose: (id: string) => void;
+  onHome?: () => void;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  * Arrastrar reordena; Alt+←/→ también; clic central o ✕ cierra; Ctrl+T/Ctrl+W (o Alt+T/Alt+W).
  * Con una sola pestaña queda baja y discreta.
  */
-export function TabStrip({ onNew, onClose }: Props) {
+export function TabStrip({ onNew, onClose, onHome }: Props) {
   const tabs = useEditor((s) => s.tabs);
   const activeId = useEditor((s) => s.activeTabId);
   const liveName = useEditor((s) => s.designName);
@@ -85,7 +87,11 @@ export function TabStrip({ onNew, onClose }: Props) {
     : `${t('Nueva pestaña')} (${getShortcut('newTab') || 'Alt+T'})`;
 
   return (
-    <div className={`tabstrip${single ? ' single' : ''}`}>
+    <div className={`tabstrip${single ? ' single' : ''}`} data-tauri-drag-region>
+      <button type="button" className="brand tabstrip-brand" onClick={onHome} title="Inicio" aria-label="ChamVa, ir a Inicio">
+        <span className="lg-c">C</span>ham<span className="lg-v">V</span>
+        <span className="lg-a">a</span>
+      </button>
       <div className="tabstrip-list" role="tablist" aria-label={t('Diseños abiertos')}>
         {tabs.map((tab) => {
           const active = tab.id === activeId;
@@ -176,6 +182,8 @@ export function TabStrip({ onNew, onClose }: Props) {
       >
         +
       </button>
+      <div className="tabstrip-drag" data-tauri-drag-region aria-hidden="true" />
+      <WindowControls />
     </div>
   );
 }

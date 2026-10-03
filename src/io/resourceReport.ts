@@ -115,6 +115,8 @@ export function buildResourceReport(pages: Doc[], customFonts: string[] = []): R
         addGrad(l.fillGradient);
         if (l.strokeWidth > 0) addColor(l.stroke);
         if (l.shadow) addColor(l.shadowColor);
+      } else if (l.type === 'stroke') {
+        addColor(l.color);
       } else {
         if (!l.src) issues.push({ level: 'aviso', page, layer: name, text: 'Imagen sin contenido' });
         const shownW = l.naturalWidth * Math.abs(l.scaleX);

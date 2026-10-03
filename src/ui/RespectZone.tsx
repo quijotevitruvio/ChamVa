@@ -13,7 +13,7 @@ const ctx = document.createElement('canvas').getContext('2d')!;
 function boxOf(l: DocLayer): Box {
   if (l.type === 'image')
     return { x: l.x, y: l.y, w: l.naturalWidth * Math.abs(l.scaleX), h: l.naturalHeight * Math.abs(l.scaleY) };
-  if (l.type === 'shape') return { x: l.x, y: l.y, w: l.width * Math.abs(l.scaleX), h: l.height * Math.abs(l.scaleY) };
+  if (l.type === 'shape' || l.type === 'stroke') return { x: l.x, y: l.y, w: l.width * Math.abs(l.scaleX), h: l.height * Math.abs(l.scaleY) };
   const m = measureStyledText(ctx, l);
   return { x: l.x, y: l.y, w: m.width * Math.abs(l.scaleX), h: m.height * Math.abs(l.scaleY) };
 }

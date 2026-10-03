@@ -5,7 +5,8 @@ import { ContrastBadge } from './ContrastChecker';
 import { toHex6 } from '../editor/core/gradients';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useEditor } from '../editor/state/store';
-import { SHAPE_OPTIONS, type Gradient, type Layer, type TextLayer } from '../editor/core/types';
+import { SHAPE_OPTIONS, type BrushStyle, type Gradient, type Layer, type TextLayer } from '../editor/core/types';
+import { BRUSHES, resizePatch } from '../editor/core/brush';
 import { isStrokeOnly } from '../editor/core/shapes';
 import { toggleTarget, resolveCharStyles } from '../editor/core/richText';
 import { ANIMATIONS } from '../editor/core/animations';
@@ -889,6 +890,41 @@ export function PropertiesPanel(p: Props) {
                 1,
                 (v) => updateLayerLive(selected.id, { cornerRadius: v }),
               )}
+          </Section>
+        )}
+
+        {selected.type === 'stroke' && (
+          <Section id="stroke" title="Trazo" defaultOpen>
+            <div className="row text-row">
+              <label className="shape-color">
+                Color
+                <input
+                  type="color"
+                  value={toHex6(selected.color)}
+                  onChange={(e) => updateLayer(selected.id, { color: e.target.value })}
+                />
+              </label>
+              <label className="shape-color">
+                Pincel
+                <select
+                  value={selected.brush}
+                  onChange={(e) => updateLayer(selected.id, { brush: e.target.value as BrushStyle })}
+                >
+                  {BRUSHES.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {t(b.label)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {range('Grosor', selected.size, 1, 200, 1, (v) => updateLayerLive(selected.id, resizePatch(selected, v)))}
+          </Section>
+        )}
+
+        {selected.type === 'stroke' && (
+          <Section id="more-stroke" title="Más opciones">
+            {commonMore}
           </Section>
         )}
 

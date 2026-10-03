@@ -1313,14 +1313,9 @@ export default function App() {
         <UpdateBanner update={update} pct={updatePct} onInstall={installUpdate} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
-      <TabStrip onNew={newTabHome} onClose={(id) => void requestCloseTab(id)} />
+      <TabStrip onNew={newTabHome} onClose={(id) => void requestCloseTab(id)} onHome={() => openHome(false)} />
 
       <header className="toolbar">
-        <span className="brand" style={{ cursor: 'pointer' }} onClick={() => openHome(false)} title="Inicio">
-          <span className="lg-c">C</span>ham<span className="lg-v">V</span>
-          <span className="lg-a">a</span>
-        </span>
-
         <DesignNameField />
         <SaveIndicator />
 
@@ -1494,8 +1489,8 @@ export default function App() {
 
         <span className="spacer" />
 
-        <button className="share-btn" onClick={openBatchShare} title="Lote y compartir…" aria-label="Compartir">
-          ⇪ <span className="share-label">{t('Compartir')}</span>
+        <button className="share-btn" onClick={openBatchShare} title="Enviar a otras apps o exportar varios formatos/tamaños a la vez" aria-label="Compartir…">
+          ⇪ <span className="share-label">{t('Compartir')}…</span>
         </button>
 
         <div className="download-wrap">

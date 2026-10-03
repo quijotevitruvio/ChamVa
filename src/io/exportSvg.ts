@@ -1,3 +1,4 @@
+import { strokeToSvg } from '../editor/core/brush';
 import { svgGrainDef, grainActive } from '../editor/core/grain';
 import { withRegisteredMaster } from '../editor/core/master';
 import { svgGradientDef } from '../editor/core/gradients';
@@ -228,6 +229,9 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
       parts.push(
         `<g transform="${transform(layer)}"${op}>${fxSvg}<g${shadowStyle(layer)}><image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/></g></g>`,
       );
+    } else if (layer.type === 'stroke') {
+      const blend = layer.blendMode !== 'normal' ? ` style="mix-blend-mode:${layer.blendMode}"` : '';
+      parts.push(`<g transform="${transform(layer)}"${op}${blend}>${strokeToSvg(layer)}</g>`);
     } else if (layer.type === 'shape') {
       parts.push(
         `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}>${shapeSvg(layer)}</g>`,

@@ -42,7 +42,7 @@ const KIND_CHIPS: { id: LayerKindFilter; label: string }[] = [
   { id: 'locked', label: 'Bloqueadas' },
 ];
 
-const ico = (l: Layer) => (l.type === 'image' ? '🖼' : l.type === 'text' ? '🅣' : '◻');
+const ico = (l: Layer) => (l.type === 'image' ? '🖼' : l.type === 'text' ? '🅣' : l.type === 'stroke' ? '✎' : '◻');
 const edit = (fn: (d: Doc) => Doc) => useEditor.getState().editDoc(fn);
 
 type Drag = { kind: 'layer' | 'folder'; id: string };

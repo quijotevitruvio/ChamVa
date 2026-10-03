@@ -29,7 +29,7 @@ export const V_OPTIONS: { id: ConstraintV; label: string }[] = [
 // Tamaño aproximado de la capa en px del documento (sin rotación).
 export function defaultBox(l: Layer): { w: number; h: number } {
   if (l.type === 'image') return { w: l.naturalWidth * l.scaleX, h: l.naturalHeight * l.scaleY };
-  if (l.type === 'shape') return { w: l.width * l.scaleX, h: l.height * l.scaleY };
+  if (l.type === 'shape' || l.type === 'stroke') return { w: l.width * l.scaleX, h: l.height * l.scaleY };
   const lines = (l.text || ' ').split('\n');
   const longest = lines.reduce((m, s) => Math.max(m, s.length), 1);
   return {

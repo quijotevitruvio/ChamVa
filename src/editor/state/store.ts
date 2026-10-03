@@ -10,9 +10,13 @@ import {
   type TextLayer,
   type ShapeKind,
   type ShapeLayer,
+  type StrokeLayer,
+  type BrushStyle,
+  type BlendMode,
   type UploadedImage,
   type SavedTemplate,
 } from '../core/types';
+import { BRUSHES, buildStrokeGeometry } from '../core/brush';
 import { jumpInHistory } from './historyLogic';
 import { swap, type PageHist } from './pageHistory';
 import { resolveDesignMeta, type DesignMeta } from './designIdentity';
@@ -189,7 +193,7 @@ const measureCtx = document.createElement('canvas').getContext('2d')!;
 function layerBox(l: Layer): { x: number; y: number; w: number; h: number } {
   if (l.type === 'image')
     return { x: l.x, y: l.y, w: l.naturalWidth * l.scaleX, h: l.naturalHeight * l.scaleY };
-  if (l.type === 'shape')
+  if (l.type === 'shape' || l.type === 'stroke')
     return { x: l.x, y: l.y, w: l.width * l.scaleX, h: l.height * l.scaleY };
   // Misma medida que el dibujo real (estilo por palabra, fondo, interlineado).
   const m = measureStyledText(measureCtx, l);
@@ -211,6 +215,17 @@ function emptyDoc(): Doc {
     layers: [],
     version: 1,
   };
+}
+
+export interface StrokeSpec {
+  brush: BrushStyle;
+  color: string;
+  size: number;
+  opacity: number;
+  raw: number[]; // [x, y, presión, …] en coordenadas del documento
+  seed?: number;
+  blendMode?: BlendMode;
+  select?: boolean; // por defecto true; el modo dibujo no selecciona cada trazo
 }
 
 export interface Rect {
@@ -392,6 +407,9 @@ export interface EditorState {
   addTextPreset: (presetId: string) => Promise<void>; // estilo de texto listo (un paso de deshacer)
   addFontPair: (pairId: string) => Promise<void>; // título + cuerpo (un paso de deshacer)
   addShapeLayer: (kind: ShapeKind) => void;
+  // Pinceles: una pincelada = una capa (brush.ts). `select` false = no cambia la selección.
+  addStrokeLayer: (spec: StrokeSpec) => string | null;
+  removeLayers: (ids: string[]) => void; // varias capas = un solo paso de deshacer
   reorderLayers: (orderBottomFirst: string[]) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   updateLayerLive: (id: string, patch: Partial<Layer>) => void; // sin historial
@@ -1453,6 +1471,50 @@ export const useEditor = create<EditorState>((set, get) => ({
       get().endBatch();
     }
   },
+
+  addStrokeLayer: (spec) => {
+    const s0 = get();
+    if (s0.doc.locked || spec.raw.length < 3) return null;
+    const g = buildStrokeGeometry(spec.raw, spec.brush, spec.size);
+    const name = BRUSHES.find((b) => b.id === spec.brush)?.label ?? 'Trazo';
+    const layer: StrokeLayer = {
+      id: uid(),
+      type: 'stroke',
+      name: `Trazo · ${name}`,
+      brush: spec.brush,
+      color: spec.color,
+      size: spec.size,
+      pts: g.pts,
+      seed: spec.seed ?? Math.floor(Math.random() * 2 ** 31),
+      width: g.width,
+      height: g.height,
+      x: g.x,
+      y: g.y,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      opacity: spec.opacity,
+      blendMode: spec.blendMode ?? 'normal',
+      visible: true,
+      locked: false,
+    };
+    set((s) => ({
+      ...commit(s, { ...s.doc, layers: [...s.doc.layers, layer] }),
+      ...(spec.select === false ? {} : { selectedId: layer.id, selectedIds: [layer.id] }),
+    }));
+    return layer.id;
+  },
+
+  removeLayers: (ids) =>
+    set((s) => {
+      if (s.doc.locked || !ids.length) return {};
+      const gone = new Set(ids);
+      return {
+        ...commit(s, { ...s.doc, layers: s.doc.layers.filter((l) => !gone.has(l.id)) }),
+        selectedId: s.selectedId && gone.has(s.selectedId) ? null : s.selectedId,
+        selectedIds: s.selectedIds.filter((x) => !gone.has(x)),
+      };
+    }),
 
   addShapeLayer: (kind) =>
     set((s) => {
