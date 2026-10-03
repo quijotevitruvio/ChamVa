@@ -8,6 +8,7 @@ import type { Doc } from '../editor/core/types';
 import { downloadBlob } from './export';
 import { crc32, zipToBlob, type ZipEntry } from './zip';
 import { readZip, type ZipFileEntry } from './zipRead';
+import type { ProjectMeta } from './project';
 
 export const PORTABLE_SCHEMA = 1;
 const IMG_DIR = 'imagenes/';
@@ -129,8 +130,15 @@ Para seguir editando, ábrelo desde ChamVa (Archivo > Abrir proyecto).
 Las fuentes propias no van dentro: instálalas o súbelas de nuevo en el otro equipo.
 `;
 
-export function buildPortableEntries(pages: Doc[], pageIndex: number): ZipEntry[] {
-  const packed = packProject({ kind: 'chamva-project', version: 2, pageIndex, pages });
+export function buildPortableEntries(pages: Doc[], pageIndex: number, meta?: ProjectMeta): ZipEntry[] {
+  const packed = packProject({
+    kind: 'chamva-project',
+    version: 2,
+    pageIndex,
+    pages,
+    ...(meta?.designId ? { designId: meta.designId } : {}),
+    ...(meta?.designName ? { designName: meta.designName } : {}),
+  });
   const enc = new TextEncoder();
   return [
     { name: 'LEEME.txt', data: enc.encode(README) },
@@ -139,9 +147,9 @@ export function buildPortableEntries(pages: Doc[], pageIndex: number): ZipEntry[
   ];
 }
 
-export async function savePortableProject(pages: Doc[], pageIndex: number): Promise<void> {
+export async function savePortableProject(pages: Doc[], pageIndex: number, meta?: ProjectMeta): Promise<void> {
   const base = (pages[0]?.name || 'chamva').replace(/[^\w\-]+/g, '_');
-  await downloadBlob(zipToBlob(buildPortableEntries(pages, pageIndex)), `${base}.chamva`);
+  await downloadBlob(zipToBlob(buildPortableEntries(pages, pageIndex, meta)), `${base}.chamva`);
 }
 
 // Texto JSON del proyecto a partir de los bytes de un ZIP portátil.

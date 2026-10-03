@@ -84,6 +84,34 @@ describe('validateBackup', () => {
   });
 });
 
+describe('identidad del diseño en copias (v0.6)', () => {
+  it('una copia antigua (id = primera página, sin designName) se sigue importando igual', () => {
+    // Formato v0.5 tal cual: sin designName ni campos nuevos.
+    const r = parseBackupText(JSON.stringify(sample()));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.file.data.designs?.map((d) => d.id)).toEqual(['d1', 'd2']);
+    expect(r.file.data.designs?.[0].designName).toBeUndefined();
+    const { next } = mergeBackup({ data: {}, fonts: [], prefs: {} }, { data: r.file.data, fonts: [], prefs: {} });
+    expect(next.data.designs?.map((d) => d.id)).toEqual(['d1', 'd2']);
+    expect(Object.keys(next.data.snapshots ?? {})).toEqual(['d1']); // versiones del mismo id
+  });
+
+  it('acepta diseños cuyo id ya no es el de su primera página y con nombre propio', () => {
+    const f = sample();
+    f.data.designs = [design('d1', { pages: [doc('p2'), doc('d1')], designName: 'Folleto' }) as never];
+    const r = validateBackup(JSON.parse(JSON.stringify(f)));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.file.data.designs?.[0]).toMatchObject({ id: 'd1', designName: 'Folleto' });
+  });
+
+  it('rechaza un designName que no es texto', () => {
+    const f = sample();
+    (f.data.designs as unknown[])[0] = design('d1', { designName: { x: 1 } });
+    expect(validateBackup(f).ok).toBe(false);
+  });
+});
+
 describe('mergeBackup (combinar no pisa)', () => {
   type F = { family: string; tag?: string };
   const state = (over: Partial<MergeState<F>> = {}): MergeState<F> => ({ data: {}, fonts: [], prefs: {}, ...over });

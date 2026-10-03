@@ -41,6 +41,14 @@ describe('portableProject', () => {
     expect(back.pages[0].layers[1].src).toContain('data:image/svg+xml;base64,');
     expect(readZip(makeZip(entries)).some((e) => e.name === 'LEEME.txt')).toBe(true);
   });
+  it('lleva la identidad del diseño si se da, y sin ella queda como antes', () => {
+    const pages = [{ id: 'p2', layers: [] }, { id: 'p1', layers: [] }] as unknown as Doc[];
+    const withMeta = JSON.parse(portableBytesToJson(makeZip(buildPortableEntries(pages, 0, { designId: 'p1', designName: 'Cartel' }))));
+    expect(withMeta).toMatchObject({ designId: 'p1', designName: 'Cartel' });
+    const plain = JSON.parse(portableBytesToJson(makeZip(buildPortableEntries(pages, 0))));
+    expect('designId' in plain).toBe(false);
+    expect('designName' in plain).toBe(false);
+  });
   it('sin proyecto.json falla', () => {
     expect(() => portableBytesToJson(makeZip([{ name: 'x', data: new Uint8Array(1) }]))).toThrow();
   });

@@ -152,12 +152,19 @@ export interface UndoStoreApi {
     pages: Doc[];
     pageIndex: number;
     past: Doc[];
+    designId?: string; // identidad estable del diseño (store); sin ella, la antigua
   };
   subscribe: (fn: (s: { past: Doc[] }, prev: { past: Doc[] }) => void) => () => void;
   restoreHistory: (past: Doc[], docId: string) => void;
 }
 
-const designIdOf = (s: ReturnType<UndoStoreApi['getState']>) => (s.pageIndex === 0 ? s.doc.id : s.pages[0]?.id ?? s.doc.id);
+/**
+ * Diseño al que pertenece el historial. Con `designId` (store actual) es ese, que
+ * no cambia al reordenar ni borrar páginas. Sin él (API antigua) se usa el id de la
+ * primera página, que es el valor con el que se guardaron los `undo:<id>` antiguos.
+ */
+export const designIdOf = (s: ReturnType<UndoStoreApi['getState']>) =>
+  s.designId || (s.pageIndex === 0 ? s.doc.id : s.pages[0]?.id ?? s.doc.id);
 
 async function mapPool(pool: Layer[], fn: (docs: Doc[]) => Promise<Doc[]>): Promise<Layer[]> {
   // Reutiliza la (des)hidratación de imágenes de assets.ts con un «documento» de un solo lote.
@@ -179,8 +186,10 @@ async function persistNow(store: UndoStoreApi): Promise<void> {
   const rec = buildRecord(designId, s.past, s.doc);
   if (!rec) {
     // Sin pasos: si lo guardado ya no corresponde a este documento, se borra.
+    // Solo si es de ESTA página: al pasar a otra página sin pasos, el historial
+    // guardado de la anterior se conserva (sigue siendo válido para ella).
     const old = await idbGet<UndoRecord>(key);
-    if (old && old.fp !== docFingerprint(s.doc)) {
+    if (old && old.pageId === s.doc.id && old.fp !== docFingerprint(s.doc)) {
       await idbDelete(key);
       const idx = await readIndex();
       delete idx[designId];

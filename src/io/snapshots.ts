@@ -1,6 +1,6 @@
 // Instantáneas con nombre («versiones»): copia del documento completo (todas
 // las páginas) guardada en IndexedDB bajo la clave 'snapshots', agrupada por
-// diseño (id de la primera página). Las imágenes van por referencia (assets.ts)
+// diseño (designId estable; en los diseños antiguos, el id de su primera página). Las imágenes van por referencia (assets.ts)
 // y gcAssets ya revisa esta clave, así que no se pierden ni quedan huérfanas.
 import type { Doc } from '../editor/core/types';
 import { idbGet, idbSet } from './idb';

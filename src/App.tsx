@@ -54,6 +54,7 @@ import { SnapshotsDialog } from './ui/SnapshotsDialog';
 import { AutoVersionsDialog } from './ui/AutoVersionsDialog';
 import { maybeSaveAutoVersion } from './io/autoVersions';
 import { restoreUndoFor, startUndoPersistence, type UndoStoreApi } from './io/undoStore';
+import { designTitle, readDesignMeta } from './editor/state/designIdentity';
 import { checkBackupReminder } from './io/backup';
 import { SizeMenu } from './ui/SizeMenu';
 import { sizeLabel } from './ui/sizeFieldsLogic';
@@ -144,6 +145,7 @@ export default function App() {
   const selRect = useEditor((s) => s.selRect);
   const pages = useEditor((s) => s.pages);
   const pageIndex = useEditor((s) => s.pageIndex);
+  const designName = useEditor((s) => s.designName); // al renombrar el diseño también se autoguarda
   const newDesign = useEditor((s) => s.newDesign);
   const loadPages = useEditor((s) => s.loadPages);
   const undo = useEditor((s) => s.undo);
@@ -311,13 +313,14 @@ export default function App() {
   };
   const openDesign = async (d: SavedDesign) => {
     const p = await rehydrateDocs(d.pages);
-    loadPages(p, d.pageIndex);
+    // Se abre con SU id (no el de la primera página): reordenar no lo duplica.
+    loadPages(p, d.pageIndex, { designId: d.id, name: d.designName });
     void restoreUndoFor(UNDO_API); // deshacer que sobrevive: mismos pasos del diseño
     setSizeInputs(p[d.pageIndex] ?? p[0]);
     setShowHome(false);
   };
   const restoreBackup = async (b: Backup) => {
-    loadPages(await rehydrateDocs(b.pages), b.pageIndex);
+    loadPages(await rehydrateDocs(b.pages), b.pageIndex, readDesignMeta(b));
     setShowSettings(false);
     setShowHome(false);
     toast('Copia restaurada', 'success');
@@ -442,9 +445,10 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const saved = await idbGet<{ pages: Doc[]; index: number }>('autosave');
+        // designId/designName solo existen desde v0.6: sin ellos, la identidad de siempre.
+        const saved = await idbGet<{ pages: Doc[]; index: number; designId?: string; designName?: string }>('autosave');
         if (saved?.pages?.length) {
-          loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0);
+          loadPages(await rehydrateDocs(saved.pages), saved.index ?? 0, readDesignMeta(saved));
           await restoreUndoFor(UNDO_API); // recupera los últimos pasos de deshacer
         }
       } catch {
@@ -476,31 +480,34 @@ export default function App() {
       const st = useEditor.getState();
       const snapshot = st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p));
       const light = await dehydrateDocs(snapshot);
-      idbSet('autosave', { pages: light, index: st.pageIndex });
+      const designId = st.designId;
+      const ownName = st.designName ?? undefined;
+      idbSet('autosave', { pages: light, index: st.pageIndex, designId, ...(ownName ? { designName: ownName } : {}) });
       if (Date.now() - lastGallery.current < 30_000) return;
       lastGallery.current = Date.now();
-      pushBackup(light, st.pageIndex);
+      pushBackup(light, st.pageIndex, { designId, designName: ownName });
       if (snapshot[0]?.layers.length || snapshot.length > 1) {
         try {
           const first = snapshot[0];
           const s = Math.min(1, 160 / Math.max(first.width, first.height));
           const thumb = (await renderDocToCanvas(first, s, '#ffffff')).toDataURL('image/jpeg', 0.6);
           upsertDesign({
-            id: first.id,
-            name: first.name || 'Diseño sin título',
+            id: designId, // estable: reordenar o borrar la primera página no crea otro diseño
+            name: designTitle(ownName, snapshot),
+            ...(ownName ? { designName: ownName } : {}),
             updatedAt: Date.now(),
             pageIndex: st.pageIndex,
             pages: light,
             thumb,
           });
-          maybeSaveAutoVersion(first.id, light, st.pageIndex, thumb); // versión automática (cada ~10 min)
+          maybeSaveAutoVersion(designId, light, st.pageIndex, thumb); // versión automática (cada ~10 min)
         } catch {
           /* miniatura opcional */
         }
       }
     }, 1200);
     return () => clearTimeout(id);
-  }, [doc, pages, pageIndex, autosaveReady]);
+  }, [doc, pages, pageIndex, designName, autosaveReady]);
 
   // App abierta con doble clic sobre un .chamva (solo Tauri).
   useEffect(() => {
@@ -511,7 +518,7 @@ export default function App() {
         const opened = await invoke<[string, string] | null>('opened_file');
         if (!opened) return;
         const project = parseProject(opened[1]);
-        loadPages(project.pages, project.pageIndex);
+        loadPages(project.pages, project.pageIndex, readDesignMeta(project));
         setShowHome(false);
         toast(`Proyecto "${opened[0]}" abierto`, 'success');
       } catch {
@@ -1075,13 +1082,19 @@ export default function App() {
 
   const onSaveProject = () => {
     const st = useEditor.getState();
-    saveProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex);
+    saveProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex, {
+      designId: st.designId,
+      designName: st.designName,
+    });
   };
   const onSavePortable = async () => {
     const st = useEditor.getState();
     try {
       const { savePortableProject } = await import('./io/portableProject');
-      await savePortableProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex);
+      await savePortableProject(st.pages.map((p, i) => (i === st.pageIndex ? st.doc : p)), st.pageIndex, {
+        designId: st.designId,
+        designName: st.designName,
+      });
     } catch (e) {
       toast('No se pudo guardar el proyecto portátil: ' + (e as Error).message, 'error');
     }
@@ -1091,7 +1104,7 @@ export default function App() {
     if (!file) return;
     try {
       const project = await readProjectFile(file);
-      loadPages(project.pages, project.pageIndex);
+      loadPages(project.pages, project.pageIndex, readDesignMeta(project));
       setSizeInputs(project.pages[project.pageIndex] ?? project.pages[0]);
     } catch (e) {
       toast('No se pudo abrir el proyecto: ' + (e as Error).message, 'error');

@@ -21,8 +21,8 @@ interface Props {
 // restaurar (Ctrl+Z lo deshace) y borrar. Máximo 20 por diseño.
 export function SnapshotsDialog({ onClose }: Props) {
   const restorePages = useEditor((s) => s.restorePages);
-  // El diseño se identifica por el id de su primera página, igual que la galería.
-  const designId = useEditor((s) => (s.pageIndex === 0 ? s.doc.id : s.pages[0]?.id ?? s.doc.id));
+  // El diseño se identifica por su designId estable, igual que la galería.
+  const designId = useEditor((s) => s.designId);
   const [list, setList] = useState<Snapshot[]>([]);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);

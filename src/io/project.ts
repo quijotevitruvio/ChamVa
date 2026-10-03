@@ -15,6 +15,25 @@ export interface Project {
   version: number;
   pageIndex: number;
   pages: Doc[];
+  // Identidad del diseño (opcionales: los archivos antiguos no la traen y se abren
+  // con la de siempre, el id de su primera página).
+  designId?: string;
+  designName?: string;
+}
+
+export interface ProjectMeta {
+  designId?: string;
+  designName?: string | null;
+}
+
+// Solo cadenas no vacías y de longitud razonable; cualquier otra cosa se ignora.
+const metaStr = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.trim() && v.length <= 500 ? v : undefined;
+
+function withMeta(project: Project, meta?: ProjectMeta | null): Project {
+  const designId = metaStr(meta?.designId);
+  const designName = metaStr(meta?.designName ?? undefined);
+  return { ...project, ...(designId ? { designId } : {}), ...(designName ? { designName } : {}) };
 }
 
 // Unidad y dpi opcionales: se descartan los valores inválidos (el diseño se ve igual, en px).
@@ -41,13 +60,16 @@ function normalizeBackground(doc: Doc): Doc {
   return normalizeOrganization(doc);
 }
 
-export function saveProject(pages: Doc[], pageIndex: number) {
-  const project: Project = {
-    kind: 'chamva-project',
-    version: 2,
-    pageIndex,
-    pages,
-  };
+export function saveProject(pages: Doc[], pageIndex: number, meta?: ProjectMeta) {
+  const project: Project = withMeta(
+    {
+      kind: 'chamva-project',
+      version: 2,
+      pageIndex,
+      pages,
+    },
+    meta,
+  );
   const blob = new Blob([JSON.stringify(project, null, 2)], {
     type: 'application/json',
   });
@@ -60,16 +82,18 @@ export function parseProject(text: string): Project {
   const data = JSON.parse(text);
   let pages: Doc[];
   let pageIndex = 0;
+  let meta: ProjectMeta | undefined;
   if (data && data.kind === 'chamva-project' && Array.isArray(data.pages)) {
     pages = data.pages;
     pageIndex = data.pageIndex ?? 0;
+    meta = { designId: data.designId, designName: data.designName };
   } else if (data && Array.isArray(data.layers)) {
     pages = [data as Doc];
   } else {
     throw new Error('Archivo de proyecto inválido');
   }
   pages = pages.map(normalizeBackground);
-  return { kind: 'chamva-project', version: 2, pageIndex, pages };
+  return withMeta({ kind: 'chamva-project', version: 2, pageIndex, pages }, meta);
 }
 
 // Abre un .chamva: ZIP portátil (se detecta por la firma) o JSON (formato clásico).

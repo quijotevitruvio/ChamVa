@@ -100,10 +100,10 @@ export function PageBar({ onShowShortcuts }: { onShowShortcuts: () => void }) {
           )}
         </button>
       ))}
-      <button className="page-add" onClick={addPage}>
+      <button className="page-add" onClick={() => addPage()}>
         + {t('Agregar página')}
       </button>
-      <button className="page-add" onClick={duplicatePage} title="Duplica la página actual con todas sus capas">
+      <button className="page-add" onClick={() => duplicatePage()} title="Duplica la página actual con todas sus capas">
         ⧉ {t('Duplicar página')}
       </button>
       <button className="page-add" onClick={() => setSorterOpen(true)} title="Vista en cuadrícula de todas las páginas: reordenar, duplicar, borrar">

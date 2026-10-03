@@ -77,6 +77,7 @@ function isDesign(v: unknown): v is SavedDesign {
     isObj(v) &&
     isStr(v.id) &&
     isStr(v.name) &&
+    (v.designName === undefined || isStr(v.designName)) &&
     isNum(v.updatedAt) &&
     Array.isArray(v.pages) &&
     v.pages.length > 0 &&

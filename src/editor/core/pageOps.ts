@@ -44,3 +44,9 @@ export function deleteIndices(pages: Doc[], selected: number[]): Doc[] {
   const rest = pages.filter((_, i) => !sel.has(i));
   return rest.length ? rest : pages;
 }
+
+// Inserta `page` en la posición `index` (se limita a 0…pages.length: fuera de rango va al final o al principio).
+export function insertAt(pages: Doc[], index: number, page: Doc): Doc[] {
+  const i = Number.isFinite(index) ? Math.max(0, Math.min(pages.length, Math.trunc(index))) : pages.length;
+  return [...pages.slice(0, i), page, ...pages.slice(i)];
+}

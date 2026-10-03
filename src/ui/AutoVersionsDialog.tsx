@@ -16,7 +16,7 @@ interface Props {
 // restaurar (Ctrl+Z lo deshace) o borrar. Las versiones con nombre van aparte.
 export function AutoVersionsDialog({ onClose }: Props) {
   const restorePages = useEditor((s) => s.restorePages);
-  const designId = useEditor((s) => (s.pageIndex === 0 ? s.doc.id : s.pages[0]?.id ?? s.doc.id));
+  const designId = useEditor((s) => s.designId);
   const [list, setList] = useState<Snapshot[]>([]);
   const [busy, setBusy] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);

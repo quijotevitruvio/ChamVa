@@ -6,8 +6,12 @@ import { dropSnapshotsOf } from './snapshots';
 import { purgeExpired, isTrashed, cleanFolderName, setTagsOf } from '../editor/core/libraryMeta';
 
 export interface SavedDesign {
-  id: string; // id del doc de la primera página
-  name: string;
+  // Identidad estable del diseño (designId del store). En los diseños guardados por
+  // versiones anteriores es el id de su primera página de entonces: se conserva tal
+  // cual al abrirlos, así que versiones y deshacer guardado siguen asociados.
+  id: string;
+  name: string; // nombre visible (el propio o el de la primera página)
+  designName?: string; // nombre propio puesto al diseño (opcional; sin él, el de la primera página)
   updatedAt: number; // epoch ms
   pageIndex: number;
   pages: Doc[];
@@ -22,6 +26,8 @@ export interface Backup {
   ts: number; // epoch ms
   pageIndex: number;
   pages: Doc[];
+  designId?: string; // opcionales: las copias antiguas no los traen
+  designName?: string;
 }
 
 const DESIGNS_KEY = 'designs';
@@ -44,7 +50,7 @@ export async function loadDesigns(): Promise<SavedDesign[]> {
   return kept;
 }
 
-// Inserta/actualiza el diseño (identificado por el id de su primera página).
+// Inserta/actualiza el diseño (identificado por su designId estable).
 // Conserva carpeta y etiquetas del guardado anterior; editar un diseño lo
 // saca de la papelera.
 export async function upsertDesign(d: SavedDesign): Promise<void> {
@@ -147,9 +153,16 @@ export async function loadBackups(): Promise<Backup[]> {
 }
 
 // Guarda una copia de seguridad como máximo cada 2 minutos (últimas 5).
-export async function pushBackup(pages: Doc[], pageIndex: number): Promise<void> {
+export async function pushBackup(
+  pages: Doc[],
+  pageIndex: number,
+  meta?: { designId?: string; designName?: string | null },
+): Promise<void> {
   const list = await loadBackups();
   const now = Date.now();
   if (list[0] && now - list[0].ts < BACKUP_MIN_GAP_MS) return;
-  await idbSet(BACKUPS_KEY, [{ ts: now, pageIndex, pages }, ...list].slice(0, MAX_BACKUPS));
+  const b: Backup = { ts: now, pageIndex, pages };
+  if (meta?.designId) b.designId = meta.designId;
+  if (meta?.designName) b.designName = meta.designName;
+  await idbSet(BACKUPS_KEY, [b, ...list].slice(0, MAX_BACKUPS));
 }

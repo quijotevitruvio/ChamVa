@@ -14,6 +14,9 @@ import {
   type SavedTemplate,
 } from '../core/types';
 import { jumpInHistory } from './historyLogic';
+import { swap, type PageHist } from './pageHistory';
+import { resolveDesignMeta, type DesignMeta } from './designIdentity';
+import { insertAt } from '../core/pageOps';
 import { resizeDocTo, type TargetSize } from '../core/libraryMeta';
 import { similarLayerIds, stylePatch } from '../core/layerStyle';
 import { NOTE_COLORS } from '../core/layout';
@@ -130,6 +133,11 @@ function patchLayer(l: Layer, patch: Partial<Layer>): Layer {
 // grupo actualiza varias capas). Se cierra solo tras 15 s por seguridad.
 let batching = false;
 let batchTimer: ReturnType<typeof setTimeout> | undefined;
+// Un lote abierto no debe cruzar a otra página ni a otro diseño: se cierra antes.
+function endBatchNow() {
+  batching = false;
+  clearTimeout(batchTimer);
+}
 
 // Subidos y plantillas se guardan en IndexedDB (idb.ts), hidratados al iniciar.
 
@@ -234,6 +242,12 @@ interface EditorState {
   showLayout: boolean; // márgenes, sangrado y columnas visibles (solo editor)
   pages: Doc[];
   pageIndex: number;
+  // Identidad estable del diseño (designIdentity.ts): NO cambia al reordenar ni
+  // al borrar páginas. Galería, versiones y deshacer guardado se agrupan por ella.
+  designId: string;
+  designName: string | null; // nombre propio del diseño; null = el de la primera página
+  // Historial de deshacer de las páginas que no están abiertas (pageHistory.ts).
+  pageHist: PageHist;
   brandLogos: UploadedImage[]; // logos del kit activo (espejo de brandKits)
   brandFonts: string[]; // fuentes del kit activo
   brandKits: BrandKit[]; // todos los kits (el activo se refleja en brandColors/brandLogos/brandFonts)
@@ -249,11 +263,12 @@ interface EditorState {
   editPages: (fn: (pages: Doc[], currentId: string) => { pages: Doc[]; currentId: string }) => void;
   setBackground: (background: Background) => void;
   setDocName: (name: string) => void;
-  loadDoc: (doc: Doc) => void;
+  setDesignName: (name: string) => void; // vacío = volver al nombre de la primera página
+  loadDoc: (doc: Doc, meta?: DesignMeta) => void;
 
   // páginas
-  addPage: () => void;
-  duplicatePage: () => void;
+  addPage: (afterIndex?: number) => void; // sin índice: al final
+  duplicatePage: (i?: number) => void; // sin índice: la página actual
   newDesign: (size?: { width: number; height: number; name?: string; unit?: Unit; dpi?: number }) => void;
   // Lienzo = medidas de la foto (ver photoCanvas), foto en 0,0 seleccionada.
   newDesignFromImage: (img: { src: string; naturalWidth: number; naturalHeight: number; name: string }) => void;
@@ -268,7 +283,8 @@ interface EditorState {
   switchPage: (i: number) => void;
   deletePage: (i: number) => void;
   reorderPages: (from: number, to: number) => void;
-  loadPages: (pages: Doc[], index: number) => void;
+  // meta: identidad guardada del diseño; sin ella, la de siempre (id de la primera página).
+  loadPages: (pages: Doc[], index: number, meta?: DesignMeta) => void;
 
   // kit de marca
   addBrandColor: (color: string) => void;
@@ -532,6 +548,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   showLayout: true,
   pages: [FIRST_DOC],
   pageIndex: 0,
+  designId: FIRST_DOC.id,
+  designName: null,
+  pageHist: {},
 
   setCanvasSize: (width, height, meta) =>
     set((s) => {
@@ -554,9 +573,21 @@ export const useEditor = create<EditorState>((set, get) => ({
       if (r.pages === synced) return {};
       const idx = Math.max(0, r.pages.findIndex((p) => p.id === r.currentId));
       const doc = r.pages[idx];
+      // Las páginas cambiaron: el deshacer «de proyecto entero» ya no vale (devolvería
+      // la lista vieja y desharía también este cambio).
       return doc === s.doc
-        ? { pages: r.pages, pageIndex: idx }
-        : { pages: r.pages, doc, pageIndex: idx, selectedId: null, selectedIds: [], past: [], future: [], cropMode: false, cropRect: null };
+        ? { pages: r.pages, pageIndex: idx, structUndo: null }
+        : {
+            pages: r.pages,
+            doc,
+            pageIndex: idx,
+            ...swap(s.pageHist, s, doc),
+            structUndo: null,
+            selectedId: null,
+            selectedIds: [],
+            cropMode: false,
+            cropRect: null,
+          };
     }),
 
   setBackground: (background) =>
@@ -734,48 +765,72 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setDocName: (name) => set((s) => commit(s, { ...s.doc, name })),
 
-  loadDoc: (doc) =>
-    set({ doc, pages: [doc], pageIndex: 0, selectedId: null, past: [], future: [] }),
+  // Metadato del diseño (no es un paso de deshacer). Vacío = nombre de la primera página.
+  setDesignName: (name) => set({ designName: name.trim() || null }),
 
-  addPage: () =>
+  loadDoc: (doc, meta) => {
+    endBatchNow();
+    set({
+      doc,
+      pages: [doc],
+      pageIndex: 0,
+      selectedId: null,
+      selectedIds: [],
+      past: [],
+      future: [],
+      structUndo: null,
+      pageHist: {},
+      ...resolveDesignMeta([doc], meta),
+    });
+  },
+
+  addPage: (afterIndex) =>
     set((s) => {
+      endBatchNow();
       const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
+      // onClick={addPage} pasa el evento: solo cuenta un índice numérico válido.
+      const at = typeof afterIndex === 'number' && afterIndex >= 0 && afterIndex < synced.length ? afterIndex + 1 : synced.length;
+      const ref = at === synced.length ? s.doc : synced[at - 1];
       const blank: Doc = {
         ...emptyDoc(),
-        width: s.doc.width,
-        height: s.doc.height,
+        width: ref.width,
+        height: ref.height,
         name: `Página ${synced.length + 1}`,
       };
       return {
-        pages: [...synced, blank],
+        pages: insertAt(synced, at, blank),
         doc: blank,
-        pageIndex: synced.length,
+        pageIndex: at,
+        ...swap(s.pageHist, s, blank),
+        structUndo: null,
         selectedId: null,
-        past: [],
-        future: [],
+        selectedIds: [],
         cropMode: false,
         cropRect: null,
       };
     }),
 
-  duplicatePage: () =>
+  duplicatePage: (i) =>
     set((s) => {
-      const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
-      const copy = JSON.parse(JSON.stringify(s.doc)) as Doc;
+      endBatchNow();
+      const synced = s.pages.map((p, idx) => (idx === s.pageIndex ? s.doc : p));
+      const from = typeof i === 'number' && i >= 0 && i < synced.length ? i : s.pageIndex;
+      const src = synced[from];
+      const copy = JSON.parse(JSON.stringify(src)) as Doc;
       copy.id = uid();
-      copy.name = `${s.doc.name} (copia)`;
+      copy.name = `${src.name} (copia)`;
       delete copy.isMaster; // la copia no es una segunda maestra
       copy.layers = copy.layers.map((l) => ({ ...l, id: uid() }));
-      const pages = [...synced];
-      pages.splice(s.pageIndex + 1, 0, copy);
       return {
-        pages,
+        pages: insertAt(synced, from + 1, copy),
         doc: copy,
-        pageIndex: s.pageIndex + 1,
+        pageIndex: from + 1,
+        ...swap(s.pageHist, s, copy),
+        structUndo: null,
         selectedId: null,
         selectedIds: [],
-        past: [],
-        future: [],
+        cropMode: false,
+        cropRect: null,
       };
     }),
 
@@ -790,6 +845,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         if (size.dpi) blank.dpi = size.dpi;
       } else if (size.dpi && size.dpi !== 96) blank.dpi = size.dpi;
     }
+    endBatchNow();
     set({
       doc: blank,
       pages: [blank],
@@ -798,6 +854,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedIds: [],
       past: [],
       future: [],
+      structUndo: null,
+      pageHist: {},
+      designId: blank.id, // diseño nuevo: id propio que ya no cambia
+      designName: null,
       cropMode: false,
       cropRect: null,
     });
@@ -834,6 +894,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...NO_SHADOW,
     };
     blank.layers = [layer];
+    endBatchNow();
     set({
       doc: blank,
       pages: [blank],
@@ -842,6 +903,10 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedIds: [layer.id],
       past: [],
       future: [],
+      structUndo: null,
+      pageHist: {},
+      designId: blank.id,
+      designName: null,
       cropMode: false,
       cropRect: null,
     });
@@ -873,14 +938,15 @@ export const useEditor = create<EditorState>((set, get) => ({
               scaleY: l.scaleY * factor,
             },
       );
+      endBatchNow();
       return {
         pages: [...synced, scaled],
         doc: scaled,
         pageIndex: synced.length,
+        ...swap(s.pageHist, s, scaled),
+        structUndo: null,
         selectedId: null,
         selectedIds: [],
-        past: [],
-        future: [],
       };
     }),
 
@@ -896,14 +962,14 @@ export const useEditor = create<EditorState>((set, get) => ({
       const pages = [...synced, ...fresh];
       const doc = fresh[0];
       const pageIndex = synced.length;
+      endBatchNow();
       return {
         pages,
         doc,
         pageIndex,
+        ...swap(s.pageHist, s, doc),
         selectedId: null,
         selectedIds: [],
-        past: [],
-        future: [],
         structUndo: { pages: synced, pageIndex: s.pageIndex, docAfter: doc, pageIndexAfter: pageIndex },
       };
     });
@@ -917,14 +983,16 @@ export const useEditor = create<EditorState>((set, get) => ({
       const synced = s.pages.map((p, i) => (i === s.pageIndex ? s.doc : p));
       const pageIndex = pages[index] ? index : 0;
       const doc = pages[pageIndex];
+      endBatchNow();
+      // El historial de la página que se deja queda aparcado: si Ctrl+Z revierte la
+      // restauración, vuelve con ella (ver undo).
       return {
         pages,
         doc,
         pageIndex,
+        ...swap(s.pageHist, s, doc),
         selectedId: null,
         selectedIds: [],
-        past: [],
-        future: [],
         cropMode: false,
         cropRect: null,
         structUndo: { pages: synced, pageIndex: s.pageIndex, docAfter: doc, pageIndexAfter: pageIndex },
@@ -950,14 +1018,18 @@ export const useEditor = create<EditorState>((set, get) => ({
   switchPage: (i) =>
     set((s) => {
       if (i === s.pageIndex || i < 0 || i >= s.pages.length) return {};
+      endBatchNow();
       const synced = s.pages.map((p, idx) => (idx === s.pageIndex ? s.doc : p));
+      // El deshacer de cada página se conserva (pageHistory.ts). El «de proyecto
+      // entero» no: al volver revertiría también lo hecho en otras páginas.
       return {
         pages: synced,
         doc: synced[i],
         pageIndex: i,
+        ...swap(s.pageHist, s, synced[i]),
+        structUndo: null,
         selectedId: null,
-        past: [],
-        future: [],
+        selectedIds: [],
         cropMode: false,
         cropRect: null,
       };
@@ -965,20 +1037,28 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   deletePage: (i) =>
     set((s) => {
-      if (s.pages.length <= 1) return {};
+      if (s.pages.length <= 1 || i < 0 || i >= s.pages.length) return {};
+      endBatchNow();
       const synced = s.pages.map((p, idx) => (idx === s.pageIndex ? s.doc : p));
       const pages = synced.filter((_, idx) => idx !== i);
       const idx = Math.min(
         i < s.pageIndex ? s.pageIndex - 1 : s.pageIndex,
         pages.length - 1,
       );
+      const doc = pages[idx];
+      // Ctrl+Z devuelve la página borrada (structUndo). Si la página abierta no era la
+      // borrada, conserva su deshacer; si lo era, el suyo queda aparcado por si vuelve.
+      // designId NO cambia aunque se borre la primera página.
       return {
         pages,
-        doc: pages[idx],
+        doc,
         pageIndex: idx,
+        ...swap(s.pageHist, s, doc),
+        structUndo: { pages: synced, pageIndex: s.pageIndex, docAfter: doc, pageIndexAfter: idx },
         selectedId: null,
-        past: [],
-        future: [],
+        selectedIds: [],
+        cropMode: false,
+        cropRect: null,
       };
     }),
 
@@ -998,18 +1078,27 @@ export const useEditor = create<EditorState>((set, get) => ({
       arr.splice(to, 0, moved);
       const current = synced[s.pageIndex];
       const newIndex = arr.indexOf(current);
-      return { pages: arr, pageIndex: newIndex, doc: arr[newIndex] };
+      // Misma página abierta: su deshacer sigue igual. designId no cambia.
+      return { pages: arr, pageIndex: newIndex, doc: arr[newIndex], structUndo: null };
     }),
 
-  loadPages: (pages, index) =>
+  // Abre otro diseño (galería, recuperación, proyecto, copia). Sin `meta` el diseño
+  // conserva la identidad de siempre (id de su primera página): ver designIdentity.ts.
+  loadPages: (pages, index, meta) => {
+    endBatchNow();
     set({
       pages,
       doc: pages[index] ?? pages[0],
       pageIndex: pages[index] ? index : 0,
       selectedId: null,
+      selectedIds: [],
       past: [],
       future: [],
-    }),
+      structUndo: null,
+      pageHist: {},
+      ...resolveDesignMeta(pages, meta),
+    });
+  },
 
   addImageLayer: ({ src, naturalWidth, naturalHeight, name, iconName, chart, table }) =>
     set((s) => {
@@ -1758,22 +1847,24 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   undo: () =>
     set((s) => {
-      if (s.past.length === 0) {
-        // Sin historial de la página: deshacer una operación de proyecto entero.
-        const u = s.structUndo;
-        if (u && s.doc === u.docAfter && s.pageIndex === u.pageIndexAfter) {
-          const idx = Math.min(u.pageIndex, u.pages.length - 1);
-          return {
-            pages: u.pages,
-            doc: u.pages[idx],
-            pageIndex: idx,
-            selectedId: null,
-            selectedIds: [],
-            structUndo: null,
-          };
-        }
-        return {};
+      // Operación de proyecto entero (borrar página, varios formatos, restaurar versión)
+      // sin nada hecho después en la página: es lo último, se deshace primero.
+      const u = s.structUndo;
+      if (u && s.doc === u.docAfter && s.pageIndex === u.pageIndexAfter) {
+        const idx = Math.min(u.pageIndex, u.pages.length - 1);
+        const doc = u.pages[idx];
+        endBatchNow();
+        return {
+          pages: u.pages,
+          doc,
+          pageIndex: idx,
+          ...swap(s.pageHist, s, doc),
+          selectedId: null,
+          selectedIds: [],
+          structUndo: null,
+        };
       }
+      if (s.past.length === 0) return {};
       const previous = s.past[s.past.length - 1];
       return {
         doc: previous,
@@ -1810,13 +1901,13 @@ export const useEditor = create<EditorState>((set, get) => ({
           }),
         };
       });
-      return { pages };
+      return { pages, structUndo: null };
     }),
 
   recolorDoc: (doc, live) => set((s) => (live ? { doc } : commit(s, doc))),
 
   recolorOtherPages: (fn) =>
-    set((s) => ({ pages: s.pages.map((pg, i) => (i === s.pageIndex ? pg : fn(pg))) })),
+    set((s) => ({ pages: s.pages.map((pg, i) => (i === s.pageIndex ? pg : fn(pg))), structUndo: null })),
 }));
 
 // Las capas de la página maestra se resuelven al dibujar/exportar (core/master.ts).
