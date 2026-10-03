@@ -232,6 +232,18 @@ export async function restoreUndoFor(store: UndoStoreApi): Promise<boolean> {
   }
 }
 
+let pendingFlush: (() => void) | null = null;
+
+/**
+ * Si hay una escritura del historial esperando su retardo, la hace YA con el estado
+ * actual (se lee antes del primer await). Se llama antes de cambiar de pestaña: si no,
+ * al vencer el retardo se leería la pestaña nueva y los últimos pasos de la saliente
+ * no quedarían guardados. Sin nada pendiente no hace nada (no cambia el ritmo).
+ */
+export function flushUndo(): void {
+  pendingFlush?.();
+}
+
 /** Empieza a guardar el historial (escritura diferida). Devuelve la función que lo detiene. */
 export function startUndoPersistence(store: UndoStoreApi): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -240,6 +252,10 @@ export function startUndoPersistence(store: UndoStoreApi): () => void {
     timer = undefined;
     persistNow(store).catch(() => {});
   };
+  const flushIfPending = () => {
+    if (timer) flush();
+  };
+  pendingFlush = flushIfPending;
   const unsub = store.subscribe((s, prev) => {
     if (s.past === prev.past) return;
     if (timer) clearTimeout(timer);
@@ -272,6 +288,7 @@ export function startUndoPersistence(store: UndoStoreApi): () => void {
     unsub();
     clearTimeout(timer);
     clearTimeout(clean);
+    if (pendingFlush === flushIfPending) pendingFlush = null;
     document.removeEventListener('visibilitychange', onHide);
   };
 }

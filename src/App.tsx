@@ -311,6 +311,23 @@ export default function App() {
     }
   };
 
+  // Pestañas (store/sessions.ts): al cambiar de pestaña, lo que App tiene abierto sobre una
+  // capa del diseño anterior (máscara, quitar fondo, gráfica, menú) se cierra; si no, al
+  // aplicarlo caería en el diseño nuevo. Con una sola pestaña esto nunca se dispara.
+  const activeTabId = useEditor((s) => s.activeTabId);
+  const lastTabId = useRef(activeTabId);
+  useEffect(() => {
+    if (lastTabId.current === activeTabId) return;
+    lastTabId.current = activeTabId;
+    setMaskSession(null);
+    setBgPreview(null);
+    setChartDialog(null);
+    setCtxMenu(null);
+    const d = useEditor.getState().doc;
+    setCustomW(String(d.width));
+    setCustomH(String(d.height));
+  }, [activeTabId]);
+
   // ---- galería de diseños y copias ----
   const [designs, setDesigns] = useState<SavedDesign[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);

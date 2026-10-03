@@ -29,12 +29,18 @@ export interface AutosaveApi {
   subscribe: (fn: (s: AutosaveState, prev: AutosaveState) => void) => () => void;
 }
 
-let current: { schedule: () => void; flush: () => Promise<void> } | null = null;
+let current: { schedule: () => void; flush: () => Promise<boolean> } | null = null;
 
 /** Programa un guardado (con el retardo de siempre). No hace nada si no está activo. */
 export const scheduleSave = () => current?.schedule();
-/** Guarda ya (p. ej. antes de abrir otro diseño). Resuelve al terminar la escritura principal. */
-export const flushSave = (): Promise<void> => current?.flush() ?? Promise.resolve();
+/**
+ * Guarda ya (p. ej. antes de abrir otro diseño o de cambiar de pestaña). Lee el estado
+ * en el MISMO tick en que se llama (antes del primer `await`), así que se puede cambiar
+ * de documento justo después sin que se guarde el nuevo en lugar del viejo.
+ * Resuelve `true` si se escribió todo lo que tocaba (`autosave` y, si el diseño tiene
+ * contenido, la galería); `false` si el almacenamiento falló. Sin autoguardado activo: `true`.
+ */
+export const flushSave = (): Promise<boolean> => current?.flush() ?? Promise.resolve(true);
 
 /** Empieza a autoguardar. Devuelve la función que lo detiene. */
 export function startAutosave(api: AutosaveApi): () => void {
@@ -42,7 +48,7 @@ export function startAutosave(api: AutosaveApi): () => void {
   let version = 0; // sube con cada cambio: un guardado solo marca «guardado» si nadie cambió nada mientras tanto
   let lastGallery = 0;
 
-  const run = async (force = false) => {
+  const run = async (force = false): Promise<boolean> => {
     const mine = version;
     markSaving();
     try {
@@ -60,7 +66,7 @@ export function startAutosave(api: AutosaveApi): () => void {
       if (!ok) markError();
       else if (version === mine) markSaved();
       else markPending();
-      if (!force && Date.now() - lastGallery < GALLERY_EVERY_MS) return;
+      if (!force && Date.now() - lastGallery < GALLERY_EVERY_MS) return ok;
       lastGallery = Date.now();
       pushBackup(light, st.pageIndex, { designId, designName: ownName });
       if (snapshot[0]?.layers.length || snapshot.length > 1) {
@@ -77,16 +83,21 @@ export function startAutosave(api: AutosaveApi): () => void {
             pages: light,
             thumb,
           };
-          // «Guardar ya» (abrir otro diseño) espera a la galería: el riel Proyectos la lee enseguida.
-          if (force) await upsertDesign(entry);
-          else void upsertDesign(entry);
+          // «Guardar ya» (abrir otro diseño, cambiar de pestaña) espera a la galería: el riel
+          // Proyectos la lee enseguida y una pestaña aparcada no tiene otra copia guardada.
+          if (force) {
+            if ((await upsertDesign(entry)) === false) return false;
+          } else void upsertDesign(entry);
           maybeSaveAutoVersion(designId, light, st.pageIndex, thumb); // versión automática (cada ~10 min)
         } catch {
-          /* miniatura opcional */
+          /* miniatura opcional; pero si se pidió «guardar ya», la galería NO quedó escrita */
+          if (force) return false;
         }
       }
+      return ok;
     } catch {
       markError();
+      return false;
     }
   };
 
@@ -100,10 +111,10 @@ export function startAutosave(api: AutosaveApi): () => void {
     }, AUTOSAVE_DEBOUNCE_MS);
   };
 
-  const flush = async () => {
+  const flush = (): Promise<boolean> => {
     if (timer) clearTimeout(timer);
     timer = undefined;
-    await run(true);
+    return run(true); // run() lee el estado antes de su primer await
   };
 
   const unsub = api.subscribe((s, prev) => {

@@ -16,6 +16,22 @@ import {
 import { jumpInHistory } from './historyLogic';
 import { swap, type PageHist } from './pageHistory';
 import { resolveDesignMeta, type DesignMeta } from './designIdentity';
+import {
+  MAX_TABS,
+  TRANSIENT_RESET,
+  findTabByDesign,
+  freshSession,
+  isBlankSession,
+  nextActiveAfterClose,
+  park,
+  reorderTabList,
+  unpark,
+  type SessionSnapshot,
+  type StructUndo,
+  type TabMeta,
+} from './sessions';
+import { flushSave } from '../../io/autosave';
+import { flushUndo } from '../../io/undoStore';
 import { insertAt, patchTouchesGeometry } from '../core/pageOps';
 import { resizeDocTo, type TargetSize } from '../core/libraryMeta';
 import { similarLayerIds, stylePatch } from '../core/layerStyle';
@@ -203,6 +219,23 @@ export interface Rect {
   height: number;
 }
 
+export type NewDesignSize = { width: number; height: number; name?: string; unit?: Unit; dpi?: number };
+
+// Página vacía de un diseño nuevo (newDesign y newTab).
+function blankDesignDoc(size?: NewDesignSize): Doc {
+  const blank = emptyDoc();
+  if (size) {
+    blank.width = size.width;
+    blank.height = size.height;
+    if (size.name) blank.name = size.name;
+    if (size.unit && size.unit !== 'px') {
+      blank.unit = size.unit;
+      if (size.dpi) blank.dpi = size.dpi;
+    } else if (size.dpi && size.dpi !== 96) blank.dpi = size.dpi;
+  }
+  return blank;
+}
+
 export type AlignKind =
   | 'left'
   | 'centerH'
@@ -211,7 +244,7 @@ export type AlignKind =
   | 'centerV'
   | 'bottom';
 
-interface EditorState {
+export interface EditorState {
   doc: Doc;
   selectedId: string | null;
   selectedIds: string[];
@@ -225,7 +258,7 @@ interface EditorState {
   // Estado previo a una operación sobre todo el proyecto (varios formatos,
   // restaurar versión): permite deshacerla de un golpe. Solo vale mientras el
   // documento actual sea el que dejó la operación (docAfter).
-  structUndo: { pages: Doc[]; pageIndex: number; docAfter: Doc; pageIndexAfter: number } | null;
+  structUndo: StructUndo | null;
   cropMode: boolean;
   cropRect: Rect | null;
   cropAspect: number | null; // ancho/alto fijo, null = libre
@@ -256,6 +289,26 @@ interface EditorState {
   showRespect: boolean; // zona de respeto de los logos del kit (solo editor)
   editingTextId: string | null; // texto que se está editando sobre el lienzo
   textSel: { id: string; start: number; end: number } | null; // selección dentro del texto
+  // Pestañas de documentos (sessions.ts). La ACTIVA vive en los campos de arriba; las
+  // demás, aparcadas en `parked` con sus mismos objetos. Toda clave nueva de este
+  // estado debe clasificarse en STATE_CLASS (sessions.ts) o tsc y las pruebas fallan.
+  tabs: TabMeta[];
+  activeTabId: string;
+  parked: Record<string, SessionSnapshot>; // no seleccionarlo en componentes (re-render)
+
+  // pestañas (sin UI todavía). Cambiar/cerrar guarda antes la saliente (flushSave).
+  newTab: (size?: NewDesignSize) => string | null; // null = límite de MAX_TABS
+  switchTab: (id: string) => boolean;
+  // false = no se cerró (no se pudo guardar y no se forzó: la pestaña sigue, aparcada).
+  closeTab: (id: string, opts?: { force?: boolean }) => Promise<boolean>;
+  reorderTabs: (from: number, to: number) => void;
+  // Abre un diseño en pestaña: si ya está abierto, activa esa; si la activa está vacía, la reutiliza.
+  // 'opened' y 'reused' son diseños recién cargados (el llamador recupera su deshacer guardado).
+  openDesignInTab: (
+    pages: Doc[],
+    index: number,
+    meta?: DesignMeta,
+  ) => { status: 'active' | 'focused' | 'reused' | 'opened' | 'limit' | 'invalid'; tabId: string | null };
 
   // documento / lienzo
   setCanvasSize: (width: number, height: number, meta?: { unit?: Unit; dpi?: number }) => void;
@@ -270,7 +323,7 @@ interface EditorState {
   // páginas
   addPage: (afterIndex?: number) => void; // sin índice: al final
   duplicatePage: (i?: number) => void; // sin índice: la página actual
-  newDesign: (size?: { width: number; height: number; name?: string; unit?: Unit; dpi?: number }) => void;
+  newDesign: (size?: NewDesignSize) => void;
   // Lienzo = medidas de la foto (ver photoCanvas), foto en 0,0 seleccionada.
   newDesignFromImage: (img: { src: string; naturalWidth: number; naturalHeight: number; name: string }) => void;
   addResizedPage: (width: number, height: number) => void;
@@ -433,6 +486,55 @@ function commit(s: EditorState, newDoc: Doc): Partial<EditorState> {
 }
 
 const FIRST_DOC = emptyDoc();
+const FIRST_TAB = uid();
+
+// ---- pestañas: lo que pasa ANTES de dejar la sesión activa ----
+
+// Resultado del guardado de cada pestaña al aparcarla (closeTab lo espera).
+const tabSaves = new Map<string, Promise<boolean>>();
+
+// Nada a medias puede cruzar a otra pestaña: lote de deshacer y editor de texto en línea.
+function settleSession() {
+  endBatchNow();
+  // InlineTextEditor confirma su texto en onBlur: se desenfoca YA (el evento es
+  // síncrono) para que lo escrito caiga en ESTA pestaña y no se pierda.
+  if (useEditor.getState().editingTextId && typeof document !== 'undefined') {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }
+  endBatchNow();
+}
+
+// Cierra lo pendiente y guarda la sesión activa. flushSave y flushUndo leen el estado
+// en este mismo tick, así que se puede aparcar justo después: se guarda la saliente.
+function leaveActiveSession() {
+  settleSession();
+  const tabId = useEditor.getState().activeTabId;
+  flushUndo();
+  const p = flushSave().catch(() => false);
+  tabSaves.set(tabId, p);
+  void p.then((ok) => {
+    if (tabSaves.get(tabId) !== p) return;
+    useEditor.setState((s) =>
+      s.tabs.some((t) => t.id === tabId)
+        ? { tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, save: ok ? ('saved' as const) : ('error' as const) } : t)) }
+        : {},
+    );
+  });
+}
+
+// Aparca la activa y abre `snap` en una pestaña nueva (al final de la tira).
+function enterNewSession(snap: SessionSnapshot): string {
+  leaveActiveSession();
+  const id = uid();
+  useEditor.setState((s) => ({
+    ...snap,
+    ...TRANSIENT_RESET,
+    parked: { ...s.parked, [s.activeTabId]: park(s) },
+    activeTabId: id,
+    tabs: [...s.tabs.map((t) => (t.id === s.activeTabId ? { ...t, save: 'pending' as const } : t)), { id, save: 'saved' as const }],
+  }));
+  return id;
+}
 
 // Medida real de un texto (para centrar los estilos de texto listos).
 let presetMeasureCtx: CanvasRenderingContext2D | null = null;
@@ -555,6 +657,121 @@ export const useEditor = create<EditorState>((set, get) => ({
   designId: FIRST_DOC.id,
   designName: null,
   pageHist: {},
+  tabs: [{ id: FIRST_TAB, save: 'saved' }],
+  activeTabId: FIRST_TAB,
+  parked: {},
+
+  newTab: (size) => {
+    if (get().tabs.length >= MAX_TABS) return null;
+    const blank = blankDesignDoc(size);
+    return enterNewSession(freshSession([blank], 0, { designId: blank.id, designName: null }, get().pageView));
+  },
+
+  switchTab: (id) => {
+    const s0 = get();
+    if (id === s0.activeTabId || !s0.parked[id]) return false;
+    leaveActiveSession();
+    set((s) => {
+      const { [id]: incoming, ...rest } = s.parked;
+      if (!incoming) return {};
+      return {
+        ...unpark(incoming),
+        ...TRANSIENT_RESET,
+        parked: { ...rest, [s.activeTabId]: park(s) },
+        activeTabId: id,
+        tabs: s.tabs.map((t) => (t.id === s.activeTabId ? { ...t, save: 'pending' as const } : t)),
+      };
+    });
+    return true;
+  },
+
+  closeTab: async (id, opts) => {
+    const s0 = get();
+    const at = s0.tabs.findIndex((t) => t.id === id);
+    if (at < 0) return false;
+    const force = !!opts?.force;
+    if (id !== s0.activeTabId) {
+      // Aparcada: su copia guardada se escribió al aparcarla; se espera a que termine.
+      const snap = s0.parked[id];
+      if (snap && !force && !isBlankSession(snap)) {
+        const ok =
+          s0.tabs[at].save !== 'error' && (await (tabSaves.get(id) ?? Promise.resolve(s0.tabs[at].save === 'saved')));
+        if (!ok) return false;
+      }
+      set((s) => {
+        if (!s.parked[id]) return {};
+        const { [id]: _gone, ...rest } = s.parked;
+        void _gone;
+        return { parked: rest, tabs: s.tabs.filter((t) => t.id !== id) };
+      });
+      tabSaves.delete(id);
+      return true;
+    }
+    // Activa: se guarda (leyendo el estado ya), se cambia a la vecina AL MOMENTO (nada
+    // más puede editar la que se cierra) y, si el guardado falló, vuelve como aparcada.
+    settleSession();
+    const closing = park(get());
+    const blank = isBlankSession(closing);
+    flushUndo();
+    const saving = flushSave().catch(() => false);
+    tabSaves.set(id, saving); // el resultado que vale ahora es ESTE (no el de un aparcamiento anterior)
+    const next = nextActiveAfterClose(get().tabs, get().activeTabId, id);
+    set((s) => {
+      const tabs = s.tabs.filter((t) => t.id !== id);
+      const incoming = next ? s.parked[next] : undefined;
+      if (next && incoming) {
+        const { [next]: _in, ...rest } = s.parked;
+        void _in;
+        return { ...unpark(incoming), ...TRANSIENT_RESET, parked: rest, activeTabId: next, tabs };
+      }
+      // Era la última: no se queda sin pestañas; la sustituye un diseño vacío.
+      const doc = blankDesignDoc();
+      const nid = uid();
+      return {
+        ...freshSession([doc], 0, { designId: doc.id, designName: null }, s.pageView),
+        ...TRANSIENT_RESET,
+        activeTabId: nid,
+        tabs: [...tabs, { id: nid, save: 'saved' as const }],
+      };
+    });
+    const ok = await saving;
+    if (ok || force || blank) {
+      if (tabSaves.get(id) === saving) tabSaves.delete(id);
+      return true;
+    }
+    // No se pudo guardar: la pestaña no se pierde, vuelve a su sitio (aparcada, con error).
+    set((s) => {
+      const tabs = [...s.tabs];
+      tabs.splice(Math.min(at, tabs.length), 0, { id, save: 'error' });
+      return { parked: { ...s.parked, [id]: closing }, tabs };
+    });
+    return false;
+  },
+
+  reorderTabs: (from, to) =>
+    set((s) => {
+      const tabs = reorderTabList(s.tabs, from, to);
+      return tabs === s.tabs ? {} : { tabs };
+    }),
+
+  openDesignInTab: (pages, index, meta) => {
+    if (!pages.length) return { status: 'invalid', tabId: null };
+    const ident = resolveDesignMeta(pages, meta);
+    const s = get();
+    // Nunca dos pestañas con el mismo diseño: se pisarían en galería, undo:<id> y versiones.
+    const found = findTabByDesign(s, ident.designId);
+    if (found === s.activeTabId) return { status: 'active', tabId: found };
+    if (found) {
+      get().switchTab(found);
+      return { status: 'focused', tabId: found };
+    }
+    if (isBlankSession(s)) {
+      get().loadPages(pages, index, { designId: ident.designId, name: ident.designName ?? undefined });
+      return { status: 'reused', tabId: s.activeTabId };
+    }
+    if (s.tabs.length >= MAX_TABS) return { status: 'limit', tabId: null };
+    return { status: 'opened', tabId: enterNewSession(freshSession(pages, index, ident, s.pageView)) };
+  },
 
   setCanvasSize: (width, height, meta) =>
     set((s) => {
@@ -839,16 +1056,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }),
 
   newDesign: (size) => {
-    const blank = emptyDoc();
-    if (size) {
-      blank.width = size.width;
-      blank.height = size.height;
-      if (size.name) blank.name = size.name;
-      if (size.unit && size.unit !== 'px') {
-        blank.unit = size.unit;
-        if (size.dpi) blank.dpi = size.dpi;
-      } else if (size.dpi && size.dpi !== 96) blank.dpi = size.dpi;
-    }
+    const blank = blankDesignDoc(size);
     endBatchNow();
     set({
       doc: blank,

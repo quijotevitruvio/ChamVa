@@ -110,6 +110,24 @@ describe('startAutosave', () => {
     stop();
   });
 
+  it('flushSave lee el estado al llamarlo (cambiar de pestaña justo después guarda la saliente) y dice si guardó', async () => {
+    const { api, set } = makeApi({ designId: 'A', doc: mkDoc('A'), pages: [mkDoc('A')] });
+    const stop = startAutosave(api);
+    const p = flushSave();
+    set({ designId: 'B', doc: mkDoc('B'), pages: [mkDoc('B')] }); // «otra pestaña» en el mismo tick
+    expect(await p).toBe(true);
+    expect(idbSet.mock.calls[0][1]).toMatchObject({ designId: 'A' });
+    expect(upsertDesign.mock.calls[0][0]).toMatchObject({ id: 'A' });
+    // Fallo de la galería al «guardar ya» = no guardado.
+    upsertDesign.mockResolvedValueOnce(false);
+    expect(await flushSave()).toBe(false);
+    // Fallo de la clave autosave = no guardado.
+    idbSet.mockResolvedValue(false);
+    expect(await flushSave()).toBe(false);
+    stop();
+    expect(await flushSave()).toBe(true); // sin autoguardado activo no hay nada pendiente
+  });
+
   it('al detenerlo no queda nada programado', async () => {
     const { api } = makeApi();
     startAutosave(api)();

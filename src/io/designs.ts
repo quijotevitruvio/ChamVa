@@ -53,7 +53,8 @@ export async function loadDesigns(): Promise<SavedDesign[]> {
 // Inserta/actualiza el diseño (identificado por su designId estable).
 // Conserva carpeta y etiquetas del guardado anterior; editar un diseño lo
 // saca de la papelera.
-export async function upsertDesign(d: SavedDesign): Promise<void> {
+// Devuelve si se escribió (false = almacenamiento lleno o bloqueado).
+export async function upsertDesign(d: SavedDesign): Promise<boolean> {
   const list = await loadDesigns();
   const prev = list.find((x) => x.id === d.id);
   const merged: SavedDesign = { ...d };
@@ -62,7 +63,7 @@ export async function upsertDesign(d: SavedDesign): Promise<void> {
   delete merged.deletedAt;
   const rest = list.filter((x) => x.id !== d.id);
   const live = [merged, ...rest.filter((x) => !isTrashed(x))].slice(0, MAX_DESIGNS);
-  await idbSet(DESIGNS_KEY, [...live, ...rest.filter(isTrashed)]);
+  return idbSet(DESIGNS_KEY, [...live, ...rest.filter(isTrashed)]);
 }
 
 // Borrado definitivo de un diseño (desde la papelera).
