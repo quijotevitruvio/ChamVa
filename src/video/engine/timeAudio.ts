@@ -8,7 +8,7 @@
 //  - bucle: cada pasada usa su propia fuente (la saliente y la entrante a la vez durante el fundido cruzado);
 //  - conservar el tono: estiramiento por solapamiento (WSOLA) sobre el audio a ritmo natural.
 import type { Clip } from '../model/types';
-import { isTimeSpecial, layersAt, passSource, type TimeFields } from '../speed/clipTime';
+import { isTimeSpecial, layersAt, loopInfo, passSource, type TimeFields } from '../speed/clipTime';
 import type { PcmSource } from './mixer';
 
 const SR = 48000;
@@ -296,7 +296,8 @@ export class ClipTimeSource implements PcmSource {
   ];
   private tl = new Float32Array(CHUNK);
   private tr = new Float32Array(CHUNK);
-  private pitch: PitchTimeSource | null = null;
+  /** conservar tono: un estirador por pasada del bucle (sin bucle, solo la 0) */
+  private pitchPasses = new Map<number, PitchTimeSource>();
   /** lecturas de la fuente real (diagnóstico y pruebas) */
   reads = 0;
   reopens = 0;
@@ -323,13 +324,59 @@ export class ClipTimeSource implements PcmSource {
     return sl;
   }
 
+  /** Estirador de una pasada: ve el clip SIN bucle, así su mapa de tiempo local es el de una sola pasada. */
+  private pitchFor(pass: number): PitchTimeSource {
+    let s = this.pitchPasses.get(pass);
+    if (!s) {
+      s = new PitchTimeSource({ ...this.clip, loop: undefined, xlayer: undefined }, this.openAt);
+      this.pitchPasses.set(pass, s);
+      for (const [k, v] of this.pitchPasses)
+        if (k < pass - 1) {
+          v.close();
+          this.pitchPasses.delete(k);
+        }
+    }
+    return s;
+  }
+
+  /** Bucle con «conservar tono»: cada pasada (la saliente y la entrante a la vez en el fundido) estira la suya, con su ganancia. */
+  private async readPitchLoop(P: number, B: number, localStart: number, step: number, n: number, L: Float32Array, R: Float32Array): Promise<void> {
+    const { tl, tr } = this;
+    for (let i = 0; i < n; ) {
+      let k = Math.min(CHUNK, n - i);
+      let l0 = localStart + i * step;
+      let a = layersAt(this.clip, l0);
+      let b = layersAt(this.clip, l0 + (k - 1) * step);
+      if (a.length !== b.length || a.some((x, j) => x.pass !== b[j].pass)) {
+        k = 1;
+        l0 = localStart + i * step;
+        a = layersAt(this.clip, l0);
+        b = a;
+      }
+      for (let j = 0; j < a.length; j++) {
+        const t1 = tl.subarray(0, k);
+        const t2 = tr.subarray(0, k);
+        await this.pitchFor(a[j].pass).read(Math.max(0, Math.min(B, l0 - a[j].pass * P)), step, k, t1, t2);
+        const g0 = a[j].g;
+        const g1 = b[j].g;
+        for (let q = 0; q < k; q++) {
+          const g = k > 1 ? g0 + ((g1 - g0) * q) / (k - 1) : g0;
+          L[i + q] += t1[q] * g;
+          R[i + q] += t2[q] * g;
+        }
+      }
+      i += k;
+    }
+  }
+
   async read(localStart: number, step: number, n: number, L: Float32Array, R: Float32Array): Promise<void> {
     L.fill(0, 0, n);
     R.fill(0, 0, n);
     if (this.clip.freeze) return; // un fotograma congelado no suena
     if (this.opts.pitch && !this.clip.reverse) {
-      this.pitch ??= new PitchTimeSource(this.clip, this.openAt);
-      return this.pitch.read(localStart, step, n, L, R);
+      const li = loopInfo(this.clip);
+      if (!li) return this.pitchFor(0).read(localStart, step, n, L, R);
+      return this.readPitchLoop(li.P, li.B, localStart, step, n, L, R);
     }
     const { tl, tr } = this;
     for (let i = 0; i < n; ) {
@@ -371,7 +418,8 @@ export class ClipTimeSource implements PcmSource {
       s.src?.close();
       s.src = null;
     }
-    this.pitch?.close();
+    for (const p of this.pitchPasses.values()) p.close();
+    this.pitchPasses.clear();
   }
 }
 

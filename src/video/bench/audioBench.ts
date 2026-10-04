@@ -13,6 +13,7 @@ import { BlobPartsSink } from '../engine/sink';
 import { WavWriter } from '../engine/wav';
 import { PreviewAudioGraph } from '../../ui/video/preview/previewAudio';
 import { renderProject } from '../engine/render';
+import { clipDurationOf, rateAt, sourceAtLocal } from '../speed/clipTime';
 import { makeSynthClip } from './synth';
 
 const out = document.getElementById('out')!;
@@ -512,7 +513,180 @@ async function videoExportTest(target = -16) {
   return rows;
 }
 
+
+// ---------------- V7 × V8: combinaciones reales (exportación en Chromium) ----------------
+const dbOf = (x: number) => 20 * Math.log10(Math.max(1e-12, x));
+async function decodeBlob(blob: Blob) {
+  const d = await decode(blob);
+  const m = new LoudnessMeter(SR);
+  m.process(d.L, d.R, d.L.length);
+  const i = m.integrated();
+  return { ...d, lufs: Number.isFinite(i) ? i : m.ungated(), tp: m.truePeakDb() };
+}
+
+/** Vista previa en vivo EMULADA con el grafo real (PreviewAudioGraph): una fuente por tramo, con la velocidad instantánea del clip (la del elemento <audio>). */
+async function liveEmulation(p: VM.VideoProject, gain: number, passes: (c: VM.Clip) => { t0: number; t1: number; off: number; rate: (t: number) => number }[]) {
+  const duration = audioDuration(p);
+  const lat = 134;
+  const off = new OfflineAudioContext(2, Math.round(duration * SR) + lat + 256, SR);
+  const g = new PreviewAudioGraph(off, masterOf(p, gain));
+  await g.ready;
+  const ac = new OfflineAudioContext(2, 1, SR);
+  const dec = new Map<string, AudioBuffer>();
+  for (const [id, mm] of Object.entries(p.media)) if (mm.blob) dec.set(id, await ac.decodeAudioData(await mm.blob.arrayBuffer()));
+  for (const tr of p.tracks)
+    for (const c of tr.clips) {
+      for (const ps of passes(c)) {
+        const src = off.createBufferSource();
+        src.buffer = dec.get(c.mediaId!)!;
+        const strip = g.addSource(src, VM.clipAudioFx(c), tr.id);
+        strip.fade.gain.value = 1;
+        const steps = Math.max(2, Math.ceil((ps.t1 - ps.t0) * 1000));
+        const curve = new Float32Array(steps);
+        for (let i = 0; i < steps; i++) curve[i] = ps.rate(ps.t0 + (i / (steps - 1)) * (ps.t1 - ps.t0));
+        src.playbackRate.setValueCurveAtTime(curve, ps.t0, ps.t1 - ps.t0);
+        src.start(ps.t0, ps.off);
+        src.stop(ps.t1);
+      }
+    }
+  g.setTracks(resolveTrackPlan(p));
+  g.setMaster(masterOf(p, gain));
+  const r = await off.startRendering();
+  g.dispose();
+  return { L: r.getChannelData(0).subarray(lat), R: r.getChannelData(1).subarray(lat) };
+}
+
+async function comboE() {
+  // (e) 2× + conservar tono + denoise + limitador (−8 LUFS agresivo): pico real ----
+  {
+    const secs = 10;
+    const x = sine(440, 0.35, secs);
+    for (let i = 0; i < x.length; i++) x[i] += 0.05 * Math.sin((2 * Math.PI * 5300 * i) / SR) + 0.03 * Math.sin((2 * Math.PI * 91 * i) / SR);
+    let p = VM.createProject();
+    p = VM.addTrack(p, 'audio', { id: 'A' });
+    p = addAudio(p, 'A', 'm', await wavBlob(x, x), secs, { id: 'c', speed: 2, pitch: true });
+    p = setClipAudio(p, 'c', { denoise: 0.5 });
+    p = setProjectAudio(p, { loud: { on: true, target: -8 } });
+    const ex = await exportAudio(p, 'wav24');
+    const d = await decode(ex.blob);
+    const tp = Math.max(dbOf(truePeak8(d.L)), dbOf(truePeak8(d.R)));
+    return { duracion: R2(d.seconds, 3), lufs: R2(measureLoudness(d.L, d.R, SR).integrated), gananciaDb: R2(ex.r.stats.gainDb), tpRef8: R2(tp), tono440: R2(tone(d.L, 440, 1, 4), 3), tono880: R2(tone(d.L, 880, 1, 4), 4), stats: ex.r.stats, ok: tp <= -1 && tone(d.L, 440, 1, 4) > 5 * tone(d.L, 880, 1, 4) };
+  }
+}
+
+async function comboTest() {
+  const out: Record<string, unknown> = {};
+  // ---- (a) rampa 0,5×→4×→1× + −14 LUFS: audio-only WAV24 y MP4 (renderProject) con la misma rampa ----
+  {
+    const secs = 14;
+    const m = music(secs, 0.3);
+    const curve = { pts: [{ s: 0, v: 0.5 }, { s: 7, v: 4 }, { s: 14, v: 1 }], smooth: true };
+    let p = VM.createProject();
+    p = VM.addTrack(p, 'audio', { id: 'A' });
+    p = addAudio(p, 'A', 'm', await wavBlob(m, m), secs, { id: 'c', curve });
+    p = setProjectAudio(p, { loud: { on: true, target: -14 } });
+    const c = p.tracks[0].clips[0];
+    const D = clipDurationOf(c);
+    const ex = await exportAudio(p, 'wav24');
+    const d = await decodeBlob(ex.blob);
+    // referencia independiente: LUFS del audio leído con el mapa de tiempo del clip (sin ganancia)
+    const n = Math.round(D * SR);
+    const ref = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = sourceAtLocal(c, i / SR) * SR;
+      const j = Math.min(m.length - 2, Math.floor(x));
+      ref[i] = m[j] + (m[j + 1] - m[j]) * (x - j);
+    }
+    const mr = new LoudnessMeter(SR);
+    mr.process(ref, ref, n);
+    const gOnly = ex.r.stats.gainDb;
+    const live = await liveEmulation(p, gOnly, (cc) => [{ t0: cc.start, t1: cc.start + D, off: cc.inP, rate: (t) => rateAt(cc, t - cc.start) }]);
+    const ratio = rms(live.L, 0.5, D - 0.5) / Math.max(1e-12, rms(d.L, 0.5, D - 0.5));
+    out.a_rampa = { duracionEsperada: R2(D, 3), duracionArchivo: R2(d.seconds, 3), lufsArchivo: R2(d.lufs), lufsReferenciaSinGanancia: R2(mr.integrated()), medidoPrevio: R2(ex.r.stats.measuredBefore ?? NaN), gananciaDb: R2(gOnly), pasadas: ex.r.stats.passes, tpArchivo: R2(d.tp), cocienteRmsVivoExport: R2(ratio, 4), ok: Math.abs(d.lufs + 14) <= 0.5 && Math.abs(d.seconds - D) < 0.02 && Math.abs(ratio - 1) < 0.08 };
+    // MP4 de video con la misma rampa (renderProject, AAC): LUFS del audio del archivo y duración
+    const sc = await makeSynthClip({ container: 'mp4', width: 320, height: 180, fps: 24, seconds: 14, toneAmp: 0.1, beepsAt: [3, 6, 9, 12] });
+    let pv = VM.createProject();
+    pv = VM.addTrack(pv, 'video', { id: 'V' });
+    pv = VM.addTrack(pv, 'audio', { id: 'M' });
+    pv = VM.addMedia(pv, { id: 'sc', kind: 'video', name: 'sc', duration: 14, blob: sc.blob });
+    pv = VM.addClip(pv, 'V', VM.makeClip('video', { id: 'v', mediaId: 'sc', start: 0, inP: 0, outP: 14, curve }));
+    pv = addAudio(pv, 'M', 'mu', await wavBlob(m, m), secs, { id: 'cm', curve });
+    pv = setProjectAudio(pv, { loud: { on: true, target: -14 } });
+    const r = await renderProject(pv, { container: 'mp4', sizes: [{ width: 320, height: 180, label: 'x' }], fps: 24, sink: new BlobPartsSink('video/mp4') });
+    const dv = await decodeBlob(r.blob!);
+    out.a_mp4 = { duracionArchivo: R2(dv.seconds, 3), duracionEsperada: R2(D, 3), lufsAAC: R2(dv.lufs), dTarget: R2(dv.lufs + 14), tp: R2(dv.tp), stats: r.audioStats && { gainDb: R2(r.audioStats.gainDb), passes: r.audioStats.passes }, ok: Math.abs(dv.lufs + 14) <= 0.5 && Math.abs(dv.seconds - D) < 0.1 };
+  }
+  // ---- (b) invertido + ducking (decodificador REAL: clip MP4 con tono 440 Hz + bips, invertido) contra voz en 4–6 s ----
+  {
+    const sc = await makeSynthClip({ container: 'mp4', width: 320, height: 180, fps: 24, seconds: 14, toneAmp: 0.1, beepsAt: [3, 6, 9, 12] });
+    const vx = voice(2, 0.3);
+    let p = VM.createProject();
+    p = VM.addTrack(p, 'audio', { id: 'V', name: 'Voz' });
+    p = VM.addTrack(p, 'video', { id: 'M', name: 'Música' });
+    p = VM.addMedia(p, { id: 'sc', kind: 'video', name: 'sc', duration: 14, blob: sc.blob });
+    p = VM.addClip(p, 'M', VM.makeClip('video', { id: 'cm', mediaId: 'sc', start: 0, inP: 0, outP: 14, reverse: true }));
+    p = addAudio(p, 'V', 'voz', await wavBlob(vx.x, vx.x), 2, { id: 'cv', start: 4 });
+    p = setTrackMix(p, 'M', { duck: { on: true, db: 12 } });
+    const ex = await exportAudio(p, 'wav24');
+    const d = await decode(ex.blob);
+    const lvl = (a: number, b: number) => dbOf(tone(d.L, 440, a, b) / 0.1);
+    // bips invertidos: un bip del archivo en [b, b+0,1) aparece en 14−b−0,1 … 14−b
+    const kHz = (a: number, b: number) => tone(d.L, 1000, a, b);
+    out.b_invertido_duck = { duracion: R2(d.seconds, 3), nivel440_1a3: R2(lvl(1, 3)), nivel440_3_2a3_8: R2(lvl(3.2, 3.8)), nivel440_4_6a5_8: R2(lvl(4.6, 5.8)), nivel440_8a13: R2(lvl(8, 13)), bipsInvertidos_8_y_2: [8, 2].map((t) => R2(kHz(t - 0.02, t + 0.12), 3)), sinBipEn: [1, 12.5].map((t) => R2(kHz(t, t + 0.1), 3)), ok: Math.abs(lvl(1, 3)) < 0.6 && lvl(4.6, 5.8) < -10 && lvl(4.6, 5.8) > -14 && Math.abs(lvl(8, 13)) < 0.8 };
+  }
+  // ---- (c) bucle ×3 con fundido cruzado + EQ + pan (WAV real) ----
+  {
+    const secs = 8;
+    const f440 = sine(440, 0.5, secs);
+    let p = VM.createProject();
+    p = VM.addTrack(p, 'audio', { id: 'A' });
+    p = addAudio(p, 'A', 'm', await wavBlob(f440, f440), secs, { id: 'c', inP: 2, outP: 5, loop: { n: 3, xf: 0.5 } });
+    p = setClipAudio(p, 'c', { pan: 0.5, eq: [{ type: 'peak', f: 2000, g: 3, q: 1 }] });
+    const ex = await exportAudio(p, 'wav24');
+    const d = await decode(ex.blob);
+    const step = (x: Float32Array, a: number, b: number) => {
+      let mm = 0;
+      for (let i = Math.round(a * SR) + 1; i < Math.round(b * SR); i++) mm = Math.max(mm, Math.abs(x[i] - x[i - 1]));
+      return mm;
+    };
+    const steady = step(d.L, 0.6, 2.2);
+    // la vista previa (preloadPlanner): el elemento principal salta a cada pasada nueva a su tiempo; la saliente es solo imagen (audible: false)
+    const live = await liveEmulation(p, 0, (cc) => {
+      const P = 2.5;
+      return [0, 1, 2].map((k) => ({ t0: k * P, t1: k * P + (k < 2 ? P : 3), off: cc.inP, rate: () => 1 }));
+    });
+    const ratio = rms(live.L, 0.5, 7.5) / rms(d.L, 0.5, 7.5);
+    const ratioR = rms(live.R, 0.5, 7.5) / rms(d.R, 0.5, 7.5);
+    const want = Math.tan((3 * Math.PI) / 8);
+    out.c_bucle = { duracion: R2(d.seconds, 3), saltoMaxUnion1: R2(step(d.L, 2.4, 3.1) / steady, 3), saltoMaxUnion2: R2(step(d.L, 4.9, 5.6) / steady, 3), RsobreL: R2(rms(d.R, 0.6, 2.2) / rms(d.L, 0.6, 2.2), 3), RsobreLUnion: R2(rms(d.R, 2.6, 2.9) / rms(d.L, 2.6, 2.9), 3), esperado: R2(want, 3), cocienteRmsVivoExportL: R2(ratio, 4), cocienteRmsVivoExportR: R2(ratioR, 4), ok: Math.abs(d.seconds - 8) < 0.02 && step(d.L, 2.4, 3.1) < steady * 1.15 && step(d.L, 4.9, 5.6) < steady * 1.15 && Math.abs(rms(d.R, 2.6, 2.9) / rms(d.L, 2.6, 2.9) - want) < 0.05 && Math.abs(ratio - 1) < 0.05 && Math.abs(ratioR - 1) < 0.05 };
+  }
+  // ---- (d) congelado + reducción de ruido con decodificador real ----
+  {
+    const sc = await makeSynthClip({ container: 'mp4', width: 320, height: 180, fps: 24, seconds: 8, toneAmp: 0.3 });
+    let p = VM.createProject();
+    p = VM.addTrack(p, 'video', { id: 'V' });
+    p = VM.addMedia(p, { id: 'sc', kind: 'video', name: 'sc', duration: 8, blob: sc.blob });
+    p = VM.addClip(p, 'V', VM.makeClip('video', { id: 'a', mediaId: 'sc', start: 0, inP: 0, outP: 2 }));
+    p = VM.addClip(p, 'V', VM.makeClip('video', { id: 'fz', mediaId: 'sc', start: 2, inP: 3, outP: 4, freeze: 2 }));
+    p = VM.addClip(p, 'V', VM.makeClip('video', { id: 'b', mediaId: 'sc', start: 4, inP: 4, outP: 6 }));
+    for (const id of ['a', 'fz', 'b']) p = setClipAudio(p, id, { denoise: 0.7 });
+    const ex = await exportAudio(p, 'wav24');
+    const d = await decode(ex.blob);
+    let bad = 0;
+    let maxIn = 0;
+    for (let i = 0; i < d.L.length; i++) if (!Number.isFinite(d.L[i])) bad++;
+    for (let i = Math.round(2.15 * SR); i < Math.round(3.95 * SR); i++) maxIn = Math.max(maxIn, Math.abs(d.L[i]));
+    out.d_congelado_denoise = { duracion: R2(d.seconds, 3), noFinitos: bad, maxEnCongelado: Number(maxIn.toExponential(2)), rms_0a2: R2(rms(d.L, 0.2, 1.8), 3), rms_4a6: R2(rms(d.L, 4.2, 5.8), 3), ok: bad === 0 && maxIn < 1e-5 && rms(d.L, 4.2, 5.8) > 0.05 };
+  }
+  out.e_2x_tono_limitador = await comboE();
+  out.ok = Object.values(out).every((v) => (v as { ok?: boolean }).ok !== false);
+  return out;
+}
+
+
 const api = {
+  combo: comboTest,
+  comboE,
   videoExport: videoExportTest,
   loudness: loudnessTest,
   ducking: duckingTest,

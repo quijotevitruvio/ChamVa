@@ -5,7 +5,7 @@
 import { renderProject, renderVideo, type RenderClip, type RenderResult } from '../engine/render';
 import { renderVideoV1 } from './v1Engine';
 import * as VM from '../model';
-import { idbGet } from '../../io/idb';
+import { idbGet, idbSet } from '../../io/idb';
 import { BlobPartsSink } from '../engine/sink';
 import { ASPECTS, QUALITIES, lowerQuality, outputSize, type Aspect, type Container, type Quality } from '../engine/formats';
 import { buildSegments, sourceTimeAt, segmentIndexAt, type RenderOverlay } from '../engine/timeline';
@@ -645,7 +645,14 @@ async function runAll(ids = CASES.map((c) => c.id)) {
   return results;
 }
 
-(window as any).__bench = { runAll, runCase, results, status: 'listo', done: false, cases: CASES.map((c) => c.id), lum };
+/** Guarda en IndexedDB («videoProject») un proyecto V1 sintético con la forma del fixture v1-real.json y medios reales: es lo que exige el caso `v1-idb`. */
+async function seedV1() {
+  const raw = await syntheticV1();
+  await idbSet(VM.VIDEO_KEY, raw);
+  return { clave: VM.VIDEO_KEY, version: VM.detectVersion(await idbGet<any>(VM.VIDEO_KEY)), clips: raw.clips.length, overlays: raw.overlays.length };
+}
+
+(window as any).__bench = { runAll, runCase, results, status: 'listo', done: false, cases: CASES.map((c) => c.id), lum, seedV1 };
 
 const ctrl = document.getElementById('controls')!;
 const all = document.createElement('button');
