@@ -367,5 +367,13 @@
 /* La biblioteca puede alargar la pantalla de inicio: que se pueda desplazar. */
 .home-overlay {
   overflow-y: auto;
-  justify-content: safe center;
+  /* `safe center` no lo respetan todos los visores web: centrar con márgenes automáticos
+     (si sobra alto se centra; si falta, el primer bloque queda arriba y se alcanza con el scroll). */
+  justify-content: flex-start;
+}
+/* Espaciadores flexibles: reparten el alto sobrante (centrado) y valen 0 si falta. */
+.home-overlay::before,
+.home-overlay::after {
+  content: '';
+  flex: 1 0 0;
 }

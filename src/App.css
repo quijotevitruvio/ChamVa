@@ -981,7 +981,9 @@ ul.layers .name {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* Centrado con espaciadores (ver library.css); `center` aquí cortaba por arriba lo que no cabe. */
+  justify-content: flex-start;
+  overflow-y: auto;
   gap: 6px;
 }
 
