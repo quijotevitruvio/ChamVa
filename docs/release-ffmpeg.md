@@ -47,7 +47,10 @@ Solo **Windows x64**. macOS, Linux y Android se publican sin FFmpeg y la app fun
 
 Solo `workflow_dispatch` (no corre con tags ni con `release.yml`). Entradas opcionales:
 `ffmpeg_ref` (commit de 40 hex; vacío = el fijado) y `release_tag` (vacío =
-`ffmpeg-lgpl-<versión>-chamva1`; solo se escribe en `SOURCES.md` y en el manifiesto candidato).
+`ffmpeg-lgpl-<versión>-chamva1`; solo se escribe en `SOURCES.md` y en el manifiesto candidato) y
+`only` (`all` por defecto; `image` compila solo la imagen Docker y guarda la caché, para calentarla
+sin compilar FFmpeg. No hay `ffmpeg`/`package` sueltos: cada job es un runner nuevo y necesita la
+imagen, que con la caché de capas se rehace en minutos).
 
 ```sh
 gh workflow run ffmpeg-build.yml --repo quijotevitruvio/ChamVa --ref main
@@ -59,7 +62,8 @@ gh run view "$RUN" --repo quijotevitruvio/ChamVa --log-failed   # si falla
 
 Duración: la primera vez (sin caché) ≈ 2–3 h (el toolchain GCC de crosstool-ng es lo más largo);
 después, con la caché de capas Docker (`actions/cache`, clave = hash de la lista blanca y de
-`scripts/ffmpeg-build/`), ≈ 30–45 min. Tope del job: 345 min. El repositorio es público: los
+`scripts/ffmpeg-build/` + id de la ejecución; se restaura la más reciente y se guarda también si
+la imagen falla a medias, para no rehacer la imagen base ni las descargas), ≈ 30–45 min. Tope del job: 345 min. El repositorio es público: los
 minutos de Actions en `ubuntu-24.04` no se cobran. La caché puede ocupar varios GB del cupo de 10 GB.
 
 Artefactos (30 días): `ffmpeg-chamva-win64-binary` (zip, `SHA256SUMS`, `SOURCES.md`,

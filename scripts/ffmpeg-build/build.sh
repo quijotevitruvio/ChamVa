@@ -123,7 +123,21 @@ cmd_prepare() {
   printf '%s\n' "${content/"$from"/"$to"}" >"$df"
   grep -qF "git checkout --detach $CTNG_COMMIT && test" "$df" || die "no se pudo fijar crosstool-ng"
 
-  git -C "$BTBN" add -A -- scripts.d variants images
+  # download.sh recorre `scripts.d/*.sh scripts.d/*/*.sh` sin nullglob: BtbN siempre tiene etapas
+  # en subcarpetas (45-x11, 50-dvd…), pero la lista blanca solo deja archivos sueltos, así que el
+  # patrón `*/*.sh` quedaba LITERAL y el contenedor fallaba con «/scripts.d/*/*.sh: No such file».
+  # Se activa nullglob solo para ese bucle (los demás globs de download.sh no cambian).
+  local dl="$BTBN/download.sh"
+  local dlfrom='for STAGE in scripts.d/*.sh scripts.d/*/*.sh; do'
+  local dlto='shopt -s nullglob # ChamVa: sin subcarpetas en scripts.d el patrón */*.sh no debe quedar literal
+for STAGE in scripts.d/*.sh scripts.d/*/*.sh; do'
+  content="$(cat "$dl")"
+  [[ "$(grep -cxF "$dlfrom" "$dl")" == 1 ]] || die "no encuentro el bucle de etapas en $dl (¿cambió BtbN?)"
+  printf '%s\n' "${content/"$dlfrom"/"$dlto"}" >"$dl"
+  grep -qxF 'shopt -s nullglob # ChamVa: sin subcarpetas en scripts.d el patrón */*.sh no debe quedar literal' "$dl" || die "no se pudo parchear $dl"
+  bash -n "$dl" || die "$dl no es bash válido tras el parche"
+
+  git -C "$BTBN" add -A -- scripts.d variants images download.sh
   git -C "$BTBN" -c user.name=ChamVa -c user.email=build@chamva.invalid commit -q -m "ChamVa: overlay LGPL (lista blanca de scripts/ffmpeg-allowed-libs.json)"
   git -C "$BTBN" diff "$BTBN_COMMIT" HEAD >"$SRC_OUT/chamva-btbn-overlay.patch"
   git -C "$BTBN" archive --format=tar --prefix="FFmpeg-Builds-$BTBN_COMMIT-chamva/" HEAD | gzip -n -9 >"$SRC_OUT/FFmpeg-Builds-$BTBN_COMMIT-chamva.tar.gz"
