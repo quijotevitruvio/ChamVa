@@ -64,6 +64,11 @@ async function reload() {
 }
 
 describe('pestañas: guardar, recargar, cerrar', () => {
+  async function until(cond: () => boolean, ms = 3000) {
+    const t0 = Date.now();
+    while (!cond() && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 5));
+  }
+
   it('3 pestañas vuelven con su contenido, su orden y la activa; una imagen solo en una aparcada sobrevive al GC', async () => {
     st().loadPages([page('A1', [shape('a')])], 0, { designId: 'A', name: 'Diseño A' });
     st().newTab();
@@ -74,8 +79,8 @@ describe('pestañas: guardar, recargar, cerrar', () => {
     expect(order).toHaveLength(3);
     st().switchTab(order[0]); // aparca C (la escribe) y vuelve a A
     expect(await flush()).toBe(true);
-    // Se espera a los «guardar ya» de cada aparcamiento.
-    await new Promise((r) => setTimeout(r, 0));
+    // Se espera (con sondeo, no con un tiempo fijo) a los «guardar ya» de cada aparcamiento.
+    await until(() => db.has('tab:' + order[1]) && db.has('tab:' + order[2]));
 
     // La foto de B solo está en la pestaña aparcada (autosave = A, sin imágenes).
     expect(JSON.stringify(db.get('autosave'))).not.toContain('asset:');
@@ -102,7 +107,7 @@ describe('pestañas: guardar, recargar, cerrar', () => {
     const autosave = await import('../../io/autosave');
     stopAutosave = autosave.startAutosave({ getState: () => useEditor.getState(), subscribe: (fn) => useEditor.subscribe(fn) });
     expect(await st().closeTab(order[2])).toBe(true);
-    await new Promise((r) => setTimeout(r, 0));
+    await until(() => !db.has('tab:' + order[2]));
     expect(db.has('tab:' + order[2])).toBe(false);
     await reload();
     expect(st().tabs.map((t) => t.id)).toEqual(order.slice(0, 2));
