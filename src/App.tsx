@@ -5,6 +5,7 @@ import { EditorCanvas, isTypingTarget } from './editor/canvas/EditorCanvas';
 import { TRANSPARENT_BG, type Doc, type ImageLayer, type Layer } from './editor/core/types';
 import { Icon } from './ui/Icon';
 import { toast, Toaster } from './ui/toast';
+import { ProcessingIndicator } from './ui/ProcessingIndicator';
 import { BatchShareHost, openBatchShare } from './ui/ExportQueuePanel';
 import { TextToolsHost, openFindReplace } from './ui/FindReplace';
 import { idbGet, requestPersistentStorage, setStorageErrorHandler } from './io/idb';
@@ -1865,6 +1866,7 @@ export default function App() {
       )}
 
       <Toaster />
+      <ProcessingIndicator />
       <ColorBlindView />
       <BatchShareHost />
     </div>

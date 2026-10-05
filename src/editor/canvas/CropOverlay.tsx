@@ -3,7 +3,7 @@ import { Group, Rect, Shape, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { useEditor } from '../state/store';
 import { useImage } from './useImage';
-import { needsProcessing, processImage } from '../core/imageProcessing';
+import { useRenderedImage } from './useRenderedImage';
 import { clampBox, displayBox, fitAspect, fullSize, moveInside, type Box } from '../core/imageCrop';
 import type { ImageLayer } from '../core/types';
 
@@ -25,14 +25,14 @@ export function CropOverlay({ rectRef, scale }: { rectRef: RefObject<Konva.Rect 
   const image = useImage(layer?.src ?? '');
 
   // Imagen completa con sus ajustes y volteo (vista previa reducida), sin recorte.
-  const full = useMemo<CanvasImageSource | null>(() => {
-    if (!image || !layer) return null;
+  const whole = useMemo<ImageLayer | null>(() => {
+    if (!layer) return null;
     const f = fullSize(layer);
-    const whole: ImageLayer = { ...layer, crop: undefined, naturalWidth: f.w, naturalHeight: f.h };
-    return needsProcessing(whole) ? processImage(image, whole, PREVIEW_MAX) : image;
+    return { ...layer, crop: undefined, naturalWidth: f.w, naturalHeight: f.h };
     // Solo al abrir el recorte (la capa no cambia durante la sesión).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [image, layer?.id]);
+  }, [layer?.id]);
+  const full = useRenderedImage(image, (whole ?? ({} as ImageLayer)), PREVIEW_MAX, [image, layer?.id], 'Procesando imagen');
 
   useEffect(() => {
     const tr = trRef.current;

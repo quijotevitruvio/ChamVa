@@ -9,7 +9,8 @@ import {
   warpPerspective,
   type Pt,
 } from '../editor/core/perspective';
-import { bakedCanvas, commitCanvas, limitCanvas, toCanvasPoint } from './imagegeoUtil';
+import { bakedCanvas, commitCanvas, toCanvasPoint } from './imagegeoUtil';
+import { planPerspectiveOutput } from '../editor/core/perspectiveLimit';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './imagegeo.css';
@@ -32,6 +33,7 @@ export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClo
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [quad, setQuad] = useState<Pt[]>([]);
   const [busy, setBusy] = useState(false);
+  const [outId, setOutId] = useState<string | null>(null); // tamaño de salida elegido (null = recomendado)
   const drag = useRef<number | null>(null);
 
   useEffect(() => {
@@ -138,16 +140,26 @@ export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClo
 
   const valid = quad.length === 4 && isConvexQuad(quad);
 
+  // Tamaño de salida: ya no se reduce a 4096 px en silencio; se calcula según la memoria y se deja elegir.
+  const plan = useMemo(() => {
+    const src = srcRef.current;
+    if (!src || quad.length !== 4 || !isConvexQuad(quad)) return null;
+    const dm = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    return planPerspectiveOutput(quadOutputSize(quad), src.width * src.height, dm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quad, dims]);
+  const chosen = plan ? (plan.options.find((o) => o.id === outId) ?? plan.options.find((o) => o.id === plan.defaultId)!) : null;
+
   const apply = () => {
     const src = srcRef.current;
     if (!src || !valid) return;
     setBusy(true);
     setTimeout(() => {
       try {
-        const size = quadOutputSize(quad);
-        const f = Math.min(1, 4096 / Math.max(size.w, size.h));
-        const ow = Math.max(1, Math.round(size.w * f));
-        const oh = Math.max(1, Math.round(size.h * f));
+        if (!chosen || !plan) throw new Error('Esquinas no válidas');
+        const f = chosen.f;
+        const ow = chosen.w;
+        const oh = chosen.h;
         const data = src.getContext('2d')!.getImageData(0, 0, src.width, src.height);
         const out = warpPerspective(data, quad, ow, oh);
         if (!out) throw new Error('Esquinas no válidas');
@@ -155,10 +167,15 @@ export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClo
         c.width = ow;
         c.height = oh;
         c.getContext('2d')!.putImageData(new ImageData(out.data as Uint8ClampedArray<ArrayBuffer>, ow, oh), 0, 0);
-        const lim = limitCanvas(c);
         // Densidad: píxeles nuevos por píxel original en el lado «ancho» del cuadrilátero.
-        commitCanvas(layer.id, lim.canvas, f * lim.k);
-        toast(t('Perspectiva corregida'), 'success');
+        commitCanvas(layer.id, c, f);
+        const reduced = ow < plan.natural.w || oh < plan.natural.h;
+        toast(
+          reduced
+            ? `${t('Perspectiva corregida')}: ${ow}×${oh} px (reducida desde ${plan.natural.w}×${plan.natural.h})`
+            : `${t('Perspectiva corregida')}: ${ow}×${oh} px`,
+          reduced ? 'info' : 'success',
+        );
         onClose();
       } catch (e) {
         console.error(e);
@@ -187,6 +204,19 @@ export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClo
           {t('Esquinas a los bordes')}
         </button>
         <span className="spacer" />
+        {plan && chosen && (
+          <label className="geo-size" title={t('Tamaño de la imagen resultante')}>
+            {t('Salida')}{' '}
+            <select value={chosen.id} onChange={(e) => setOutId(e.target.value)} aria-label={t('Tamaño de salida')}>
+              {plan.options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                  {o.risky ? ` – ${t('puede agotar la memoria')}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button onClick={onClose}>{t('Cancelar')}</button>
         <button className="primary" onClick={apply} disabled={!valid || busy}>
           {busy ? '…' : t('Aplicar')}
@@ -230,6 +260,9 @@ export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClo
         </div>
       </div>
       <p className="mask-hint">
+        {plan?.reduced && chosen
+          ? `${t('Aviso: la salida se reducirá a')} ${chosen.w}×${chosen.h} px (${plan.natural.w}×${plan.natural.h} ${t('al natural')}). ${t('Elige otro tamaño arriba si quieres conservar más.')} `
+          : ''}
         {valid
           ? t('Coloca las esquinas sobre los bordes del documento o la fachada; la rejilla debe quedar paralela a sus líneas.')
           : t('Las esquinas se cruzan: reordénalas para formar un cuadrilátero.')}

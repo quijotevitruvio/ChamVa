@@ -1,4 +1,4 @@
-import { useMemo, useRef, type ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import { blendOpOrUndefined } from '../core/blend';
 import { useFxImagesVersion } from './useFxImages';
 import { Image as KonvaImage, Shape as KonvaShape } from 'react-konva';
@@ -7,7 +7,7 @@ import type { ImageLayer } from '../core/types';
 import { useImage } from './useImage';
 import { useEffectiveTool } from '../state/toolStore';
 import { useEditor } from '../state/store';
-import { needsProcessing, processImage } from '../core/imageProcessing';
+import { useRenderedImage } from './useRenderedImage';
 import { shapePath } from '../core/shapes';
 import { drawGroundFx, hasGroundFx } from '../core/groundFx';
 import { isLayerLocked } from '../core/pageOps';
@@ -32,11 +32,7 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
   const fxVersion = useFxImagesVersion(layer.adjust); // recalcula cuando llega la imagen de la doble exposición
 
   // Imagen con filtros/volteo aplicados (se recalcula solo si cambian esos campos).
-  const rendered = useMemo<CanvasImageSource | null>(() => {
-    if (!image) return null;
-    if (!needsProcessing(layer)) return image;
-    return processImage(image, layer, PREVIEW_MAX);
-  }, [
+  const rendered = useRenderedImage(image, layer, PREVIEW_MAX, [
     image,
     layer.adjust,
     layer.filter,

@@ -6,6 +6,8 @@ import { LOOKS } from '../../video/fx/effects';
 import { BLEND_MODES } from '../../video/fx/sanitize';
 import { blendThumb, fxTypeThumb, lookThumb, thumbProgress, transitionThumb } from '../../video/fx/thumbs';
 import { TRANSITIONS, type TransGroup } from '../../video/fx/transitions';
+import { AiSelectedFx, aiThumb, type AiTabProps } from './AiPanels';
+import { AI_FX_DEFS } from '../../video/fx/effects';
 import { applyPayload, BLEND_LABEL, COLOR_FX, encodePayload, IMAGE_FX, payloadLabel, type FxPayload } from './fxUi';
 
 export interface FxPanelProps {
@@ -13,6 +15,8 @@ export interface FxPanelProps {
   selection: string[];
   getProject: () => VM.VideoProject;
   commit: (fn: (p: VM.VideoProject) => VM.VideoProject, group?: string) => unknown;
+  /** V9b: lo que necesitan los controles de IA del clip seleccionado */
+  ai?: AiTabProps;
 }
 
 /** Clic en una miniatura: lo aplica al clip seleccionado y avisa del resultado (sin selección, explica cómo). */
@@ -154,6 +158,12 @@ export function EffectsPanel(props: FxPanelProps) {
           ))}
         </Group>
       ))}
+      <Group title="IA en tu equipo">
+        {AI_FX_DEFS.map((d) => (
+          <FxItem key={d.type} payload={{ kind: 'effect', type: d.type }} label={d.label} thumb={() => aiThumb(d.type)} onApply={apply} />
+        ))}
+      </Group>
+      {props.ai && <AiSelectedFx project={props.project} selection={props.selection} commit={props.commit} ai={props.ai} />}
       <Group title="Modos de fusión">
         {BLEND_MODES.map((m) => (
           <FxItem key={m} payload={{ kind: 'blend', mode: m }} label={BLEND_LABEL[m]} thumb={() => blendThumb(m)} onApply={apply} />

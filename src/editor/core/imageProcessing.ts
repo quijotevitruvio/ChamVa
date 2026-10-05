@@ -6,6 +6,7 @@ import { applyHslMix, hasHslMix } from './hslMixer';
 import { applyDehaze, applyDenoise, applyLens } from './photoFix';
 import { applyImageEffects, hasImageFx } from './imageEffects';
 import { cropPixelRect, sourcePixels, validCrop } from './imageCrop';
+import { getPixelPool, MIN_WORKER_PIXELS } from './pixelPool';
 
 // String de filtro CSS (ajustes + filtro con nombre). Lo usan igual editor y export.
 export function buildFilterString(layer: ImageLayer): string {
@@ -17,7 +18,7 @@ type PixelData = Pick<ImageData, 'data' | 'width' | 'height'>;
 const n = (v: number | undefined, neutral = 0) => (typeof v === 'number' && isFinite(v) ? v : neutral);
 
 // ¿Hay algún ajuste por píxel (no CSS) activo?
-function hasPixelOps(a: ImageAdjust): boolean {
+export function hasPixelOps(a: ImageAdjust): boolean {
   return (
     n(a.temperature) !== 0 ||
     n(a.tint) !== 0 ||
@@ -479,13 +480,91 @@ export function applyOutline(img: PixelData, radius: number, color: string) {
 // Pipeline principal
 // ---------------------------------------------------------------------------
 
-// Devuelve un canvas con filtros, tinte/duotono y volteo ya aplicados.
-// maxSize limita la resolución (vista previa del editor); en export = Infinity.
-export function processImage(
-  img: CanvasImageSource,
-  layer: ImageLayer,
-  maxSize = Infinity,
-): HTMLCanvasElement {
+// Pasos por píxel (en orden fijo). `weight` = coste relativo para repartir el progreso por tramos;
+// `active` decide si el paso cuenta en la barra (los inactivos se ejecutan igual: salen al instante).
+export interface PixelStep {
+  id: string;
+  label: string;
+  weight: number;
+  active: (a: ImageAdjust) => boolean;
+  run: (d: PixelData, a: ImageAdjust, scale: number, sub?: (f: number) => void) => void;
+}
+
+export const PIXEL_STEPS: PixelStep[] = [
+  { id: 'lens', label: 'Lente', weight: 2, active: (a) => n(a.lensDistortion) !== 0 || n(a.lensVignette) > 0, run: (d, a) => applyLens(d, n(a.lensDistortion), n(a.lensVignette)) },
+  { id: 'denoise', label: 'Reducir ruido', weight: 60, active: (a) => n(a.denoise) > 0 || n(a.denoiseColor) > 0, run: (d, a, _s, sub) => applyDenoise(d, n(a.denoise), n(a.denoiseColor), sub) },
+  { id: 'dehaze', label: 'Quitar neblina', weight: 10, active: (a) => n(a.dehaze) > 0, run: (d, a, s) => applyDehaze(d, n(a.dehaze), s) },
+  { id: 'levels', label: 'Niveles', weight: 1, active: (a) => !isNeutralLevels(a.levels), run: (d, a) => applyLevels(d, a.levels) },
+  { id: 'curves', label: 'Curvas', weight: 1, active: (a) => hasCurves(a.curves), run: (d, a) => applyCurves(d, a.curves) },
+  {
+    id: 'color',
+    label: 'Color',
+    weight: 2,
+    active: (a) =>
+      !!(n(a.temperature) || n(a.tint) || n(a.highlights) || n(a.shadows) || n(a.vibrance) || n(a.posterize) > 0 || n(a.exposure) || n(a.hue) || n(a.grayscale) > 0 || n(a.sepia) > 0),
+    run: (d, a) => applyColorOps(d, a),
+  },
+  { id: 'hsl', label: 'HSL', weight: 3, active: (a) => hasHslMix(a.hslMix), run: (d, a) => applyHslMix(d, a.hslMix) },
+  { id: 'sharpen', label: 'Nitidez', weight: 4, active: (a) => n(a.sharpen) > 0, run: (d, a, s) => applySharpen(d, n(a.sharpen), s) },
+  { id: 'clarity', label: 'Claridad', weight: 4, active: (a) => n(a.clarity) > 0, run: (d, a, s) => applyClarity(d, n(a.clarity), s) },
+  { id: 'invert', label: 'Invertir/umbral', weight: 1, active: (a) => a.invert === true || n(a.threshold) > 0, run: (d, a) => applyInvertThreshold(d, a) },
+  // --- hook efectos creativos ---
+  { id: 'fx', label: 'Efectos', weight: 8, active: (a) => hasImageFx(a.fx), run: (d, a) => applyImageEffects(d, a.fx) },
+  { id: 'pixelate', label: 'Pixelar', weight: 1, active: (a) => n(a.pixelate) > 0, run: (d, a, s) => applyPixelate(d, n(a.pixelate) * s) },
+  { id: 'vignette', label: 'Viñeta', weight: 1, active: (a) => n(a.vignette) > 0, run: (d, a) => applyVignette(d, n(a.vignette)) },
+  { id: 'grain', label: 'Grano', weight: 2, active: (a) => n(a.grain) > 0, run: (d, a) => applyGrain(d, n(a.grain)) },
+];
+
+// Ejecuta TODOS los pasos por píxel, en el orden de siempre (idéntico en hilo principal y worker).
+// `onProgress(0..1, etiqueta)` informa por tramos; nunca altera los píxeles.
+export function runPixelStage(
+  data: PixelData,
+  adj: ImageAdjust,
+  scale: number,
+  onProgress?: (fraction: number, label: string) => void,
+) {
+  const total = PIXEL_STEPS.reduce((acc, st) => acc + (st.active(adj) ? st.weight : 0), 0) || 1;
+  let done = 0;
+  for (const st of PIXEL_STEPS) {
+    const act = st.active(adj);
+    if (act) onProgress?.(done / total, st.label);
+    const base = done;
+    st.run(
+      data,
+      adj,
+      scale,
+      act && onProgress ? (f) => onProgress(Math.min(1, (base + st.weight * f) / total), st.label) : undefined,
+    );
+    if (act) done += st.weight;
+  }
+  onProgress?.(1, 'Listo');
+}
+
+// El contorno va el último (después del duotono) para que conserve su color exacto.
+export function runOutlineStage(data: PixelData, adj: ImageAdjust, scale: number) {
+  const outline = n(adj.outline) * scale;
+  if (outline > 0) applyOutline(data, outline, adj.outlineColor ?? '#ffffff');
+}
+
+// ¿Algún efecto necesita el DOM (doble exposición con su imagen precargada)? Entonces los
+// píxeles se procesan en el hilo principal: un worker no tiene esa imagen.
+export function pixelStageNeedsMain(adj: ImageAdjust): boolean {
+  const fx = adj.fx;
+  return !!fx && !!fx.dblSrc && n(fx.dblOpacity) > 0;
+}
+
+interface BaseStage {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  w: number;
+  h: number;
+  scale: number;
+  adj: ImageAdjust;
+  def: ReturnType<typeof getFilter>;
+}
+
+// Etapa de canvas: dibuja con filtro CSS, desenfoque, recorte y volteo (rápida, acelerada).
+function drawBase(img: CanvasImageSource, layer: ImageLayer, maxSize: number): BaseStage {
   const nw = layer.naturalWidth;
   const nh = layer.naturalHeight;
   const longest = Math.max(nw, nh);
@@ -512,25 +591,22 @@ export function processImage(
   else ctx.drawImage(img, 0, 0, w, h);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.filter = 'none';
+  return { canvas, ctx, w, h, scale, adj, def };
+}
+
+// Devuelve un canvas con filtros, tinte/duotono y volteo ya aplicados (síncrono, hilo principal).
+// maxSize limita la resolución (vista previa del editor); en export = Infinity.
+export function processImage(
+  img: CanvasImageSource,
+  layer: ImageLayer,
+  maxSize = Infinity,
+): HTMLCanvasElement {
+  const { canvas, ctx, w, h, scale, adj, def } = drawBase(img, layer, maxSize);
 
   if (hasPixelOps(adj)) {
     const data = ctx.getImageData(0, 0, w, h);
     // Correcciones de foto primero (geometría, ruido, bruma), luego tono y color.
-    applyLens(data, n(adj.lensDistortion), n(adj.lensVignette));
-    applyDenoise(data, n(adj.denoise), n(adj.denoiseColor));
-    applyDehaze(data, n(adj.dehaze), scale);
-    applyLevels(data, adj.levels);
-    applyCurves(data, adj.curves);
-    applyColorOps(data, adj);
-    applyHslMix(data, adj.hslMix);
-    applySharpen(data, n(adj.sharpen), scale);
-    applyClarity(data, n(adj.clarity), scale);
-    applyInvertThreshold(data, adj);
-    // --- hook efectos creativos ---
-    applyImageEffects(data, adj.fx);
-    applyPixelate(data, n(adj.pixelate) * scale);
-    applyVignette(data, n(adj.vignette));
-    applyGrain(data, n(adj.grain));
+    runPixelStage(data, adj, scale);
     ctx.putImageData(data, 0, 0);
   }
 
@@ -538,13 +614,76 @@ export function processImage(
   applyOverlayDuotone(ctx, w, h, def);
 
   // El contorno va el último para que conserve su color exacto.
-  const outline = n(adj.outline) * scale;
-  if (outline > 0) {
+  if (n(adj.outline) * scale > 0) {
     const data = ctx.getImageData(0, 0, w, h);
-    applyOutline(data, outline, adj.outlineColor ?? '#ffffff');
+    runOutlineStage(data, adj, scale);
     ctx.putImageData(data, 0, 0);
   }
 
+  return canvas;
+}
+
+// Solo la etapa de canvas (filtro CSS, desenfoque, recorte, volteo y duotono), SIN cálculos por píxel:
+// resultado aproximado e inmediato mientras el worker termina el real.
+export function processImageBase(img: CanvasImageSource, layer: ImageLayer, maxSize = Infinity): HTMLCanvasElement {
+  const { canvas, ctx, w, h, def } = drawBase(img, layer, maxSize);
+  applyOverlayDuotone(ctx, w, h, def);
+  return canvas;
+}
+
+export interface AsyncProcessOpts {
+  signal?: AbortSignal;
+  onProgress?: (fraction: number, label: string) => void;
+  /** 0 = vista previa (prioridad), 1 = exportación. */
+  priority?: number;
+  /** Etiqueta del trabajo para la barra «Procesando…». */
+  label?: string;
+}
+
+// Igual que processImage, pero los cálculos por píxel van a un worker (cola, progreso,
+// cancelación). Resultado idéntico bit a bit: la misma función `runPixelStage`. Si no hay
+// worker (o falla) se hace en el hilo principal.
+export async function processImageAsync(
+  img: CanvasImageSource,
+  layer: ImageLayer,
+  maxSize = Infinity,
+  opts: AsyncProcessOpts = {},
+): Promise<HTMLCanvasElement> {
+  const { canvas, ctx, w, h, scale, adj, def } = drawBase(img, layer, maxSize);
+  const { signal, onProgress } = opts;
+  const throwIfAborted = () => {
+    if (signal?.aborted) throw new DOMException('cancelado', 'AbortError');
+  };
+  throwIfAborted();
+  const pool = getPixelPool();
+
+  const runStage = async (op: 'pixels' | 'outline') => {
+    let data = ctx.getImageData(0, 0, w, h);
+    const useMain = op === 'pixels' && pixelStageNeedsMain(adj);
+    if (!useMain && pool.available() && w * h >= MIN_WORKER_PIXELS) {
+      try {
+        const out = await pool.run(
+          { op, buffer: data.data.buffer as ArrayBuffer, width: w, height: h, adj, scale },
+          { signal, onProgress, priority: opts.priority ?? 0, label: opts.label },
+        );
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(out), w, h), 0, 0);
+        return;
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') throw e;
+        // El worker falló: el canvas conserva los píxeles de partida; se rehace en el principal.
+        data = ctx.getImageData(0, 0, w, h);
+      }
+    }
+    throwIfAborted();
+    if (op === 'pixels') runPixelStage(data, adj, scale, onProgress);
+    else runOutlineStage(data, adj, scale);
+    ctx.putImageData(data, 0, 0);
+  };
+
+  if (hasPixelOps(adj)) await runStage('pixels');
+  throwIfAborted();
+  applyOverlayDuotone(ctx, w, h, def);
+  if (n(adj.outline) * scale > 0) await runStage('outline');
   return canvas;
 }
 

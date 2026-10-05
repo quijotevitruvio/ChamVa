@@ -20,6 +20,7 @@ function bilateral(
   step: number,
   sigmaS: number,
   sigmaR: number,
+  onRows?: (fraction: number) => void,
 ): Float32Array[] {
   const offs: { dx: number; dy: number; ws: number }[] = [];
   for (let dy = -r; dy <= r; dy += step)
@@ -31,6 +32,7 @@ function bilateral(
   const out = chans.map(() => new Float32Array(w * h));
   const acc = new Float64Array(k);
   for (let y = 0; y < h; y++) {
+    if (onRows && (y & 63) === 0) onRows(y / h); // solo informa; no toca los píxeles
     for (let x = 0; x < w; x++) {
       const p = y * w + x;
       if (alpha[p * 4 + 3] < 16) {
@@ -61,7 +63,7 @@ function bilateral(
 }
 
 // luma / color: 0..100. Convierte a luminancia + diferencias de color y filtra cada parte.
-export function applyDenoise(img: PixelData, luma: number, color: number) {
+export function applyDenoise(img: PixelData, luma: number, color: number, onProgress?: (fraction: number) => void) {
   const lm = clamp01(luma / 100);
   const cm = clamp01(color / 100);
   if (lm <= 0 && cm <= 0) return;
@@ -79,12 +81,14 @@ export function applyDenoise(img: PixelData, luma: number, color: number) {
   }
   if (cm > 0) {
     // El color se promedia en un radio mayor, guiado por luminancia y color para no sangrar.
-    const [cb, cr] = bilateral([Cb, Cr], [Y, Cb, Cr], d, w, h, 4, 2, 3, 6 + cm * 54);
+    const share = lm > 0 ? 0.65 : 1; // el color pesa más que la luminancia
+    const [cb, cr] = bilateral([Cb, Cr], [Y, Cb, Cr], d, w, h, 4, 2, 3, 6 + cm * 54, onProgress && ((f) => onProgress(f * share)));
     Cb = cb;
     Cr = cr;
   }
   if (lm > 0) {
-    const [y2] = bilateral([Y], [Y], d, w, h, lm > 0.5 ? 3 : 2, 1, lm > 0.5 ? 2 : 1.5, 3 + lm * 37);
+    const from = cm > 0 ? 0.65 : 0;
+    const [y2] = bilateral([Y], [Y], d, w, h, lm > 0.5 ? 3 : 2, 1, lm > 0.5 ? 2 : 1.5, 3 + lm * 37, onProgress && ((f) => onProgress(from + f * (1 - from))));
     Y = y2;
   }
   for (let p = 0, i = 0; p < N; p++, i += 4) {

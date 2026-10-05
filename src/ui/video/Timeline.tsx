@@ -6,6 +6,7 @@ import { isClickGesture, razorTime, videoToolForKey } from '../../editor/state/t
 import type { MediaCache } from './mediaCache';
 import type { PreviewEngine } from './previewEngine';
 import { ClipView } from './ClipView';
+import { bandText, partText, type ClipAiStatus } from '../../video/ai/aiPlan';
 import { KeyRow } from './KeyRow';
 import { resolveTransitions } from '../../video/fx/transitions';
 import { applyPayload, decodePayload, dragKind, FX_MIME, fxDropTarget, junctionMarks, type FxDropTarget, type FxKind, type JunctionMark } from './fxUi';
@@ -41,6 +42,10 @@ interface Props {
   marks?: { in: number | null; out: number | null };
   /** menú contextual de un clip de audio/video */
   onClipMenu?: (clipId: string, x: number, y: number) => void;
+  /** V9b: estado de cálculo de los efectos de IA por clip (banda del clip) */
+  aiStatus?: Map<string, ClipAiStatus>;
+  /** clip cuyo cálculo de IA está en curso */
+  aiRunning?: string | null;
 }
 
 type Drag =
@@ -74,7 +79,7 @@ function release(el: HTMLElement, id: number) {
   }
 }
 
-export function Timeline({ project, engine, cache, selection, setSelection, pps, setPps, commit, endGroup, snapOn, compact, apiRef, onDropMedia, onDropFiles, onAddTrack, marks, onClipMenu }: Props) {
+export function Timeline({ project, engine, cache, selection, setSelection, pps, setPps, commit, endGroup, snapOn, compact, apiRef, onDropMedia, onDropFiles, onAddTrack, marks, onClipMenu, aiStatus, aiRunning }: Props) {
   const headerW = compact ? T.HEADER_W_COMPACT : T.HEADER_W;
   const scroller = useRef<HTMLDivElement>(null);
   const lineRef = useRef<HTMLDivElement>(null);
@@ -718,6 +723,9 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
                           active={activeIds.has(c.id)}
                           tinPx={(fxInfo.edges.get(c.id)?.tin ?? 0) * pps}
                           toutPx={(fxInfo.edges.get(c.id)?.tout ?? 0) * pps}
+                          aiPct={aiStatus?.get(c.id)?.pct}
+                          aiRun={aiRunning === c.id ? true : undefined}
+                          aiTitle={aiStatus?.get(c.id) ? `${bandText(aiStatus.get(c.id)!)}. ${aiStatus.get(c.id)!.parts.map(partText).join('; ')}` : undefined}
                         />
                       );
                     })}

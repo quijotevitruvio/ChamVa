@@ -29,6 +29,11 @@ import { MixerPanel } from './video/MixerPanel';
 import { useLoudnessAnalysis } from './video/loudness';
 import { audioDuration } from '../video/engine/audioExport';
 import { ProxyDialog } from '../video/native/ProxyDialog';
+import { AiConsentDialog, AiExportDialog, AiStatusBar } from './video/AiPanels';
+import { useAiCacheVersion, useAiJob, useAiStatus } from './video/useAi';
+import { restoreAiCaches, setAiProjectGetter, setAiTick } from '../video/ai/jobsDefault';
+import { exportPending, type ExportPending } from '../video/ai/aiPlan';
+import type { Container } from '../video/engine/formats';
 import './video/video.css';
 
 function useMediaQuery(q: string): boolean {
@@ -72,6 +77,11 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [mixerOpen, setMixerOpen] = useState(false); // V7: mezclador desplegable
   const [marks, setMarks] = useState<AS.Marks>({ in: null, out: null });
   const [auto, setAuto] = useState<AS.AutoScope | null>(null);
+  // V9b: cálculo de IA (quitar fondo / estabilizar): estado por clip, repintado al calcular y pregunta antes de exportar
+  const aiStatus = useAiStatus(project);
+  const aiJob = useAiJob();
+  const aiVersion = useAiCacheVersion();
+  const [exportAsk, setExportAsk] = useState<{ container: Container; items: ExportPending[] } | null>(null);
   const [clipMenu, setClipMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   // Esc cierra el editor (el proyecto se guarda solo), salvo con un menú abierto o escribiendo en un campo.
   useDismiss(rootRef, {
@@ -83,6 +93,19 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const micRec = useRef<MediaRecorder | null>(null);
 
   useLayoutEffect(() => engine.setProject(project), [engine, project]);
+  useLayoutEffect(() => {
+    setAiProjectGetter(() => vp.histRef.current.present);
+    setAiTick(() => engine.draw());
+    return () => setAiTick(() => {});
+  }, [engine, vp.histRef]);
+  // lo calculado en otra sesión (guardado en este equipo) vuelve a la caché al abrir el proyecto: no hay que recalcular
+  useEffect(() => {
+    void restoreAiCaches(project);
+  }, [project]);
+  // cada vez que cambian las cachés (cálculo, recuperación, borrado) la vista previa se repinta con lo que haya
+  useEffect(() => {
+    if (!engine.isPlaying) engine.draw();
+  }, [engine, aiVersion]);
   useLoudnessAnalysis(project, engine); // V7: ganancia de sonoridad de la vista previa = la de la exportación
   const engineAlive = useRef(true);
   useEffect(() => {
@@ -420,7 +443,12 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         progress={exporter.progress}
         label={exporter.label}
         onCancel={exporter.cancel}
-        onExport={exporter.run}
+        onExport={(c) => {
+          // V9b: si hay efectos de IA sin calcular del todo, se pregunta antes (el clic nuevo mantiene el permiso del selector de archivos)
+          const items = exportPending(vp.histRef.current.present);
+          if (items.length) setExportAsk({ container: c, items });
+          else void exporter.run(c);
+        }}
         support={exporter.support}
         aspect={exporter.aspect}
         setAspect={exporter.setAspect}
@@ -463,7 +491,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             onTab={setBinTab}
             textPanel={<TextPanel canApply={canApplyStyle} onAdd={addTitle} onApply={applyTitle} onAddPair={addPair} onAddPlain={addText} />}
             transPanel={<TransitionsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} />}
-            fxPanel={<EffectsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} />}
+            fxPanel={<EffectsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} ai={{ engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect: select, marks }} />}
             adjustPanel={<AdjustPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} onAddAdjust={addAdjust} />}
             subtitlePanel={<SubtitlePanel project={project} engine={engine} selection={selection} setSelection={select} commit={commit} onAutoSubs={() => openAuto()} />}
           />
@@ -508,6 +536,8 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           onAddTrack={addTrack}
           marks={marks}
           onClipMenu={(id, x, y) => setClipMenu({ id, x, y })}
+          aiStatus={aiStatus}
+          aiRunning={aiJob.phase === 'running' ? (aiJob.clipId ?? null) : null}
         />
       </div>
       {clipMenu && (
@@ -562,8 +592,22 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
         />
       )}
       <div className="vx-side">
-        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} engine={engine} autoKey={autoKey} setAutoKey={setAutoKey} keyClip={keyClip} setKeyClip={setKeyClip} onSelect={select} aspect={exporter.aspect} setAspect={exporter.setAspect} fit={exporter.fit} />
+        <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} engine={engine} autoKey={autoKey} setAutoKey={setAutoKey} keyClip={keyClip} setKeyClip={setKeyClip} onSelect={select} aspect={exporter.aspect} setAspect={exporter.setAspect} fit={exporter.fit} marks={marks} />
       </div>
+      <AiConsentDialog />
+      <AiStatusBar project={project} />
+      {exportAsk && (
+        <AiExportDialog
+          project={() => vp.histRef.current.present}
+          items={exportAsk.items}
+          onClose={() => setExportAsk(null)}
+          onExport={() => {
+            const c = exportAsk.container;
+            setExportAsk(null);
+            void exporter.run(c);
+          }}
+        />
+      )}
     </div>
   );
 }

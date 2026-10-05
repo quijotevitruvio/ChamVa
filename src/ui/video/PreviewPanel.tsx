@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { aiNoticesAt, hasAiFx } from '../../video/ai/aiFrame';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { AiPreviewNotice } from './AiPanels';
 import * as VM from '../../video/model';
 import { ASPECTS, outputSize, type Aspect } from '../../video/engine/formats';
 import type { Fit } from '../../video/engine/timeline';
@@ -32,17 +32,6 @@ export function TimeLabel({ engine, duration }: { engine: PreviewEngine; duratio
       {formatClock(t)} <span className="vx-time-total">/ {formatClock(duration)}</span>
     </span>
   );
-}
-
-/** V9: aviso si en el cabezal hay «quitar fondo» o «estabilizar» sin calcular (se ve el original). */
-export function AiNotice({ engine, project }: { engine: PreviewEngine; project: VM.VideoProject }) {
-  const any = useMemo(() => project.tracks.some((t) => t.clips.some(hasAiFx)), [project]);
-  const msg = useSyncExternalStore(engine.subscribeTime, () => (any ? aiNoticesAt(project, engine.time).join(' ') : ''));
-  return msg ? (
-    <span className="vx-pvnote" role="status">
-      {msg}
-    </span>
-  ) : null;
 }
 
 /** Calidad de la vista previa, aviso suave de «vista previa reducida» y fps reales (modo depuración). */
@@ -253,7 +242,7 @@ export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit,
         </div>
       </div>
       <PreviewQuality engine={engine} />
-      <AiNotice engine={engine} project={project} />
+      <AiPreviewNotice engine={engine} project={project} />
     </div>
   );
 }

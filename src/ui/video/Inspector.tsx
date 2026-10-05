@@ -11,6 +11,7 @@ import { StyleControls } from './StyleControls';
 import { ClipAudioPanel, ProjectAudioPanel } from './AudioPanels';
 import { SpeedSection } from './SpeedPanel';
 import { ReframeSection } from './ReframePanel';
+import type { Marks } from '../../video/ai/aiPlan';
 import type { Aspect } from '../../video/engine/formats';
 import type { Fit } from '../../video/engine/timeline';
 import { DEFAULT_TITLE_STYLE } from '../../video/title/style';
@@ -36,9 +37,11 @@ interface Props {
   aspect?: Aspect;
   setAspect?: (a: Aspect) => void;
   fit?: Fit;
+  /** V9b: marcas de entrada/salida (calcular solo la selección) */
+  marks?: Marks;
 }
 
-export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles, engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect, aspect = '16:9', setAspect, fit = 'contain' }: Props) {
+export function Inspector({ project, selection, commit, onSplit, onDuplicate, onDelete, onOpenSubtitles, engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect, aspect = '16:9', setAspect, fit = 'contain', marks }: Props) {
   // el cabezal: el inspector se repinta al moverlo (cuantizado mientras se reproduce, para no repintar 60 veces por segundo)
   const t = useSyncExternalStore(engine.subscribeTime, () => (engine.isPlaying ? Math.round(engine.getTime() * 15) / 15 : engine.getTime()));
   const loc = selection.length === 1 ? VM.findClip(project, selection[0]) : null;
@@ -90,7 +93,7 @@ export function Inspector({ project, selection, commit, onSplit, onDuplicate, on
   const locked = track.locked;
   const upd = (patch: Parameters<typeof VM.updateClip>[2], group?: string) => commit((p) => VM.updateClip(p, c.id, patch), group ? `${group}:${c.id}` : undefined);
   const adjust = c.kind === 'adjust';
-  const ctx: FxCtx = { project, clip: c, track, engine, t, commit, locked, autoKey, setAutoKey, keyClip, setKeyClip, onSelect };
+  const ctx: FxCtx = { project, clip: c, track, engine, t, commit, locked, autoKey, setAutoKey, keyClip, setKeyClip, onSelect, marks };
   const dur = VM.clipDuration(c);
   const maxLen = timed && media ? Math.max(0.1, (media.duration - c.inP) / (c.speed || 1)) : 600;
   const special = !!(c.curve || c.reverse || c.freeze || c.loop);

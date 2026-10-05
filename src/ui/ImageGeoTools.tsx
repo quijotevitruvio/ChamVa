@@ -7,9 +7,10 @@ import './imagegeo.css';
 const PerspectiveEditor = lazy(() => import('./PerspectiveEditor').then((m) => ({ default: m.PerspectiveEditor })));
 const StraightenTool = lazy(() => import('./StraightenTool').then((m) => ({ default: m.StraightenTool })));
 const RedactEditor = lazy(() => import('./RedactEditor').then((m) => ({ default: m.RedactEditor })));
+const ResizeImageDialog = lazy(() => import('./ResizeImageDialog').then((m) => ({ default: m.ResizeImageDialog })));
 const MockupDialog = lazy(() => import('./MockupDialog').then((m) => ({ default: m.MockupDialog })));
 
-type Tool = 'perspective' | 'straighten' | 'redact' | 'mockup' | null;
+type Tool = 'perspective' | 'straighten' | 'redact' | 'mockup' | 'resize' | null;
 
 // Menú «Geometría» del panel de imagen: abre las herramientas de perspectiva, enderezar,
 // censurar, comparador antes/después y mockups.
@@ -32,6 +33,7 @@ export function ImageGeoTools({ layer }: { layer: ImageLayer }) {
       {open && (
         <div className="geo-list">
           <button onClick={() => launch('perspective')}>▱ {t('Corregir perspectiva')}</button>
+          <button onClick={() => launch('resize')}>⤡ {t('Redimensionar imagen')}</button>
           <button onClick={() => launch('straighten')}>⟲ {t('Enderezar horizonte')}</button>
           <button onClick={() => launch('redact')}>▦ {t('Censurar zona')}</button>
           <button onClick={() => openBA(layer.id)}>◐ {t('Comparar antes / después')}</button>
@@ -42,6 +44,7 @@ export function ImageGeoTools({ layer }: { layer: ImageLayer }) {
         {tool === 'perspective' && <PerspectiveEditor layer={frozen} onClose={close} />}
         {tool === 'straighten' && <StraightenTool layer={frozen} onClose={close} />}
         {tool === 'redact' && <RedactEditor layer={frozen} onClose={close} />}
+        {tool === 'resize' && <ResizeImageDialog layer={frozen} onClose={close} />}
         {tool === 'mockup' && <MockupDialog layer={frozen} onClose={close} />}
       </Suspense>
     </div>

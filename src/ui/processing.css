@@ -1,0 +1,77 @@
+.proc-ind {
+  position: fixed;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  z-index: 210;
+  width: min(440px, calc(100vw - 32px));
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--c-cyan);
+  border-radius: 8px;
+  padding: 10px 14px 12px;
+  font-size: 13px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.proc-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.proc-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proc-pct {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.proc-cancel {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+.proc-cancel:hover {
+  border-color: var(--danger);
+}
+.proc-bar {
+  margin-top: 8px;
+  height: 6px;
+  background: var(--panel-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.proc-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+.proc-spin {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: proc-rot 0.8s linear infinite;
+}
+@keyframes proc-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proc-spin {
+    animation: none;
+  }
+  .proc-fill {
+    transition: none;
+  }
+}

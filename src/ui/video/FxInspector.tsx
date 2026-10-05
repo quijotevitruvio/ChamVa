@@ -2,7 +2,7 @@
 // animable (`AnimField`: deslizador + rombo ◇/◆ + saltar al fotograma anterior/siguiente).
 import * as VM from '../../video/model';
 import { applyEase, cubicBezier, DEFAULT_BEZIER, EASE_IDS, EASE_LABELS } from '../../video/fx/ease';
-import { FX_CATEGORIES, FX_DEFS, fxDef, type FxDef, type ParamDef } from '../../video/fx/effects';
+import { AI_FX, AI_FX_DEFS, FX_CATEGORIES, FX_DEFS, fxDef, type FxDef, type ParamDef } from '../../video/fx/effects';
 import { addFxOfType, addKeyAtPlayhead, applyPreset, baseValue, clearClipKeys, copyKeys, fxProp, junctionSpec, moveFx, pasteClipKeys, removeFx, removeKeyAt, setBlend, setJunctionTransition, setPropValue, setTransition, updateFx, updateKeyAt, updateTransition, valueNow } from '../../video/fx/clipOps';
 import { ANIM_PRESETS, INTERPS, INTERP_LABEL, PROP_LABEL } from '../../video/fx/keyframes';
 import { BlendButton } from '../BlendPicker';
@@ -11,6 +11,8 @@ import { CurveEditor } from './CurveEditor';
 import { Field } from './Field';
 import { keyIndexAt, neighborKey, propLabel } from './fxUi';
 import type { PreviewEngine } from './previewEngine';
+import { AiFxControls } from './AiPanels';
+import type { Marks } from '../../video/ai/aiPlan';
 
 export type KeyClipboard = { prop: string; keys: VM.Keyframe[] }[];
 
@@ -28,6 +30,8 @@ export interface FxCtx {
   keyClip: KeyClipboard;
   setKeyClip: (v: KeyClipboard) => void;
   onSelect: (ids: string[]) => void;
+  /** marcas de entrada/salida (para «calcular la selección» de los efectos de IA) */
+  marks?: Marks;
 }
 
 const clipEnd = (c: FxCtx) => VM.effectiveEnd(c.clip, VM.projectDuration(c.project));
@@ -178,22 +182,23 @@ export function TransitionSection({ ctx }: { ctx: FxCtx }) {
 }
 
 // ---------- efectos ----------
-function ParamControl({ ctx, fxId, pd, value }: { ctx: FxCtx; fxId: string; pd: ParamDef; value: number | string | undefined }) {
+/** `idp`: prefijo de los id de los campos (el mismo efecto puede verse a la vez en el inspector y en la pestaña Efectos). */
+export function ParamControl({ ctx, fxId, pd, value, idp = '' }: { ctx: FxCtx; fxId: string; pd: ParamDef; value: number | string | undefined; idp?: string }) {
   const { clip, commit, locked } = ctx;
   const g = `fxp:${clip.id}:${fxId}:${pd.key}`;
   if (pd.kind === 'color') {
     return (
       <div className="vx-field wide">
-        <label htmlFor={`vx-p-${fxId}-${pd.key}`}>{pd.label}</label>
-        <input id={`vx-p-${fxId}-${pd.key}`} type="color" value={typeof value === 'string' ? value : String(pd.def)} disabled={locked} onChange={(e) => commit((p) => updateFx(p, clip.id, fxId, { p: { [pd.key]: e.target.value } }), g)} />
+        <label htmlFor={`${idp}vx-p-${fxId}-${pd.key}`}>{pd.label}</label>
+        <input id={`${idp}vx-p-${fxId}-${pd.key}`} type="color" value={typeof value === 'string' ? value : String(pd.def)} disabled={locked} onChange={(e) => commit((p) => updateFx(p, clip.id, fxId, { p: { [pd.key]: e.target.value } }), g)} />
       </div>
     );
   }
   if (pd.kind === 'choice') {
     return (
       <div className="vx-field wide">
-        <label htmlFor={`vx-p-${fxId}-${pd.key}`}>{pd.label}</label>
-        <select id={`vx-p-${fxId}-${pd.key}`} value={typeof value === 'string' ? value : String(pd.def)} disabled={locked} onChange={(e) => commit((p) => updateFx(p, clip.id, fxId, { p: { [pd.key]: e.target.value } }))}>
+        <label htmlFor={`${idp}vx-p-${fxId}-${pd.key}`}>{pd.label}</label>
+        <select id={`${idp}vx-p-${fxId}-${pd.key}`} value={typeof value === 'string' ? value : String(pd.def)} disabled={locked} onChange={(e) => commit((p) => updateFx(p, clip.id, fxId, { p: { [pd.key]: e.target.value } }))}>
           {pd.choices?.map((c) => (
             <option key={c.v} value={c.v}>
               {c.label}
@@ -228,8 +233,10 @@ function FxRow({ ctx, fx, index, count }: { ctx: FxCtx; fx: VM.FxInstance; index
         <button type="button" className="mini vx-ib" disabled={locked || index === count - 1} onClick={() => commit((p) => moveFx(p, clip.id, fx.id, index + 1))} aria-label={`Bajar ${name} en la pila`} title="Bajar (se aplica después)">▼</button>
         <button type="button" className="mini vx-ib" disabled={locked} onClick={() => commit((p) => removeFx(p, clip.id, fx.id))} aria-label={`Quitar ${name}`} title="Quitar efecto">✕</button>
       </div>
-      <AnimField ctx={ctx} prop={fxProp(fx.id, 'amount')} label="Intensidad" min={0} max={1} step={0.01} scale={100} unit=" %" />
-      {params.length > 0 && (
+      {!AI_FX.has(fx.type) && <AnimField ctx={ctx} prop={fxProp(fx.id, 'amount')} label="Intensidad" min={0} max={1} step={0.01} scale={100} unit=" %" />}
+      {AI_FX.has(fx.type) ? (
+        <AiFxControls ctx={ctx} fx={fx} marks={ctx.marks} />
+      ) : params.length > 0 && (
         <details className="vx-fxparams">
           <summary>Parámetros ({params.length})</summary>
           {params.map((pd) => (
@@ -270,6 +277,15 @@ export function EffectsSection({ ctx }: { ctx: FxCtx }) {
               ))}
             </optgroup>
           ))}
+          {clip.kind === 'video' && (
+            <optgroup label="IA (en tu equipo)">
+              {AI_FX_DEFS.map((d) => (
+                <option key={d.type} value={d.type}>
+                  {d.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </div>
       {clip.kind !== 'adjust' && (

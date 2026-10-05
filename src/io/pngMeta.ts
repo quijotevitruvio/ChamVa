@@ -96,7 +96,7 @@ export function readPngText(png: Uint8Array): Record<string, string> {
 // ---- JPG ----
 
 // EXIF solo admite ASCII: se quitan los acentos y lo no representable.
-function ascii(s: string): string {
+export function ascii(s: string): string {
   return s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')

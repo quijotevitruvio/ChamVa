@@ -4,6 +4,7 @@ import type { Fit } from '../../video/engine/timeline';
 import { t } from '../../i18n';
 import type { AudioFormat, AudioFormatInfo } from '../../video/engine/audioExport';
 import { ModelManager } from './ModelManager';
+import { AiCacheManager } from './AiCacheManager';
 
 interface Props {
   onClose: () => void;
@@ -130,6 +131,7 @@ export function Toolbar(p: Props) {
               </button>
             </span>
             <ModelManager />
+            <AiCacheManager />
             <button type="button" onClick={() => p.onExport('webm')} disabled={!p.canExport || p.exporting || (!!support && support.webcodecs && !support.webm)} title="Exportar a WebM (VP9 + Opus)">
               ⬇ WebM
             </button>

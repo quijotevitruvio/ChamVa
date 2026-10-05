@@ -27,12 +27,16 @@ interface Props {
   /** ancho (px) de la cuña de una transición de ENTRADA / SALIDA de un clip suelto (las de unión las dibuja la línea de tiempo) */
   tinPx?: number;
   toutPx?: number;
+  /** V9b: % calculado de los efectos de IA del clip (undefined = sin efectos de IA), si se está calculando ahora y texto largo */
+  aiPct?: number;
+  aiRun?: boolean;
+  aiTitle?: string;
 }
 
 const KIND_LABEL: Record<Clip['kind'], string> = { video: 'Video', audio: 'Audio', image: 'Imagen', text: 'Texto', subtitle: 'Subtítulo', adjust: 'Ajuste' };
 
 /** Un bloque de la línea de tiempo. Memoizado: al hacer scroll o arrastrar otro clip no se repinta. */
-export const ClipView = memo(function ClipView({ clip, locked, selected, pps, end, media, strip, wave, active, tinPx, toutPx }: Props) {
+export const ClipView = memo(function ClipView({ clip, locked, selected, pps, end, media, strip, wave, active, tinPx, toutPx, aiPct, aiRun, aiTitle }: Props) {
   const left = clip.start * pps;
   const width = Math.max(2, (end - clip.start) * pps);
   const style: CSSProperties = { left, width };
@@ -73,7 +77,7 @@ export const ClipView = memo(function ClipView({ clip, locked, selected, pps, en
       tabIndex={0}
       role="button"
       aria-pressed={selected}
-      aria-label={`${KIND_LABEL[clip.kind]} ${name}, inicio ${clip.start.toFixed(1)} s, duración ${dur.toFixed(1)} s${locked ? ', pista bloqueada' : ''}`}
+      aria-label={`${KIND_LABEL[clip.kind]} ${name}, inicio ${clip.start.toFixed(1)} s, duración ${dur.toFixed(1)} s${locked ? ', pista bloqueada' : ''}${aiPct !== undefined ? `, ${aiTitle}` : ''}`}
     >
       {bg && <div className="vx-clip-bg" style={bg} />}
       {waveSvg}
@@ -85,6 +89,12 @@ export const ClipView = memo(function ClipView({ clip, locked, selected, pps, en
           {width > 90 && <span className="vx-clip-dur">{fmtDur(dur)}</span>}
           {width > 50 && (clip.curve || clip.reverse || clip.freeze || clip.loop || (clip.speed || 1) !== 1) && <span className="vx-clip-sp" title={speedTitle(clip)}>{speedBadge(clip)}</span>}
           {width > 60 && !!clip.fx?.length && <span className="vx-clip-fx" title={`${clip.fx.length} efecto(s)`}>fx</span>}
+        </span>
+      )}
+      {aiPct !== undefined && (
+        <span className={`vx-ai${aiPct >= 100 ? ' ok' : ''}${aiRun !== undefined ? ' run' : ''}`} title={aiTitle} aria-hidden="true">
+          <i style={{ width: `${aiPct}%` }} />
+          {width > 96 && <b>{aiRun !== undefined ? `Calculando · ${aiPct} %` : aiPct >= 100 ? 'IA calculada 100 %' : `IA ${aiPct} %`}</b>}
         </span>
       )}
       {(clip.fadeIn > 0 || clip.audioFadeIn > 0) && <i className="vx-fade in" style={{ width: Math.min(width / 2, Math.max(clip.fadeIn, clip.audioFadeIn) * pps) }} />}

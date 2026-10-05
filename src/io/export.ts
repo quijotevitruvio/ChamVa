@@ -2,7 +2,7 @@ import type { Doc } from '../editor/core/types';
 import { canvasGradient } from '../editor/core/gradients';
 import { fillPatternBackground } from '../editor/core/patterns';
 import { fillDither, fillGrain, grainActive } from '../editor/core/grain';
-import { needsProcessing, processImage } from '../editor/core/imageProcessing';
+import { needsProcessing, processImageAsync } from '../editor/core/imageProcessing';
 import { drawGroundFx, hasGroundFx } from '../editor/core/groundFx';
 import { preloadFxImages } from '../editor/core/imageEffects';
 import { drawStroke } from '../editor/core/brush';
@@ -17,6 +17,7 @@ import { blendOp } from '../editor/core/blend';
 import { isTauri, saveNative } from './nativeSave';
 import { toast } from '../ui/toast';
 import { withRegisteredMaster } from '../editor/core/master';
+import { embedDpiInBlob, fileDpi } from './imageDpi';
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif';
 
@@ -89,7 +90,10 @@ export async function renderDocToCanvas(
       const img = await loadImg(layer.src);
       await preloadFxImages(layer.adjust); // doble exposición: imagen lista antes de hornear
       // Filtros/volteo horneados a resolución completa (idéntico al editor).
-      const source = needsProcessing(layer) ? processImage(img, layer) : img;
+      // Píxeles en worker (cola, progreso, cancelación); espera el resultado completo a resolución final.
+      const source = needsProcessing(layer)
+        ? await processImageAsync(img, layer, Infinity, { priority: 1, label: 'Exportando imagen' })
+        : img;
       ctx.save();
       ctx.globalAlpha = layer.opacity * a.opacity;
       ctx.globalCompositeOperation = blendOp(layer.blendMode);
@@ -200,13 +204,15 @@ export async function exportDoc(
       ? '#ffffff'
       : undefined;
   const canvas = await renderDocToCanvas(doc, scale, backing);
-  return new Promise((resolve, reject) => {
+  const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('toBlob falló'))),
+      (b) => (b ? resolve(b) : reject(new Error('toBlob falló'))),
       MIME[format],
       quality,
     );
   });
+  // DPI del documento dentro del archivo (PNG/JPG); WebP/AVIF se devuelven tal cual.
+  return embedDpiInBlob(blob, fileDpi(doc.dpi, scale));
 }
 
 function downloadViaAnchor(blob: Blob, filename: string) {

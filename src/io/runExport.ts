@@ -10,6 +10,7 @@ import { getExtra, type ExtraSettings } from './exportExtra';
 import { alphaBounds, bisectQuality, buildScaleSpecs, parseWidths, MAX_EXPORT_SIDE } from './exportTargets';
 import { buildFileName, dateStamp, sanitizeFileName, uniqueName, type NameVars } from './fileNameTemplate';
 import { addJpegMeta, addPngMeta, hasMeta } from './pngMeta';
+import { fileDpi, setJpegDpi, setPngDpi } from './imageDpi';
 import { applyWatermark, watermarkActive, watermarkSvg } from './watermark';
 import { blobToBytes, zipToBlob, type ZipEntry } from './zip';
 import { toast } from '../ui/toast';
@@ -134,9 +135,21 @@ export async function renderRasterBlob(
   // El navegador puede haber caído a PNG (AVIF/WebP no soportados): se usa el formato real.
   const res = resolveBlobFormat(blob.type, format);
   const real = res.format;
-  if (extra.metaOn && hasMeta(extra.meta) && (real === 'png' || real === 'jpeg')) {
+  // DPI del documento escrito en el archivo (PNG: pHYs; JPG: JFIF + EXIF). Se escala con la
+  // exportación para que el tamaño físico no cambie (300 ppp a ×2 → 600 ppp en el archivo).
+  const dpiFile = fileDpi(doc.dpi, scale);
+  const withMeta = extra.metaOn && hasMeta(extra.meta);
+  if ((real === 'png' || real === 'jpeg') && (withMeta || dpiFile)) {
     const bytes = await blobToBytes(blob);
-    const out = real === 'png' ? addPngMeta(bytes, extra.meta) : addJpegMeta(bytes, extra.meta);
+    let out: Uint8Array;
+    if (real === 'png') {
+      out = withMeta ? addPngMeta(bytes, extra.meta) : bytes;
+      if (dpiFile) out = setPngDpi(out, dpiFile);
+    } else if (dpiFile) {
+      out = setJpegDpi(bytes, dpiFile, withMeta ? extra.meta : undefined);
+    } else {
+      out = addJpegMeta(bytes, extra.meta);
+    }
     blob = new Blob([out as BlobPart], { type: MIME[real] });
   }
   return { blob, width: canvas.width, height: canvas.height, quality: q, fits, format: real, degradedNote: res.message };
@@ -267,6 +280,10 @@ export async function runImageExport(opts: {
         'error',
       );
     }
+  } catch (e) {
+    // «Cancelar» de la barra de procesado: no es un error.
+    if ((e as Error)?.name === 'AbortError') toast('Exportación cancelada', 'info');
+    else throw e;
   } finally {
     end();
   }

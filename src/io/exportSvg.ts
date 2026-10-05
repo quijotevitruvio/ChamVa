@@ -9,7 +9,7 @@ import {
   type ShapeLayer,
   type TextLayer,
 } from '../editor/core/types';
-import { needsProcessing, processImage } from '../editor/core/imageProcessing';
+import { needsProcessing, processImageAsync } from '../editor/core/imageProcessing';
 import { renderCastShadow, renderReflection } from '../editor/core/groundFx';
 import { preloadFxImages } from '../editor/core/imageEffects';
 import { isStrokeOnly, shapePath, shapeSvgPath } from '../editor/core/shapes';
@@ -202,7 +202,7 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
       const img = await loadImg(layer.src);
       await preloadFxImages(layer.adjust);
       let baked = needsProcessing(layer)
-        ? processImage(img, layer).toDataURL('image/png')
+        ? (await processImageAsync(img, layer, Infinity, { priority: 1, label: 'Exportando SVG' })).toDataURL('image/png')
         : layer.src;
       // Reflejo y sombra proyectada: se hornean a PNG y van como <image> bajo la capa.
       let fxSvg = '';
