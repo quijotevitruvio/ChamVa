@@ -14,6 +14,7 @@ import {
   transcodeToProxy,
 } from './bridge';
 import { defaultProxyOptions, describeProbe, etaSeconds, formatBytes, formatEta, isProxyHeight, proxyFileName, qualityNotice } from './pure';
+import { FFMPEG_NOT_INCLUDED } from './FfmpegLicenseSection';
 import type { NativeStatus, ProbeInfo, ProgressInfo, ProxyOptions, SourceRef } from './types';
 
 type Step = 'intro' | 'probing' | 'ready' | 'run' | 'reading' | 'error' | 'missing';
@@ -23,7 +24,7 @@ interface Props {
   files: { name: string; reason?: string; playable: boolean }[];
   /** importar sin convertir los que `<video>` reproduce (ruta lenta de siempre) */
   onImportAsIs?: () => void;
-  /** true si no hay ffmpeg utilizable (se explica la causa y cómo conseguirlo) */
+  /** true si no hay ffmpeg utilizable (se pide convertir el video con otro programa) */
   missing: boolean;
   onClose: () => void;
   /** el proxy listo, como archivo, para importarlo con el flujo normal */
@@ -182,20 +183,21 @@ export function ProxyDialog(p: Props) {
   const frac = prog?.fraction ?? null;
   const pct = frac === null ? null : Math.round(frac * 100);
   const srcH = probe?.video ? (probe.video.rotation % 180 ? probe.video.width : probe.video.height) : undefined;
-  const lgpl = status?.available ? (
+  // solo si hay un FFmpeg en uso: versión y licencia que declara el propio binario
+  const ffNote = status?.available ? (
     <>
-      Usa FFmpeg {status.version?.replace(/^ffmpeg version /, '').split(' ')[0]} ({status.license}), un programa aparte con su propia licencia.{' '}
-      <a href={status.ffmpegSourceUrl} onClick={externalClick}>Código fuente</a>
+      Usa FFmpeg {status.version?.replace(/^ffmpeg version /, '').split(' ')[0]}, un programa aparte con su propia licencia.{' '}
+      {status.sourceReleaseUrl && (
+        <a href={status.sourceReleaseUrl} onClick={externalClick}>Código fuente</a>
+      )}
     </>
-  ) : (
-    <>FFmpeg es software libre (LGPL). </>
-  );
+  ) : null;
 
   return (
     <div className="vx-as-overlay" onMouseDown={(e) => e.target === e.currentTarget && !busy && close()}>
       <div ref={root} className="vx-as" role="dialog" aria-modal="true" aria-labelledby="vx-px-title" onKeyDown={onKey}>
         <div className="vx-as-head">
-          <h3 id="vx-px-title">{step === 'missing' ? 'Falta FFmpeg para abrir este video' : '🎞 Convertir para editar (proxy)'}</h3>
+          <h3 id="vx-px-title">{step === 'missing' ? 'Este formato no se puede abrir todavía' : '🎞 Convertir para editar (proxy)'}</h3>
           <button type="button" className="mini" onClick={() => (busy ? cancel() : close())} aria-label="Cerrar" title="Cerrar (Esc)">✕</button>
         </div>
         <p className="vx-as-local">Todo ocurre en tu equipo: el video no sale de él.</p>
@@ -234,34 +236,10 @@ export function ProxyDialog(p: Props) {
 
         {step === 'missing' && (
           <div className="vx-as-body">
-            <p>{status?.reason ? `Causa: ${status.reason}.` : 'Esta copia de ChamVa no incluye FFmpeg.'}</p>
-            <p>Alternativas:</p>
-            <ul>
-              <li>Convierte el video a MP4 (H.264) o WebM con otro programa y vuelve a importarlo.</li>
-              <li>Instala la versión de ChamVa que incluye FFmpeg (instalador de escritorio).</li>
-              {status?.userInstallSupported && status.userDir && (
-                <li>
-                  O descarga tú el build verificado y descomprime sus archivos <code>ffmpeg.exe</code>, <code>ffprobe.exe</code> y las <code>.dll</code> de <code>bin/</code> en <code>{status.userDir}</code>. ChamVa solo lo usará si cada archivo coincide con su SHA-256.
-                  <br />
-                  Descarga ({status.pinnedVersion}, LGPL): <a href={status.pinnedSourceUrl ?? status.releaseUrl} onClick={externalClick}>{status.pinnedSourceUrl ?? status.releaseUrl}</a>
-                  <br />
-                  SHA-256: <code style={{ wordBreak: 'break-all' }}>{status.pinnedSha256}</code>
-                </li>
-              )}
-            </ul>
+            <p>Este formato no se puede abrir todavía en ChamVa; conviértelo a MP4 (H.264) con otro programa y vuelve a importarlo.</p>
+            <p>{FFMPEG_NOT_INCLUDED}</p>
             <div className="vx-as-actions">
-              <button
-                type="button"
-                data-autofocus
-                onClick={async () => {
-                  const s = await nativeStatus(true);
-                  setStatus(s);
-                  if (s?.available) setStep('intro');
-                }}
-              >
-                Volver a comprobar
-              </button>
-              <button type="button" onClick={close}>Cerrar</button>
+              <button type="button" data-autofocus onClick={close}>Cerrar</button>
             </div>
           </div>
         )}
@@ -331,7 +309,7 @@ export function ProxyDialog(p: Props) {
           </div>
         )}
 
-        <p className="vx-note" style={{ marginTop: 8 }}>{lgpl}</p>
+        {ffNote && <p className="vx-note" style={{ marginTop: 8 }}>{ffNote}</p>}
       </div>
     </div>
   );

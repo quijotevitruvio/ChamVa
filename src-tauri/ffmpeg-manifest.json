@@ -1,7 +1,9 @@
 {
-  "$comment": "Build de FFmpeg LGPL fijado para ChamVa (V10). Lo leen scripts/fetch-ffmpeg.mjs (descarga y verificación) y src-tauri/src/native_media/locate.rs (copia instalada a mano por el usuario). Cambiarlo exige volver a verificar licencia (-L, -buildconf) y hashes: ver docs/seguridad-ffmpeg.md.",
+  "$comment": "Build de FFmpeg fijado para ChamVa (V10). Lo leen scripts/fetch-ffmpeg.mjs y src-tauri/src/native_media/{locate,install}.rs. Con \"status\" distinto de \"ok\" el build está BLOQUEADO: el script no descarga nada y la app no lo instala, no lo acepta a mano y no ejecuta ningún binario con estos SHA-256 (se conservan solo para reconocerlo y rechazarlo). Ver docs/seguridad-ffmpeg.md y docs/release-ffmpeg.md.",
+  "status": "blocked-license",
+  "blockedReason": "El build BtbN win64 «lgpl-shared» mezcla licencias incompatibles (FFTW GPL-2.0+ vía chromaprint, zvbi GPL-2.0-only, opencore-amr Apache-2.0, libaribb24 LGPL-3.0): no se puede redistribuir con una etiqueta honesta. v0.9.0 sale sin FFmpeg; v0.9.1 traerá un build propio con --disable-chromaprint --disable-libzvbi (auditoría en docs/seguridad-ffmpeg.md).",
   "version": "n9.0.2-22-g46d8f462ee",
-  "license": "LGPL-3.0-or-later",
+  "license": "mixta (NO es LGPL limpia pese al nombre del build): ver blockedReason",
   "release": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-04-20-51",
   "checksums": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/checksums.sha256",
   "ffmpegSource": "https://github.com/FFmpeg/FFmpeg/tree/46d8f462ee",

@@ -24,6 +24,13 @@ export function kindOfFile(f: Pick<File, 'type' | 'name'>): FileKind | null {
   return null;
 }
 
+/** Mensaje cuando ni el navegador ni el motor propio pueden abrir un archivo (y no hay conversión nativa). */
+export function unreadableFileMessage(name: string, kind: 'video' | 'audio'): string {
+  return kind === 'video'
+    ? `«${name}»: este formato no se puede abrir todavía en ChamVa; conviértelo a MP4 H.264 con otro programa.`
+    : `No se pudo leer «${name}» (formato no compatible con este navegador).`;
+}
+
 export function probeDuration(blob: Blob, kind: 'video' | 'audio'): Promise<number> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
@@ -143,7 +150,8 @@ export function useVideoProject() {
     let skipped = 0;
     const pending: ProxyItem[] = [];
     let missingNative = false;
-    // V10: solo en escritorio y solo si hay FFmpeg se revisa cada video; sin él, todo sigue igual
+    // V10: solo en escritorio y solo si hay FFmpeg se revisa cada video; sin él (v0.9.0: no se
+    // incluye), la importación es exactamente la de v0.8.1 y no aparece el diálogo de proxy
     const desktop = isNativeDesktop() && !opt.asIs;
     const nativeOn = desktop && (await nativeAvailable());
     for (const file of files) {
@@ -154,7 +162,7 @@ export function useVideoProject() {
       }
       const duration = kind === 'image' ? 0 : await probeDuration(file, kind);
       // escritorio: HEVC/ProRes/MKV raros/MP4 fragmentado se pueden convertir con FFmpeg nativo (V10)
-      if (kind === 'video' && desktop && (nativeOn || !duration)) {
+      if (kind === 'video' && nativeOn) {
         const { route, check } = await importRouteFor(file, duration > 0);
         if (route === 'proxy' || route === 'missing-native') {
           pending.push({ file, playable: duration > 0, reason: check.reason });
@@ -163,7 +171,7 @@ export function useVideoProject() {
         }
       }
       if (kind !== 'image' && !duration) {
-        toast(`No se pudo leer «${file.name}» (formato no compatible con este navegador).`, 'error');
+        toast(unreadableFileMessage(file.name, kind), 'error');
         continue;
       }
       const id = VM.uid();

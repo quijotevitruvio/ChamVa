@@ -31,7 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
-    // V10: ffmpeg nativo (LGPL), solo escritorio. Ver docs/seguridad-ffmpeg.md.
+    // V10: ffmpeg nativo, solo escritorio (v0.9.0: no incluido). Ver docs/seguridad-ffmpeg.md.
     #[cfg(desktop)]
     let builder = builder
         .manage(native_media::NativeMedia::default())
@@ -43,6 +43,13 @@ pub fn run() {
                     d.clean_tmp();
                 }
             }
+            // copia propia de FFmpeg: comprobación barata (sello) en cada arranque y,
+            // si falta o difiere, reparación desde los recursos del instalador. En un
+            // hilo aparte: el arranque no espera aunque haya que copiar 150 MB.
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                h.state::<native_media::NativeMedia>().resolve_install(&h, false);
+            });
             Ok(())
         })
         .on_window_event(|window, event| {

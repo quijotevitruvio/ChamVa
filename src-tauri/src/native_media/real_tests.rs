@@ -1,9 +1,14 @@
 //! Pruebas con el FFmpeg REAL de `src-tauri/binaries/ffmpeg/` (lo coloca
 //! `node scripts/fetch-ffmpeg.mjs`). Si no está, se omiten con un aviso: así
 //! `cargo test` sigue pasando en máquinas y CI sin el binario.
+//!
+//! Estas pruebas ejercitan el código nativo (argumentos, procesos, progreso) con
+//! un binario LOCAL que no se distribuye. No pasan por `locate`: la app rechaza el
+//! build BtbN fijado (bloqueado por licencias en el manifiesto de v0.9.0), y eso
+//! lo comprueban `locate::tests::real_blocked_dev_binary_is_not_used` y compañía.
 
 use super::args::{self, ProxyPlan, VideoEncoder};
-use super::locate::{self, Origin, EXE};
+use super::locate::{self, Check, Origin, EXE};
 use super::process::{command, run_capture};
 use super::progress;
 use super::validate::validate_source;
@@ -20,6 +25,11 @@ fn dev_dir() -> Option<PathBuf> {
         eprintln!("(sin FFmpeg en {}: se omite la prueba real)", d.display());
         None
     }
+}
+
+/// Binario de desarrollo tal cual, sin `locate` (solo pruebas locales).
+fn dev_located(dir: &Path) -> locate::Located {
+    locate::Located { ffmpeg: dir.join(format!("ffmpeg{EXE}")), ffprobe: dir.join(format!("ffprobe{EXE}")), origin: Origin::Dev }
 }
 
 fn work(name: &str) -> PathBuf {
@@ -51,11 +61,12 @@ fn plan() -> ProxyPlan {
 }
 
 #[test]
-fn real_detection_is_lgpl() {
+fn real_detection_reads_declared_license() {
     let Some(dir) = dev_dir() else { return };
-    let loc = locate::locate(&[(dir, Origin::Dev)]).unwrap();
+    let loc = dev_located(&dir);
     let st = locate::detect(&loc, &work("detect"), None);
     assert!(st.available, "{:?}", st.reason);
+    // lo que DECLARA `-L` (el build BtbN dice LGPL aunque sus bibliotecas no lo sean: ver auditoría)
     assert_eq!(st.license.as_deref(), Some("LGPL-3.0-or-later"));
     assert!(st.has_libvpx && st.has_zscale);
     #[cfg(windows)]
@@ -65,7 +76,7 @@ fn real_detection_is_lgpl() {
 #[test]
 fn real_hostile_names_probe_and_convert() {
     let Some(dir) = dev_dir() else { return };
-    let loc = locate::locate(&[(dir, Origin::Dev)]).unwrap();
+    let loc = dev_located(&dir);
     let w = work("hostile");
     let base = w.join("base.mp4");
     gen(&loc.ffmpeg, &w, &base, &["-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-c:v", "libkvazaar", "-tag:v", "hvc1", "-c:a", "aac", "-shortest"]);
@@ -105,7 +116,7 @@ fn real_hostile_names_probe_and_convert() {
 #[test]
 fn real_whitelists_block_playlists_and_scripts() {
     let Some(dir) = dev_dir() else { return };
-    let loc = locate::locate(&[(dir, Origin::Dev)]).unwrap();
+    let loc = dev_located(&dir);
     let w = work("trap");
     let victim = w.join("secreto.webm");
     gen(&loc.ffmpeg, &w, &victim, &["-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10", "-t", "1", "-c:v", "libvpx"]);
@@ -129,7 +140,7 @@ fn real_whitelists_block_playlists_and_scripts() {
 #[test]
 fn real_cancel_kills_process_and_cleans_tmp() {
     let Some(dir) = dev_dir() else { return };
-    let loc = locate::locate(&[(dir, Origin::Dev)]).unwrap();
+    let loc = dev_located(&dir);
     let w = work("cancel");
     let src = w.join("largo.mkv");
     // 60 s de 1080p en MPEG-2 (rápido de generar, lento de pasar a VP8)
@@ -195,7 +206,7 @@ fn real_progress_line_cap_against_huge_output() {
 fn real_make_proxies_for_browser() {
     let (Ok(inp), Ok(outp)) = (std::env::var("CHAMVA_PROXY_IN"), std::env::var("CHAMVA_PROXY_OUT")) else { return };
     let Some(dir) = dev_dir() else { return };
-    let loc = locate::locate(&[(dir, Origin::Dev)]).unwrap();
+    let loc = dev_located(&dir);
     let st = locate::detect(&loc, &work("mk"), None);
     let outp = PathBuf::from(outp);
     std::fs::create_dir_all(&outp).unwrap();
@@ -224,4 +235,78 @@ fn real_make_proxies_for_browser() {
             assert!(r.is_ok());
         }
     }
+}
+
+/// Instalación real de la copia propia desde `binaries/ffmpeg` (como si fueran los
+/// recursos del instalador): SHA-256 del manifiesto, -L/-buildconf, omitir la
+/// segunda vez, y `locate` acepta la copia por el sello sin releer los binarios.
+#[test]
+fn real_install_skip_and_locate() {
+    use super::install::{self, Action};
+    let Some(dir) = dev_dir() else { return };
+    let Some(spec) = install::Spec::from_manifest() else {
+        eprintln!("(sin build verificado para esta plataforma: se omite)");
+        return;
+    };
+    let w = work("install");
+    let dest = w.join("ffmpeg");
+    let cwd = w.clone();
+    let check = move |d: &Path| -> Result<(), String> {
+        locate::license_check(&d.join(format!("ffmpeg{EXE}")), &d.join(format!("ffprobe{EXE}")), &cwd).map(|_| ())
+    };
+    let r = install::resolve(Some(&spec), Some(&dir), &dest, &check);
+    assert_eq!(r.action, Action::Installed, "{r:?}");
+    let t = Instant::now();
+    assert_eq!(install::resolve(Some(&spec), Some(&dir), &dest, &check).action, Action::Skipped);
+    assert!(t.elapsed() < Duration::from_millis(500), "omitir debe ser barato: {:?}", t.elapsed());
+    let loc = locate::locate(&[(dest.clone(), Origin::Bundled, Check::Stamp)]).unwrap();
+    assert_eq!(loc.origin, Origin::Bundled);
+    let st = locate::detect(&loc, &w, None);
+    assert!(st.available, "{:?}", st.reason);
+    assert!(st.license_text.as_deref().unwrap_or("").to_ascii_uppercase().contains("GNU LESSER GENERAL PUBLIC LICENSE"));
+    // los recursos también pasan la verificación completa (respaldo si la copia falla)
+    assert!(locate::locate(&[(dir.clone(), Origin::Bundled, Check::FullHash)]).is_ok());
+}
+
+/// Con `CHAMVA_INSTALLED_FFMPEG=<datos locales>/com.chamva.editor/ffmpeg` (la copia que
+/// preparó la app de release): la acepta `locate` por el sello, como la app instalada, y
+/// hace probe + proxy (H.264 del sistema y VP8) de clips HEVC y ProRes sintéticos.
+#[test]
+fn real_installed_copy_probe_and_proxy() {
+    let Ok(dir) = std::env::var("CHAMVA_INSTALLED_FFMPEG") else { return };
+    if locate::manifest().is_blocked() {
+        eprintln!("(manifiesto bloqueado: no hay copia instalada que aceptar; se omite)");
+        return;
+    }
+    let loc = locate::locate(&[(PathBuf::from(dir), Origin::Bundled, Check::Stamp)]).expect("la copia instalada debe aceptarse por el sello");
+    let w = work("installed");
+    let st = locate::detect(&loc, &w, None);
+    assert!(st.available, "{:?}", st.reason);
+    assert_eq!(st.license.as_deref(), Some("LGPL-3.0-or-later"));
+    let clips = [
+        ("hevc.mp4", vec!["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-c:v", "libkvazaar", "-tag:v", "hvc1", "-c:a", "aac", "-shortest"], "hevc"),
+        ("prores.mov", vec!["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-c:v", "prores_ks", "-profile:v", "3", "-c:a", "pcm_s16le", "-shortest"], "prores"),
+    ];
+    for (name, extra, codec) in clips {
+        let src = w.join(name);
+        gen(&loc.ffmpeg, &w, &src, &extra);
+        let canon = validate_source(&src).unwrap();
+        let info = probe_ok(&loc.ffprobe, &w, &canon).unwrap();
+        assert_eq!(info.video.as_ref().unwrap().codec, codec);
+        for enc in [VideoEncoder::H264Mf, VideoEncoder::Libvpx] {
+            if cfg!(not(windows)) && enc == VideoEncoder::H264Mf {
+                continue;
+            }
+            let plan = ProxyPlan { encoder: enc, height: 360, kbps: 1200, fps: args::snap_fps(info.video.as_ref().unwrap().fps), hdr: None, has_audio: true };
+            let out = w.join(format!("{name}.{}.{}", enc.ffmpeg_name(), enc.container().ext()));
+            let tmp = out.with_extension("part");
+            let nm = NativeMedia::default();
+            let r = run_job(&nm, &loc.ffmpeg, args::proxy_args(&canon, &tmp, &plan), &w, tmp.clone(), &out, info.duration, args::MAX_PROXY_BYTES, &|_| {});
+            assert!(r.is_ok(), "{name} → {}: {r:?}", enc.ffmpeg_name());
+            let pi = probe_ok(&loc.ffprobe, &w, &validate_source(&out).unwrap()).unwrap();
+            eprintln!("{name} ({codec}) → {} : {} {}x{} {:.2}s", enc.ffmpeg_name(), pi.video.as_ref().unwrap().codec, pi.video.as_ref().unwrap().width, pi.video.as_ref().unwrap().height, pi.duration);
+            assert_eq!(pi.video.as_ref().unwrap().height, 360);
+        }
+    }
+    let _ = std::fs::remove_dir_all(&w);
 }

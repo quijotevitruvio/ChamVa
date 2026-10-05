@@ -1,4 +1,4 @@
-// V10 · ffmpeg nativo en escritorio (LGPL). Seguridad y licencia: docs/seguridad-ffmpeg.md.
+// V10 · ffmpeg nativo en escritorio (v0.9.0: no incluido). Seguridad y licencia: docs/seguridad-ffmpeg.md.
 export * from './types';
 export * from './pure';
 export * from './bridge';

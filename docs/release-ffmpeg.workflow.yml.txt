@@ -1,0 +1,95 @@
+# REFERENCIA, NO ES UN WORKFLOW (no está en .github/workflows y no se ejecuta).
+# Pasos de CI con FFmpeg preparados para el build BtbN, DESCARTADO por licencias mixtas
+# (docs/seguridad-ffmpeg.md). Para v0.9.1: cambiar al build propio y rehacer los textos de
+# licencia («LGPL» abajo es del build descartado) tras repetir la auditoría.
+
+# Compila los instaladores de Windows, Linux y macOS y publica un GitHub Release
+# (borrador) cada vez que se pushea un tag v* — o manualmente desde la pestaña Actions.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest # NSIS .exe + .msi, con FFmpeg LGPL (docs/release-ffmpeg.md)
+            args: '--config src-tauri/tauri.ffmpeg.conf.json'
+          - platform: ubuntu-22.04 # .deb + .rpm + .AppImage (22.04 = glibc compatible con más distros)
+            args: ''
+          - platform: macos-latest # .dmg universal (Intel + Apple Silicon)
+            args: '--target universal-apple-darwin'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Dependencias de Linux (webkit, appindicator, rsvg)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev
+
+      - run: pnpm install --frozen-lockfile
+
+      # FFmpeg LGPL solo en Windows. La caché guarda el zip; el script lo
+      # verifica SIEMPRE (SHA-256 del zip y de cada archivo, -L y -buildconf)
+      # y sale con error si no coincide: entonces el job falla y no se publica.
+      - name: Caché del zip de FFmpeg (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg-cache
+          key: ffmpeg-lgpl-${{ runner.os }}-${{ hashFiles('src-tauri/ffmpeg-manifest.json') }}
+
+      - name: FFmpeg LGPL verificado (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: node scripts/fetch-ffmpeg.mjs --target x86_64-pc-windows-msvc --cache-dir "${{ runner.temp }}/ffmpeg-cache"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Firma de los paquetes del auto-actualizador (genera latest.json)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'ChamVa v__VERSION__'
+          releaseBody: |
+            Descarga el instalador para tu sistema:
+            - **Windows:** `.exe` (NSIS) o `.msi`
+            - **Linux:** `.AppImage` (universal), `.deb` (Debian/Ubuntu) o `.rpm` (Fedora)
+            - **macOS:** `.dmg` (Intel y Apple Silicon)
+
+            > El instalador de Windows incluye FFmpeg (LGPL-3.0-or-later, programa aparte). Su código
+            > fuente completo y el binario exacto: https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee
+
+            > Windows puede mostrar SmartScreen ("editor desconocido"): Más información → Ejecutar de todas formas.
+            > macOS: la app no está firmada; tras copiarla a Aplicaciones ejecuta
+            > `xattr -cr /Applications/ChamVa.app` o ábrela con clic derecho → Abrir.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

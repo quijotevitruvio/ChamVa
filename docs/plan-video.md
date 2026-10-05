@@ -327,7 +327,8 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
 
 - Sidecar de ffmpeg en Windows/macOS/Linux para **importar cualquier códec** (HEVC de iPhone, ProRes,
   MKV), proxies rápidos y exportación con codificador por hardware.
-- **Licencia:** build **LGPL** sin x264/x265/vid.stab; H.264 con los codificadores del sistema
+- **Licencia:** build **LGPL de verdad** (auditando también las bibliotecas externas, no solo `-L`)
+  sin x264/x265/vid.stab; H.264 con los codificadores del sistema
   (`h264_mf` en Windows, `h264_videotoolbox` en macOS, VA-API en Linux). Distribuido como binario
   aparte con aviso LGPL y fuente.
 - **Seguridad:** permisos del plugin `shell` limitados a ese binario y a argumentos validados (nunca
@@ -338,8 +339,16 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   crudos del original, exportación por hardware experimental) + diálogo «Convertir para editar».
   Build BtbN lgpl-shared n9.0.2 fijado por SHA-256 en `src-tauri/ffmpeg-manifest.json`; se empaqueta
   con `scripts/fetch-ffmpeg.mjs` y `--config src-tauri/tauri.ffmpeg.conf.json` (+150 MB sin comprimir).
-  Seguridad, licencia y pendientes: `docs/seguridad-ffmpeg.md`. No hecho: exportar desde el original
+  Seguridad, licencia y pendientes: `docs/seguridad-ffmpeg.md`. **Empaquetado en el instalador de
+  Windows** (CI solo `windows-latest`), copia propia «si es la misma versión, se omite / si cambió,
+  se repara» y Release de fuentes LGPL: `docs/release-ffmpeg.md`. No hecho: exportar desde el original
   dentro del exportador (la API `NativeFrameReader` existe), macOS/Linux.
+- **Corrección (2026-10-05): el build BtbN «lgpl-shared» NO es LGPL limpio** (FFTW GPL-2.0+ vía
+  chromaprint, zvbi GPL-2.0-only, opencore-amr Apache-2.0, libaribb24 LGPL-3.0) y se descartó:
+  manifiesto `"status": "blocked-license"`, la app no lo usa ni lo instala, y **v0.9.0 sale sin
+  FFmpeg** (CI como en v0.8.1; importación como en v0.8.1, con aviso «conviértelo a MP4 H.264»).
+  **v0.9.1:** build propio con `--disable-chromaprint --disable-libzvbi`, auditoría repetida y
+  Release de fuentes; CI de referencia en `docs/release-ffmpeg.workflow.yml.txt`.
 
 ### Después
 

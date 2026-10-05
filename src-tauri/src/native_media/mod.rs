@@ -1,8 +1,11 @@
-//! V10 · ffmpeg nativo en escritorio (LGPL). Ver `docs/seguridad-ffmpeg.md`.
+//! V10 · ffmpeg nativo en escritorio. Ver `docs/seguridad-ffmpeg.md`.
+//! v0.9.0 no incluye ningún FFmpeg: el build fijado está bloqueado en el manifiesto
+//! (licencias mixtas) y todo esto responde «no disponible», como en web/Android.
 //!
 //! SUPERFICIE DE ATAQUE (resumen; el detalle está en cada submódulo):
 //! - Binarios: solo `ffmpeg`/`ffprobe` de rutas fijas (`locate.rs`), verificados
-//!   como LGPL antes del primer uso. No se usa el plugin `shell` ni el PATH.
+//!   (SHA-256 del manifiesto, nunca uno bloqueado, y `-L`/`-buildconf` sin
+//!   `--enable-gpl`/`--enable-nonfree`) antes del primer uso. No se usa el plugin `shell` ni el PATH.
 //! - Entradas: la interfaz no envía rutas. Los archivos se registran desde el
 //!   diálogo nativo abierto en Rust o desde el evento nativo de soltar, se
 //!   validan (`validate.rs`) y la interfaz recibe un TOKEN opaco. Los comandos
@@ -19,6 +22,7 @@
 
 pub mod args;
 pub mod cache;
+pub mod install;
 pub mod locate;
 pub mod probe;
 pub mod process;
@@ -98,11 +102,38 @@ struct Inner {
 #[derive(Default)]
 pub struct NativeMedia {
     inner: Mutex<Inner>,
+    /// resultado de «verificar y omitir / reparar» la copia propia (una vez por sesión)
+    install: Mutex<Option<install::Report>>,
 }
 
 impl NativeMedia {
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Prepara la copia propia de FFmpeg (ver `install.rs`). Barato si ya coincide.
+    /// Se llama al arrancar (en segundo plano) y antes de la primera detección;
+    /// el mutex hace que dos llamadas a la vez no copien dos veces.
+    pub fn resolve_install<R: Runtime>(&self, app: &AppHandle<R>, force: bool) -> install::Report {
+        let mut g = self.install.lock().unwrap_or_else(|e| e.into_inner());
+        if !force {
+            if let Some(r) = g.as_ref() {
+                return r.clone();
+            }
+        }
+        let r = match (user_dir(app), dirs(app)) {
+            (Some(dest), Ok(d)) => {
+                let res = app.path().resource_dir().ok().map(|r| r.join("ffmpeg"));
+                let cwd = d.tmp.clone();
+                let check = move |dir: &Path| -> Result<(), String> {
+                    locate::license_check(&dir.join(format!("ffmpeg{}", locate::EXE)), &dir.join(format!("ffprobe{}", locate::EXE)), &cwd).map(|_| ())
+                };
+                install::resolve(install::Spec::from_manifest().as_ref(), res.as_deref(), &dest, &check)
+            }
+            _ => install::Report { action: install::Action::Failed, detail: Some("no hay carpeta de datos de la app".into()) },
+        };
+        *g = Some(r.clone());
+        r
     }
 
     /// Ruta del evento nativo de soltar (la da el sistema operativo, no la interfaz).
@@ -202,6 +233,14 @@ fn user_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
 /// Detecta (una vez por sesión, salvo `force`) y devuelve el binario verificado.
 fn ensure<R: Runtime>(app: &AppHandle<R>, force: bool) -> Result<(Located, NativeStatus), NativeStatus> {
     let st = app.state::<NativeMedia>();
+    if !force {
+        if let Some(d) = &st.lock().detected {
+            return d.clone();
+        }
+    }
+    // copia propia: omitir si coincide, reparar desde los recursos si no
+    // (fuera del candado principal: una copia de 150 MB no bloquea otros comandos)
+    let report = st.resolve_install(app, force);
     let mut g = st.lock();
     if !force {
         if let Some(d) = &g.detected {
@@ -221,6 +260,16 @@ fn ensure<R: Runtime>(app: &AppHandle<R>, force: bool) -> Result<(Located, Nativ
             Err(status)
         }
     })();
+    let res = match res {
+        Ok((l, mut s)) => {
+            s.install = Some(report);
+            Ok((l, s))
+        }
+        Err(mut s) => {
+            s.install = Some(report);
+            Err(s)
+        }
+    };
     g.detected = Some(res.clone());
     if force {
         g.hw_tested = None;

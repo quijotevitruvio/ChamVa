@@ -21,15 +21,27 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 }
 
 let statusP: Promise<NativeStatus | null> | null = null;
+let installNoticeShown = false;
 
 /** Estado de ffmpeg nativo (se detecta una vez por sesión). null fuera del escritorio. */
 export function nativeStatus(refresh = false): Promise<NativeStatus | null> {
   if (!isNativeDesktop()) return Promise.resolve(null);
   if (!statusP || refresh) {
-    statusP = call<NativeStatus>('native_media_status', { refresh }).catch((e) => {
-      console.warn('[native-media] estado no disponible', e);
-      return null;
-    });
+    statusP = call<NativeStatus>('native_media_status', { refresh })
+      .then((s) => {
+        // aviso único si hubo que reparar (o no se pudo preparar) la copia propia de FFmpeg
+        const a = s?.install?.action;
+        if (!installNoticeShown && (a === 'repaired' || a === 'failed')) {
+          installNoticeShown = true;
+          const msg = a === 'repaired' ? 'FFmpeg: se reparó su copia desde el instalador.' : `FFmpeg: no se pudo preparar su copia (${s.install?.detail ?? 'error'}).`;
+          void import('../../ui/toast').then((m) => m.toast(msg, a === 'repaired' ? 'info' : 'error')).catch(() => {});
+        }
+        return s;
+      })
+      .catch((e) => {
+        console.warn('[native-media] estado no disponible', e);
+        return null;
+      });
   }
   return statusP;
 }
