@@ -147,3 +147,20 @@ const s = VM.snapClipStart(p, clipId, propuesto, { threshold: 0.1, playhead });
 - **Ritmo** (`audio/beats.ts`, `engine/beatAnalysis.ts`): flujo espectral + autocorrelación + programación dinámica; las marcas salen en la regla y, con `audio.beatSnap`, entran en `snapTime` (objetivo `'beat'`).
 - **Exportar solo audio** (`engine/audioExport.ts`): WAV 16/24 bits (dither TPDF), OGG/Opus (`AudioEncoder` + contenedor Ogg propio, `ogg.ts`) y M4A/AAC (`AudioEncoder` + mp4-muxer);
   si el equipo no codifica Opus/AAC se degrada con aviso. MP3 no se ofrece: no hay codificador JS con licencia permisiva verificada (lamejs es LGPL).
+
+## V9a: quitar fondo por fotograma y estabilización (campos aditivos: el formato sigue siendo `v: 2`, sin migración)
+- Dos efectos «de origen» en la pila normal `Clip.fx` (solo clips de video): `bgremove` y `stabilize` (`fx/effects.ts`, `AI_FX_DEFS`,
+  categoría `IA`, fuera de `FX_CATEGORIES` hasta que llegue su interfaz). `sanitizeFxList` los lee como cualquier efecto (idempotente);
+  un proyecto sin ellos no cambia. Parámetros: `bgremove { mode quality|fast, bg transparent|color|image|blur, color, bgMedia, feather (px a
+  720), choke −0,5..0,5, smooth 0..1 (coherencia temporal), blur }`; `stabilize { smooth s (0,1–3), maxZoom 1–1,5, rotation on|off }`.
+  Admiten fotogramas clave (`fx.<id>.<parámetro>`).
+- **No pasan por la pila de píxeles**: `composeFrame` los aplica al FOTOGRAMA DEL ARCHIVO antes de la transformación del clip
+  (`ai/aiFrame.ts`, `processAiFrame`): estabilizar (traslación + giro + zoom de recorte) y luego la máscara (`destination-in`) y el fondo
+  (`destination-over`) con la MISMA transformación. Así exportación, vista previa y miniaturas dan lo mismo (diferencia medida 0).
+- **Cachés en memoria por sesión** (`ai/cache.ts`): máscaras por `matteKey(medio, modo)` y fotograma del archivo (n = round(t·30));
+  movimiento por `stabKey(medio)`. La composición SOLO lee: sin cálculo se ve el original, `aiNoticesAt(p, t)` lo dice en la vista previa y
+  `renderProject` avisa con `aiCoverageNotices` (porcentaje calculado por clip). Calcular otra vez solo hace lo que falta. Tope 768 MB.
+- Cálculo (`ai/analyze.ts`): `computeMatte(p, clipId, { engine, mode, range, signal, onProgress })` (MODNet en `ai/matte.worker.ts`, red
+  cortada) y `computeStabilization(p, clipId, …)`; progreso con ETA (media móvil), cancelación y estimación previa (`estimateClipMatte`,
+  `estimateStab`). Lógica pura con pruebas: `ai/matteMath.ts` (resolución por modo, suavizado temporal bilateral, mediana 3×3, borde, IoU,
+  parpadeo), `ai/stabMath.ts` (movimiento, trayectoria, gaussiana con reflexión impar, correcciones y zoom). Banco: `/dev/ai-bench.html`.

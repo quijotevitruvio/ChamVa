@@ -52,3 +52,6 @@ src-tauri/gen/android/keystore.properties
 
 # Config local de Claude Code
 .claude/settings.local.json
+
+# FFmpeg LGPL (V10): se descarga y verifica con scripts/fetch-ffmpeg.mjs; nunca a git
+src-tauri/binaries/

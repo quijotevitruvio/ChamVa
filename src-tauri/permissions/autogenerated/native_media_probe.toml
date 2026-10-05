@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-media-probe"
+description = "Enables the native_media_probe command without any pre-configured scope."
+commands.allow = ["native_media_probe"]
+
+[[permission]]
+identifier = "deny-native-media-probe"
+description = "Denies the native_media_probe command without any pre-configured scope."
+commands.deny = ["native_media_probe"]

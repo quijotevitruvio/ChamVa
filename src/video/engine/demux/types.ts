@@ -40,6 +40,12 @@ export interface DemuxedFile {
   duration: number;
   video?: VideoTrackInfo;
   audio?: AudioTrackInfo;
+  /**
+   * Pistas que se descartaron por códec no compatible («audio:A_AC3», «video:apcn»…).
+   * Si hay alguna, el archivo se abre pero incompleto (p. ej. sin sonido): la
+   * importación lo avisa y en escritorio ofrece convertirlo (V10).
+   */
+  skipped?: string[];
 }
 
 export class UnsupportedMediaError extends Error {

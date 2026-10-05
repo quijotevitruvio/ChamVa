@@ -28,6 +28,7 @@ import { useExporter } from './video/useExporter';
 import { MixerPanel } from './video/MixerPanel';
 import { useLoudnessAnalysis } from './video/loudness';
 import { audioDuration } from '../video/engine/audioExport';
+import { ProxyDialog } from '../video/native/ProxyDialog';
 import './video/video.css';
 
 function useMediaQuery(q: string): boolean {
@@ -515,6 +516,29 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             <button type="button" role="menuitem" autoFocus onClick={() => openAuto('clip')}>✨ Subtítulos automáticos de este clip…</button>
           </li>
         </ul>
+      )}
+      {vp.proxyRequest && (
+        <ProxyDialog
+          files={vp.proxyRequest.items.map((i) => ({ name: i.file.name, reason: i.reason, playable: i.playable }))}
+          missing={vp.proxyRequest.missing}
+          onClose={() => vp.setProxyRequest(null)}
+          onImportAsIs={async () => {
+            const req = vp.proxyRequest;
+            if (!req) return;
+            const ok = req.items.filter((i) => i.playable);
+            const rest = req.items.filter((i) => !i.playable);
+            vp.setProxyRequest(rest.length ? { ...req, items: rest } : null);
+            const r = await vp.importFiles(ok.map((i) => i.file), req.place, { asIs: true });
+            if (r.clipIds.length) setSelection(r.clipIds.slice(-1));
+          }}
+          onConverted={async (file) => {
+            const req = vp.proxyRequest;
+            const empty = !vp.histRef.current.present.tracks.some((t) => t.clips.length);
+            const place = req?.place ? req.place : empty ? {} : false;
+            const r = await vp.importFiles([file], place, { asIs: true });
+            if (r.clipIds.length) setSelection(r.clipIds.slice(-1));
+          }}
+        />
       )}
       {auto && (
         <AutoSubsDialog

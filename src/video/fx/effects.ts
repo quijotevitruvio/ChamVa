@@ -9,7 +9,7 @@
 //  - Parámetros que faltan → valor por defecto del catálogo; fuera de rango → se limitan.
 import type { FxInstance, FxParams } from '../model/types';
 
-export type FxCategory = 'Color' | 'Imagen' | 'Forma' | 'Croma';
+export type FxCategory = 'Color' | 'Imagen' | 'Forma' | 'Croma' | 'IA';
 
 export interface ParamChoice {
   v: string;
@@ -138,7 +138,43 @@ export const FX_DEFS: FxDef[] = [
   { type: 'chroma', label: 'Croma (clave de color)', category: 'Croma', binary: true, params: [color('color', 'Color a quitar', '#00ff00'), num('tol', 'Tolerancia', 0, 1, 0.35, 0.01, '', true), num('soft', 'Suavizado', 0, 1, 0.15, 0.01, '', true), num('spill', 'Reducir reflejo', 0, 1, 0.5, 0.01, '', true)] },
 ];
 
-export const fxDef = (type: string): FxDef | undefined => FX_DEFS.find((d) => d.type === type);
+/**
+ * V9: efectos «de origen» (IA y análisis). NO pasan por la pila de píxeles: se aplican al FOTOGRAMA DEL ARCHIVO antes de
+ * la transformación del clip (`video/ai/aiFrame.ts`, llamado desde `composeFrame`), leyendo de una caché calculada aparte
+ * (máscaras por fotograma, movimiento de cámara). Sin cálculo previo, el clip se ve tal cual y se avisa.
+ */
+export const AI_FX_DEFS: FxDef[] = [
+  {
+    type: 'bgremove',
+    label: 'Quitar fondo (IA)',
+    category: 'IA',
+    binary: true,
+    params: [
+      choice('mode', 'Modo', 'quality', [['quality', 'Calidad'], ['fast', 'Rápido']]),
+      choice('bg', 'Fondo', 'transparent', [['transparent', 'Transparente'], ['color', 'Color'], ['image', 'Imagen'], ['blur', 'Desenfocar el original']]),
+      color('color', 'Color de fondo', '#00b140'),
+      { key: 'bgMedia', label: 'Imagen de fondo', kind: 'choice', def: '', choices: [], fixed: true },
+      num('feather', 'Suavizar borde', 0, 20, 2, 0.5, ' px', true),
+      num('choke', 'Contraer / expandir', -0.5, 0.5, 0, 0.01, '', true),
+      num('smooth', 'Coherencia temporal', 0, 1, 0.6, 0.01, '', true),
+      num('blur', 'Desenfoque del fondo', 0, 60, 18, 1, ' px', true),
+    ],
+  },
+  {
+    type: 'stabilize',
+    label: 'Estabilizar',
+    category: 'IA',
+    binary: true,
+    params: [
+      num('smooth', 'Suavizado', 0.1, 3, 1, 0.05, ' s', true),
+      num('maxZoom', 'Recorte máximo', 1, 1.5, 1.2, 0.01, '×', true),
+      choice('rotation', 'Corregir giro', 'on', [['on', 'Sí'], ['off', 'No']]),
+    ],
+  },
+];
+export const AI_FX = new Set(AI_FX_DEFS.map((d) => d.type));
+
+export const fxDef = (type: string): FxDef | undefined => FX_DEFS.find((d) => d.type === type) ?? AI_FX_DEFS.find((d) => d.type === type);
 export const FX_CATEGORIES: FxCategory[] = ['Color', 'Imagen', 'Forma', 'Croma'];
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);

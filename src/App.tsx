@@ -46,8 +46,7 @@ import {
   type SavedDesign,
   type Backup,
 } from './io/designs';
-import { needsProcessing, processImage } from './editor/core/imageProcessing';
-import { preloadFxImages } from './editor/core/imageEffects';
+import { cropPatch, fullSize, snap, validCrop } from './editor/core/imageCrop';
 import { FiltersPanel } from './ui/FiltersPanel';
 import { PropertiesPanel } from './ui/PropertiesPanel';
 import { RailPanels } from './ui/RailPanels';
@@ -108,17 +107,6 @@ const DonateDialog = lazy(() => import('./ui/LicenseDialogs').then((m) => ({ def
 const RequestLicenseDialog = lazy(() => import('./ui/LicenseDialogs').then((m) => ({ default: m.RequestLicenseDialog })));
 const lazyFallback = <div className="lazy-fallback">Cargando…</div>;
 
-function loadImageElement(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
-    img.src = src;
-  });
-}
-
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
 // Enganche del store con el historial de deshacer persistente (io/undoStore.ts).
 const UNDO_API: UndoStoreApi = {
   getState: () => useEditor.getState(),
@@ -154,7 +142,6 @@ export default function App() {
   const updateLayer = useEditor((s) => s.updateLayer);
   const addProcessedLayer = useEditor((s) => s.addProcessedLayer);
   const setBackground = useEditor((s) => s.setBackground);
-  const replaceLayerImage = useEditor((s) => s.replaceLayerImage);
   const cropMode = useEditor((s) => s.cropMode);
   const cropRect = useEditor((s) => s.cropRect);
   const cancelCrop = useEditor((s) => s.cancelCrop);
@@ -881,13 +868,18 @@ export default function App() {
         setUpMsg(stage === 'fetch' ? `Descargando modelo… ${pct}%` : `Mejorando… ${pct}%`);
       });
       // Mantener el tamaño visible: subir resolución, reducir escala en proporción.
+      // Con recorte, el recorte (fracciones) sigue valiendo: el tamaño visible es la parte de la nueva.
+      const c = validCrop(selected.crop);
+      const nw = c ? snap(res.width * c.w) : res.width;
+      const nh = c ? snap(res.height * c.h) : res.height;
       updateLayer(selected.id, {
         src: res.dataUrl,
         originalSrc: undefined,
-        naturalWidth: res.width,
-        naturalHeight: res.height,
-        scaleX: (selected.scaleX * selected.naturalWidth) / res.width,
-        scaleY: (selected.scaleY * selected.naturalHeight) / res.height,
+        crop: c,
+        naturalWidth: nw,
+        naturalHeight: nh,
+        scaleX: (selected.scaleX * selected.naturalWidth) / nw,
+        scaleY: (selected.scaleY * selected.naturalHeight) / nh,
       });
     } catch (e) {
       if ((e as Error).message === 'cancelado') toast('Operación cancelada', 'info');
@@ -901,33 +893,25 @@ export default function App() {
     }
   };
 
-  const onApplyCrop = async () => {
+  // Recorte NO destructivo: la capa conserva `src` entero y solo cambia `crop` (4 números),
+  // su tamaño natural visible y su origen (la imagen no se mueve en el lienzo). Ajustes, filtros,
+  // volteo y máscara se conservan. Un solo paso de deshacer.
+  const onApplyCrop = () => {
     if (!selected || selected.type !== 'image' || !cropRect) return;
-    const img = await loadImageElement(selected.src);
-    await preloadFxImages(selected.adjust);
-    const processed = needsProcessing(selected) ? processImage(img, selected) : img;
-    let sx = (cropRect.x - selected.x) / selected.scaleX;
-    let sy = (cropRect.y - selected.y) / selected.scaleY;
-    let sw = cropRect.width / selected.scaleX;
-    let sh = cropRect.height / selected.scaleY;
-    sx = clamp(sx, 0, selected.naturalWidth);
-    sy = clamp(sy, 0, selected.naturalHeight);
-    sw = clamp(sw, 1, selected.naturalWidth - sx);
-    sh = clamp(sh, 1, selected.naturalHeight - sy);
-    const w = Math.round(sw);
-    const h = Math.round(sh);
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext('2d')!.drawImage(processed, sx, sy, sw, sh, 0, 0, w, h);
-    replaceLayerImage(selected.id, {
-      src: canvas.toDataURL('image/png'),
-      naturalWidth: w,
-      naturalHeight: h,
-      x: selected.x + sx * selected.scaleX,
-      y: selected.y + sy * selected.scaleY,
-    });
+    const patch = cropPatch(selected, { x: cropRect.x, y: cropRect.y, w: cropRect.width, h: cropRect.height });
+    if (!patch) {
+      toast('El recorte queda fuera de la imagen.', 'info');
+      return;
+    }
+    updateLayer(selected.id, patch);
     cancelCrop();
+  };
+  // Restablecer: el marco vuelve a la imagen completa (se aplica con «Aplicar»).
+  const onResetCrop = () => {
+    if (!selected || selected.type !== 'image') return;
+    const f = fullSize(selected);
+    setCropAspect(null);
+    useEditor.getState().setCropRect({ x: 0, y: 0, width: f.w, height: f.h });
   };
 
   const importFiles = async (files: FileList | File[] | null, addToCanvas: boolean) => {
@@ -1670,6 +1654,11 @@ export default function App() {
               <option value={3 / 2}>3:2</option>
               <option value={2 / 3}>2:3</option>
             </select>
+            {selected?.type === 'image' && (
+              <button onClick={onResetCrop} title="Vuelve a la imagen completa (luego, Aplicar)">
+                ↺ Restablecer recorte
+              </button>
+            )}
             <button className="primary" onClick={onApplyCrop}>
               ✓ Aplicar recorte
             </button>

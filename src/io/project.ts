@@ -3,6 +3,7 @@ import { downloadBlob } from './export';
 import { normalizeLayoutFields } from '../editor/core/layout';
 import { normalizePattern } from '../editor/core/patterns';
 import { normalizeOrganization } from '../editor/core/organize';
+import { normalizeImageCrops } from '../editor/core/imageCrop';
 import { isUnit, isValidDpi } from '../editor/core/units';
 
 // Extensión propia (JSON por dentro). Permite asociar la app a estos archivos
@@ -51,6 +52,7 @@ function normalizeBackground(doc: Doc): Doc {
     doc.background = { type: 'pattern', pattern: normalizePattern(doc.background.pattern) };
   normalizeLayoutFields(doc);
   normalizeUnits(doc);
+  if (Array.isArray(doc.layers)) normalizeImageCrops(doc);
   const g = (doc as { guides?: unknown }).guides as { x?: unknown; y?: unknown } | undefined;
   if (g && typeof g === 'object') {
     const nums = (a: unknown) =>

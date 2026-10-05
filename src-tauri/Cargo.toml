@@ -28,4 +28,6 @@ tauri-plugin-fs = "2"
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# V10: SHA-256 de la caché de proxies y de la verificación de ffmpeg (MIT/Apache-2.0)
+sha2 = "0.10"
 

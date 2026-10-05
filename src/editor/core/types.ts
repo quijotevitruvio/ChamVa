@@ -219,11 +219,23 @@ export interface ImageLayer extends LayerBase, LayerShadow {
   flipX: boolean;
   flipY: boolean;
   maskShape?: ShapeKind; // recorta la imagen a una forma (marco)
+  // Recorte no destructivo (imageCrop.ts): región visible de `src`, en fracciones 0..1 de la imagen
+  // completa y SIN volteo. Con recorte, naturalWidth/Height son las del trozo visible. Sin campo = entera.
+  crop?: ImageCrop;
   iconName?: string; // si viene de Iconify, permite recolorear
   chart?: ChartSpec; // gráfica reeditable (se re-renderiza a src)
   table?: TableSpec; // tabla reeditable (se re-renderiza a src)
   reflection?: ImageReflection; // reflejo en el suelo (no destructivo)
   castShadow?: ImageCastShadow; // sombra proyectada sobre el suelo (no destructivo)
+}
+
+// Recorte de la imagen fuente en fracciones (0..1) de su ancho y alto. Fracciones y no píxeles para
+// que siga alineado si `src` cambia de resolución (Optimizar HD, quitar fondo, SVG, QR).
+export interface ImageCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 // Reflejo en suelo: copia volteada bajo la capa con degradado de desvanecimiento.

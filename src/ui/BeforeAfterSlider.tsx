@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { validCrop } from '../editor/core/imageCrop';
 import { create } from 'zustand';
 import type Konva from 'konva';
 import { useEditor } from '../editor/state/store';
@@ -85,6 +86,7 @@ export function BeforeAfterSlider({
   };
 
   const before = layer.originalSrc ?? layer.src;
+  const crop = validCrop(layer.crop);
   const sx = Math.hypot(a, b) || 1;
   const sy = Math.hypot(c, d) || 1;
   const flip = `scale(${layer.flipX ? -1 : 1}, ${layer.flipY ? -1 : 1})`;
@@ -97,7 +99,27 @@ export function BeforeAfterSlider({
           style={{ width: w, height: h, transform: `matrix(${a},${b},${c},${d},${e},${f})` }}
         >
           <div className="ba-before" style={{ clipPath: `inset(0 ${(1 - pos) * 100}% 0 0)` }}>
-            <img src={before} alt="" draggable={false} style={{ transform: flip }} />
+            {crop ? (
+              // Recorte no destructivo: la imagen completa desplazada dentro del marco; el volteo
+              // se aplica al trozo (como processImage).
+              <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', transform: flip }}>
+                <img
+                  src={before}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    position: 'absolute',
+                    maxWidth: 'none',
+                    width: w / crop.w,
+                    height: h / crop.h,
+                    left: (-crop.x * w) / crop.w,
+                    top: (-crop.y * h) / crop.h,
+                  }}
+                />
+              </div>
+            ) : (
+              <img src={before} alt="" draggable={false} style={{ transform: flip }} />
+            )}
           </div>
           <div className="ba-bar" style={{ left: `${pos * 100}%` }}>
             <div className="ba-line" style={{ width: 2 / sx, left: -1 / sx }} />

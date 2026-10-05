@@ -1,0 +1,45 @@
+{
+  "$comment": "Build de FFmpeg LGPL fijado para ChamVa (V10). Lo leen scripts/fetch-ffmpeg.mjs (descarga y verificación) y src-tauri/src/native_media/locate.rs (copia instalada a mano por el usuario). Cambiarlo exige volver a verificar licencia (-L, -buildconf) y hashes: ver docs/seguridad-ffmpeg.md.",
+  "version": "n9.0.2-22-g46d8f462ee",
+  "license": "LGPL-3.0-or-later",
+  "release": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-04-20-51",
+  "checksums": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/checksums.sha256",
+  "ffmpegSource": "https://github.com/FFmpeg/FFmpeg/tree/46d8f462ee",
+  "buildScripts": "https://github.com/BtbN/FFmpeg-Builds",
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-shared-9.0.zip",
+      "sha256": "feb93d768fe01ebb696d990c4f0c65add416c12e5e16fa73ad5643237e0e9e22",
+      "archive": "zip",
+      "binDir": "bin",
+      "verified": true,
+      "files": {
+        "ffmpeg.exe": "703a6b66a78b87ca86ae924d39746ad404bc749fd8b6a5a85a27240b4755e762",
+        "ffprobe.exe": "b774319a79ab5e9233d5e5bcdd11f53c2aab8d5a855914b0298ce044e0446c9e",
+        "avcodec-63.dll": "0298c02f3f3ef74de71513521a508f1a5b59554b6a5072cd9dd285b82cf5e98d",
+        "avdevice-63.dll": "7fb02e93f1966f915f674d7bc2023594b68efa93b5849c8016f850a32a9603ff",
+        "avfilter-12.dll": "5fc3d8725da60ee453e2bf0db9703f73ed204c94ebeb3b752323aadd821c3d21",
+        "avformat-63.dll": "805f7b414e089b2901bf2d0dffefcdcd7dce0094de393b0ea63ced05c00641ca",
+        "avutil-61.dll": "45c6b9a9bb5caa85245a00cda45ddb9907b16fd42226edf1a0ded85740ea3e53",
+        "swresample-7.dll": "a68f7ba37573bc940f4a045bf59c78f604e2392154b0356c155c4e9cd74c937a",
+        "swscale-10.dll": "6871e7fcc3c8d6bda86a4f58d837f62711e70243e36732ce76973a07f364bf92"
+      }
+    },
+    "aarch64-pc-windows-msvc": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/ffmpeg-n9.0.2-22-g46d8f462ee-winarm64-lgpl-shared-9.0.zip",
+      "sha256": "c53e84d67e4a7dc9a01cbecc5548432a7c2dfabab4d2f8005ddbd1a19c3902ff",
+      "archive": "zip",
+      "binDir": "bin",
+      "verified": false,
+      "files": null
+    },
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/ffmpeg-n9.0.2-22-g46d8f462ee-linux64-lgpl-9.0.tar.xz",
+      "sha256": "ebea48779d53b45722ef7a55e62a5d6fc479663580252b363d5d3c0a16618992",
+      "archive": "tar.xz",
+      "binDir": "bin",
+      "verified": false,
+      "files": null
+    }
+  }
+}

@@ -18,6 +18,7 @@ import { GradientBg, GrainBg } from './BackgroundFx';
 import { animTotalFor, layerAnimAt } from '../core/animations';
 import { getCheckerboard } from './useImage';
 import { ImageLayerNode } from './ImageLayerNode';
+import { CropOverlay } from './CropOverlay';
 import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
 import { StrokeLayerNode } from './StrokeLayerNode';
@@ -74,8 +75,6 @@ export function PageStage({
   const updateLayer = useEditor((s) => s.updateLayer);
   const cropMode = useEditor((s) => s.cropMode);
   const cropRect = useEditor((s) => s.cropRect);
-  const cropAspect = useEditor((s) => s.cropAspect);
-  const setCropRect = useEditor((s) => s.setCropRect);
   const setSelRect = useEditor((s) => s.setSelRect);
   const setZoom = useEditor((s) => s.setZoom);
   const showGrid = useEditor((s) => s.showGrid);
@@ -102,7 +101,6 @@ export function PageStage({
   const stageRef = bridge.stageRef;
   const transformerRef = useRef<Konva.Transformer>(null);
   const cropRectRef = useRef<Konva.Rect>(null);
-  const cropTrRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Map<string, Konva.Node>>(new Map());
   const [checker] = useState(() => getCheckerboard());
   const [guides, setGuides] = useState<{ vx: number[]; hy: number[] }>({
@@ -495,14 +493,6 @@ export function PageStage({
     }
   };
 
-  // Conectar el Transformer de recorte al rectángulo de recorte.
-  useEffect(() => {
-    const tr = cropTrRef.current;
-    if (!tr) return;
-    tr.nodes(cropMode && cropRectRef.current ? [cropRectRef.current] : []);
-    tr.getLayer()?.batchDraw();
-  }, [cropMode, cropRect]);
-
   // Cuadrícula: el paso más pequeño de la lista que deja ≥ 18 px en pantalla.
   const gridStep = gridStepFor(scale);
   const drawGrid = (major: boolean) => (ctx: Konva.Context, shape: Konva.Shape) => {
@@ -707,12 +697,13 @@ export function PageStage({
         onMouseDown={(e) => {
           // Click en vacío = deseleccionar (con Shift se conserva) y empieza la caja de selección.
           if (e.target !== e.target.getStage() || tool !== 'select') return;
+          if (useEditor.getState().cropMode) return; // recortando: un clic fuera no suelta la capa
           if (!e.evt.shiftKey) selectLayer(null);
           startMarquee(e);
         }}
         onTap={(e) => {
           // Tocar fuera de las capas deselecciona.
-          if (e.target === e.target.getStage()) selectLayer(null);
+          if (e.target === e.target.getStage() && !useEditor.getState().cropMode) selectLayer(null);
         }}
         onDblTap={(e) => {
           // Doble toque en vacío: alternar entre ajustar y acercar.
@@ -914,54 +905,7 @@ export function PageStage({
             </Label>
           ))}
 
-          {cropMode && cropRect && (
-            <>
-              <Rect
-                ref={cropRectRef}
-                x={cropRect.x}
-                y={cropRect.y}
-                width={cropRect.width}
-                height={cropRect.height}
-                fill="rgba(128,128,128,0.18)"
-                stroke="#111111"
-                strokeWidth={2 / scale}
-                dash={[8 / scale, 6 / scale]}
-                draggable
-                onDragEnd={(e) =>
-                  setCropRect({
-                    x: e.target.x(),
-                    y: e.target.y(),
-                    width: cropRect.width,
-                    height: cropRect.height,
-                  })
-                }
-                onTransformEnd={() => {
-                  const node = cropRectRef.current;
-                  if (!node) return;
-                  const w = Math.max(8, node.width() * node.scaleX());
-                  let h = Math.max(8, node.height() * node.scaleY());
-                  if (cropAspect) h = w / cropAspect;
-                  node.scaleX(1);
-                  node.scaleY(1);
-                  node.width(w);
-                  node.height(h);
-                  setCropRect({ x: node.x(), y: node.y(), width: w, height: h });
-                }}
-              />
-              <Transformer
-                ref={cropTrRef}
-                rotateEnabled={false}
-                keepRatio={!!cropAspect}
-                boundBoxFunc={(oldBox, newBox) => {
-                  if (newBox.width < 8 || newBox.height < 8) return oldBox;
-                  if (cropAspect) {
-                    return { ...newBox, height: newBox.width / cropAspect };
-                  }
-                  return newBox;
-                }}
-              />
-            </>
-          )}
+          {cropMode && cropRect && <CropOverlay rectRef={cropRectRef} scale={scale} />}
         </Layer>
         {showGrid && (
           <Layer listening={false}>

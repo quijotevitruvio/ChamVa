@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-media-proxy"
+description = "Enables the native_media_proxy command without any pre-configured scope."
+commands.allow = ["native_media_proxy"]
+
+[[permission]]
+identifier = "deny-native-media-proxy"
+description = "Denies the native_media_proxy command without any pre-configured scope."
+commands.deny = ["native_media_proxy"]

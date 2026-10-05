@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-media-frames-close"
+description = "Enables the native_media_frames_close command without any pre-configured scope."
+commands.allow = ["native_media_frames_close"]
+
+[[permission]]
+identifier = "deny-native-media-frames-close"
+description = "Denies the native_media_frames_close command without any pre-configured scope."
+commands.deny = ["native_media_frames_close"]

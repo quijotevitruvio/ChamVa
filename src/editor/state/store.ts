@@ -17,6 +17,7 @@ import {
   type SavedTemplate,
 } from '../core/types';
 import { BRUSHES, buildStrokeGeometry } from '../core/brush';
+import { displayBox, fitAspect, fullSize } from '../core/imageCrop';
 import { jumpInHistory } from './historyLogic';
 import { swap, type PageHist } from './pageHistory';
 import { resolveDesignMeta, type DesignMeta } from './designIdentity';
@@ -146,6 +147,11 @@ function patchLayer(l: Layer, patch: Partial<Layer>): Layer {
   const p = patch as Partial<TextLayer>;
   if (l.type === 'text' && typeof p.text === 'string' && !('spans' in p)) {
     return { ...l, ...patch, spans: remapSpans(l.spans, l.text, p.text) } as Layer;
+  }
+  // Imagen recortada que recibe un tamaño natural nuevo sin recorte (otra gráfica, otra imagen):
+  // el recorte guardado ya no corresponde y deformaría la capa, así que se quita.
+  if (l.type === 'image' && l.crop && ('naturalWidth' in patch || 'naturalHeight' in patch) && !('crop' in patch)) {
+    return { ...l, ...patch, crop: undefined } as Layer;
   }
   return { ...l, ...patch } as Layer;
 }
@@ -292,7 +298,7 @@ export interface EditorState {
   // documento actual sea el que dejó la operación (docAfter).
   structUndo: StructUndo | null;
   cropMode: boolean;
-  cropRect: Rect | null;
+  cropRect: Rect | null; // marco LOCAL de la capa (unidades naturales de la imagen completa, volteada)
   cropAspect: number | null; // ancho/alto fijo, null = libre
   textEditNonce: number;
   animPlayNonce: number;
@@ -1740,6 +1746,7 @@ export const useEditor = create<EditorState>((set, get) => ({
                 ...l,
                 src: img.src,
                 originalSrc: undefined, // el recorte cambia dimensiones; ya no alinea
+                crop: undefined, // la imagen nueva ya viene horneada (con el recorte incluido)
                 naturalWidth: img.naturalWidth,
                 naturalHeight: img.naturalHeight,
                 x: img.x,
@@ -1786,7 +1793,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     }),
 
   selectLayer: (id) =>
-    set({ selectedId: id, selectedIds: id ? [id] : [], textSel: null }),
+    set((s) => ({
+      selectedId: id,
+      selectedIds: id ? [id] : [],
+      textSel: null,
+      // El recorte es de la capa seleccionada: si cambia la selección, se cancela.
+      ...(s.cropMode && id !== s.selectedId ? { cropMode: false, cropRect: null, cropAspect: null } : {}),
+    })),
 
   // Clic en el lienzo. Un grupo se selecciona entero; si la capa ya forma
   // parte de una selección múltiple se conserva (para poder arrastrar todo).
@@ -1797,10 +1810,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       const members = l?.groupId
         ? s.doc.layers.filter((x) => x.groupId === l.groupId).map((x) => x.id)
         : [id];
+      const endCrop = s.cropMode && id !== s.selectedId ? { cropMode: false, cropRect: null, cropAspect: null } : {};
       if (!additive) {
         if (s.selectedIds.length > 1 && s.selectedIds.includes(id))
-          return { selectedId: id };
-        return { selectedId: id, selectedIds: members, textSel: null };
+          return { selectedId: id, ...endCrop };
+        return { selectedId: id, selectedIds: members, textSel: null, ...endCrop };
       }
       const has = members.every((m) => s.selectedIds.includes(m));
       const selectedIds = has
@@ -2216,15 +2230,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       const l = s.doc.layers.find((x) => x.id === s.selectedId);
       if (!l || l.type !== 'image') return {};
+      // Marco local de la capa (unidades naturales de la imagen COMPLETA, ya volteada): el editor
+      // se abre sobre la imagen entera con el recorte actual precargado.
+      const d = displayBox(l);
       return {
         cropMode: true,
         cropAspect: null,
-        cropRect: {
-          x: l.x,
-          y: l.y,
-          width: l.naturalWidth * l.scaleX,
-          height: l.naturalHeight * l.scaleY,
-        },
+        cropRect: { x: d.x, y: d.y, width: d.w, height: d.h },
       };
     }),
 
@@ -2233,11 +2245,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   setCropAspect: (aspect) =>
     set((s) => {
       if (!s.cropRect || !aspect) return { cropAspect: aspect };
-      // Reajusta el rect actual al nuevo aspecto, conservando el ancho.
-      const width = s.cropRect.width;
+      // Reajusta el rect actual a la proporción VISTA (con la escala de la capa), conservando el
+      // ancho y sin salirse de la imagen.
+      const l = s.doc.layers.find((x) => x.id === s.selectedId);
+      const r = s.cropRect;
+      if (!l || l.type !== 'image') return { cropAspect: aspect, cropRect: { ...r, height: r.width / aspect } };
+      const b = fitAspect({ x: r.x, y: r.y, w: r.width, h: r.height }, aspect, l.scaleX, l.scaleY, fullSize(l));
       return {
         cropAspect: aspect,
-        cropRect: { ...s.cropRect, height: width / aspect },
+        cropRect: { x: b.x, y: b.y, width: b.w, height: b.h },
       };
     }),
 

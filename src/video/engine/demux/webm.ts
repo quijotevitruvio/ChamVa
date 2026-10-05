@@ -319,16 +319,23 @@ export async function demuxWebm(blob: Blob): Promise<DemuxedFile> {
 
   let video: VideoTrackInfo | undefined;
   let audio: AudioTrackInfo | undefined;
+  const skipped: string[] = [];
   for (const t of tracks) {
     const list = rows.get(t.number);
     if (!list || !list.length) continue;
     if (t.type === 1 && !video) {
       const codec = webmVideoCodec(t);
-      if (!codec) continue;
+      if (!codec) {
+        skipped.push(`video:${t.codecId}`);
+        continue;
+      }
       video = { kind: 'video', codec, description: codec.startsWith('vp') ? undefined : t.priv, codedWidth: t.width, codedHeight: t.height, rotation: 0, samples: makeTable(list) };
     } else if (t.type === 2 && !audio) {
       const codec = webmAudioCodec(t);
-      if (!codec) continue;
+      if (!codec) {
+        skipped.push(`audio:${t.codecId}`);
+        continue;
+      }
       audio = { kind: 'audio', codec, description: t.priv, sampleRate: t.codecId === 'A_OPUS' ? 48000 : t.rate, channels: t.channels, samples: makeTable(list) };
     }
   }
@@ -340,7 +347,7 @@ export async function demuxWebm(blob: Blob): Promise<DemuxedFile> {
       if (s && s.count) duration = Math.max(duration, s.pts[s.count - 1] + (s.dur[s.count - 1] || 0));
     }
   }
-  return { container: 'webm', duration, video, audio };
+  return { container: 'webm', duration, video, audio, ...(skipped.length ? { skipped } : {}) };
 }
 
 function webmVideoCodec(t: TrackDef): string | null {

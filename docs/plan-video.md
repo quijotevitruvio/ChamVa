@@ -295,6 +295,33 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   del modelo que usa hoy `src/ai/background-removal.ts`**: varios populares son no comerciales),
   estabilización (OpenCV.js), aislar o quitar voz (solo con modelo de licencia compatible).
 - **Riesgos:** lentitud (avisar con estimación de tiempo), memoria.
+- **Hecho (V9a, motor + licencias, 2026-10-04; interfaz fina pendiente):** efectos de origen `bgremove` y `stabilize` en `Clip.fx` (aditivos, sin migración),
+  aplicados por `composeFrame` al fotograma del archivo leyendo cachés por medio y fotograma (`src/video/ai/`); cálculo aparte con progreso, ETA,
+  cancelación y estimación previa; solo se calcula lo que falta; la vista previa avisa si no está calculado y la exportación avisa del % cubierto.
+  Licencias leídas del `LICENSE`/ficha real (detalle en `AUDITORIA.md` §7):
+
+  | Modelo / algoritmo | Fuente | Licencia verificada | Tamaño | Estado |
+  |---|---|---|---|---|
+  | MODNet código + modelos | github.com/ZHKKKe/MODNet | Apache-2.0 (LICENSE + README §License «code, models, and demos») | — | integrado |
+  | MODNet ONNX fp32 | Xenova/modnet @ `fa2fa546` | Apache-2.0 (ficha) | 25,9 MB | integrado, fijado, con consentimiento y sha256 |
+  | BiRefNet-lite | ZhengPeng7/BiRefNet · onnx-community/BiRefNet_lite-ONNX | MIT / MIT | 114 MB, WebGPU | solo imagen (inviable por fotograma) |
+  | RMBG-1.4 | briaai/RMBG-1.4 | NO permisiva (no comercial) | 176 MB | no en video |
+  | RVM | PeterL1n/RobustVideoMatting | GPL-3.0 | — | NO (copyleft) |
+  | MediaPipe Selfie Segmentation | tarjeta PDF + google-ai-edge/mediapipe | Apache-2.0 | 0,25 MB | verificada, no integrada (dependencia nueva + URL sin fijar) |
+  | OpenCV.js 5.0.0 | @techstark/opencv-js | Apache-2.0 | 13,3 MB | no usada (sin `estimateAffinePartial2D`) |
+  | Estabilización | propia (`stabMath.ts`) | MIT | 0 | integrada |
+  | Aislar voz (Demucs) | facebookresearch/demucs | código MIT; puertos ONNX de terceros sin verificar / algunos CC BY-NC | 80–300 MB | NO integrada |
+
+  Banco `/dev/ai-bench.html` (Chrome estable sin cabeza, clip sintético 640×360, 91 fotogramas): MODNet REAL descargado (25 889 088 B, huellas
+  verificadas): rápido 448×256 IoU medio 0,962 (mín. 0,829), 740 ms/fotograma en WASM; calidad 896×512 IoU 0,887 (mín. 0,792), 2,45 s/fotograma
+  (el sujeto es una figura dibujada, no una persona real: MODNet está entrenado con retratos). Parpadeo (|Δ| medio en píxeles cuya verdad no cambia)
+  1,15 → 0,93 con la coherencia temporal. Fondo de color: 100 % de píxeles exactos donde la máscara es 0 (rápido; 99,995 % en calidad por el filtro de
+  reducción); 97,8 % del fondo «seguro» (a > 6 px del sujeto). Vista previa = exportación: diferencia 0 en los 5 instantes. Repetir = 0 fotogramas
+  recalculados; cancelar a los 10 y seguir solo calcula lo que falta. Motor simulado (resta de fondo con ruido): IoU 0,987, parpadeo 2,81 → 1,01.
+  Estabilización (120 fotogramas, temblor conocido ±7/±5 px y ±0,006 rad sobre un paneo): error del movimiento medido 0,11 px, temblor medido en la
+  SALIDA 2,46 → 0,15 px (−94 %), giro 0,0035 → 0,0003 rad, 22,7 ms/fotograma de análisis (320×180), vista previa = exportación (0).
+  No hecho: interfaz (diálogo con estimación y consentimiento, botones de calcular), persistir la caché entre sesiones, WebGPU, fondo «imagen» sin
+  medir en banco, Android/macOS, memoria del worker sin medir (solo la caché y la estimación), aislar voz.
 
 ### V10 · ffmpeg nativo en escritorio — **opus, esfuerzo alto**
 
@@ -306,6 +333,13 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
 - **Seguridad:** permisos del plugin `shell` limitados a ese binario y a argumentos validados (nunca
   rutas ni argumentos sin filtrar desde la interfaz).
 - **Peso:** +25–80 MB por instalador.
+- **Hecho (V10, Windows verificado):** `src-tauri/src/native_media/` (comandos tipados, sin plugin
+  `shell`) + `src/video/native/` (detección, probe, proxy H.264 del sistema o VP8, WAV, fotogramas
+  crudos del original, exportación por hardware experimental) + diálogo «Convertir para editar».
+  Build BtbN lgpl-shared n9.0.2 fijado por SHA-256 en `src-tauri/ffmpeg-manifest.json`; se empaqueta
+  con `scripts/fetch-ffmpeg.mjs` y `--config src-tauri/tauri.ffmpeg.conf.json` (+150 MB sin comprimir).
+  Seguridad, licencia y pendientes: `docs/seguridad-ffmpeg.md`. No hecho: exportar desde el original
+  dentro del exportador (la API `NativeFrameReader` existe), macOS/Linux.
 
 ### Después
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-media-hw-export-abort"
+description = "Enables the native_media_hw_export_abort command without any pre-configured scope."
+commands.allow = ["native_media_hw_export_abort"]
+
+[[permission]]
+identifier = "deny-native-media-hw-export-abort"
+description = "Denies the native_media_hw_export_abort command without any pre-configured scope."
+commands.deny = ["native_media_hw_export_abort"]

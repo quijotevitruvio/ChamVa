@@ -7,6 +7,7 @@ import { idbDelete, idbGet, idbSet } from '../../io/idb';
 import { toast } from '../toast';
 import { MediaCache } from './mediaCache';
 import { placeMedia } from './editing';
+import { importRouteFor, isNativeDesktop, nativeAvailable } from '../../video/native';
 
 export const idbIo: VM.KvIo = { get: idbGet, set: idbSet, delete: idbDelete };
 
@@ -38,6 +39,19 @@ export function probeDuration(blob: Blob, kind: 'video' | 'audio'): Promise<numb
   });
 }
 
+export interface ProxyItem {
+  file: File;
+  /** `<video>` lo abre: se puede «importar sin convertir» (ruta lenta, puede fallar) */
+  playable: boolean;
+  reason?: string;
+}
+
+export interface ProxyRequest {
+  items: ProxyItem[];
+  missing: boolean;
+  place?: { trackId?: string; at?: number } | false;
+}
+
 export function useVideoProject() {
   const [hist, setHistState] = useState(() => VM.createHistory(VM.createProject()));
   const histRef = useRef(hist);
@@ -51,6 +65,8 @@ export function useVideoProject() {
   storeRef.current ??= new VM.VideoProjectStore(idbIo);
   const restored = useRef(false);
   const [loaded, setLoaded] = useState(false);
+  /** V10: videos que nada pudo abrir y que el escritorio puede convertir (o explicar por qué no) */
+  const [proxyRequest, setProxyRequest] = useState<ProxyRequest | null>(null);
 
   /** Un cambio con paso de deshacer. Devuelve el proyecto resultante (síncrono: se pueden encadenar). */
   const commit = (fn: (p: VM.VideoProject) => VM.VideoProject, group?: string): VM.VideoProject => {
@@ -120,11 +136,16 @@ export function useVideoProject() {
    * Importa archivos al proyecto. Con `place`, además los coloca (en la pista/instante pedidos o al final
    * de la pista principal). Devuelve los ids de los clips creados.
    */
-  const importFiles = async (files: File[], place?: { trackId?: string; at?: number } | false): Promise<{ clipIds: string[]; mediaIds: string[] }> => {
+  const importFiles = async (files: File[], place?: { trackId?: string; at?: number } | false, opt: { asIs?: boolean } = {}): Promise<{ clipIds: string[]; mediaIds: string[] }> => {
     const clipIds: string[] = [];
     const mediaIds: string[] = [];
     let at = place ? place.at : undefined;
     let skipped = 0;
+    const pending: ProxyItem[] = [];
+    let missingNative = false;
+    // V10: solo en escritorio y solo si hay FFmpeg se revisa cada video; sin él, todo sigue igual
+    const desktop = isNativeDesktop() && !opt.asIs;
+    const nativeOn = desktop && (await nativeAvailable());
     for (const file of files) {
       const kind = kindOfFile(file);
       if (!kind) {
@@ -132,6 +153,15 @@ export function useVideoProject() {
         continue;
       }
       const duration = kind === 'image' ? 0 : await probeDuration(file, kind);
+      // escritorio: HEVC/ProRes/MKV raros/MP4 fragmentado se pueden convertir con FFmpeg nativo (V10)
+      if (kind === 'video' && desktop && (nativeOn || !duration)) {
+        const { route, check } = await importRouteFor(file, duration > 0);
+        if (route === 'proxy' || route === 'missing-native') {
+          pending.push({ file, playable: duration > 0, reason: check.reason });
+          missingNative ||= route === 'missing-native';
+          continue;
+        }
+      }
       if (kind !== 'image' && !duration) {
         toast(`No se pudo leer «${file.name}» (formato no compatible con este navegador).`, 'error');
         continue;
@@ -151,8 +181,9 @@ export function useVideoProject() {
       }
     }
     if (skipped) toast(`${skipped} archivo(s) no son de video, audio ni imagen y se ignoraron.`, 'info');
+    if (pending.length) setProxyRequest({ items: pending, missing: missingNative, place: place ? { ...place, at } : place });
     return { clipIds, mediaIds };
   };
 
-  return { hist, project, commit, endGroup, undo, redo, canUndo: VM.canUndo(hist), canRedo: VM.canRedo(hist), cache, loaded, reset, importFiles, histRef };
+  return { hist, project, commit, endGroup, undo, redo, canUndo: VM.canUndo(hist), canRedo: VM.canRedo(hist), cache, loaded, reset, importFiles, histRef, proxyRequest, setProxyRequest };
 }

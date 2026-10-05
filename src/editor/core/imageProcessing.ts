@@ -5,6 +5,7 @@ import { applyLevels, isNeutralLevels } from './levels';
 import { applyHslMix, hasHslMix } from './hslMixer';
 import { applyDehaze, applyDenoise, applyLens } from './photoFix';
 import { applyImageEffects, hasImageFx } from './imageEffects';
+import { cropPixelRect, sourcePixels, validCrop } from './imageCrop';
 
 // String de filtro CSS (ajustes + filtro con nombre). Lo usan igual editor y export.
 export function buildFilterString(layer: ImageLayer): string {
@@ -59,7 +60,8 @@ export function needsProcessing(layer: ImageLayer): boolean {
     hasPixelOps(a) ||
     (!!layer.filter && layer.filter !== 'none') ||
     layer.flipX ||
-    layer.flipY
+    layer.flipY ||
+    !!validCrop(layer.crop) // recorte no destructivo: se aplica al dibujar
   );
 }
 
@@ -502,7 +504,12 @@ export function processImage(
   ctx.filter = cssFor(def, layer.adjust) + (blur > 0.05 ? ` blur(${blur.toFixed(2)}px)` : '');
   ctx.translate(layer.flipX ? w : 0, layer.flipY ? h : 0);
   ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
-  ctx.drawImage(img, 0, 0, w, h);
+  // Recorte no destructivo: solo la región visible de la fuente (antes del volteo, que se aplica
+  // al trozo). Fracciones × tamaño real de la imagen cargada (vale a cualquier resolución).
+  const px = sourcePixels(img);
+  const cr = cropPixelRect(layer.crop, px.w, px.h);
+  if (cr) ctx.drawImage(img, cr.x, cr.y, cr.w, cr.h, 0, 0, w, h);
+  else ctx.drawImage(img, 0, 0, w, h);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.filter = 'none';
 

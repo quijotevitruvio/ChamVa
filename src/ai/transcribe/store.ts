@@ -68,7 +68,7 @@ export interface ModelStatus {
   bytesNeeded: number;
 }
 
-async function cachedSize(env: StorageEnv, url: string): Promise<number | null> {
+export async function cachedSize(env: StorageEnv, url: string): Promise<number | null> {
   const r = await env.cache.match(url);
   if (!r) return null;
   const h = Number(r.headers.get('content-length'));
@@ -163,7 +163,11 @@ function abortError(): Error {
 
 /** Descarga (o reanuda) un archivo, lo verifica y lo deja en la caché. */
 export async function downloadFile(env: StorageEnv, size: WhisperSize, f: ModelFile, onBytes: (have: number) => void, signal?: AbortSignal): Promise<void> {
-  const url = fileUrl(size, f.path);
+  return downloadFileAt(env, fileUrl(size, f.path), f, onBytes, signal);
+}
+
+/** Igual que `downloadFile` con la URL ya resuelta (la usan otros manifiestos fijados, p. ej. el de quitar fondo de video, V9). */
+export async function downloadFileAt(env: StorageEnv, url: string, f: ModelFile, onBytes: (have: number) => void, signal?: AbortSignal): Promise<void> {
   let parts = await env.parts.get(url);
   let have = sumSizes(parts);
   if (have > f.size) {

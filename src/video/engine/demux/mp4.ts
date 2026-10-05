@@ -94,8 +94,9 @@ export async function demuxMp4(blob: Blob): Promise<DemuxedFile> {
   const fragmented = !!find(top, 'mvex');
   let video: VideoTrackInfo | undefined;
   let audio: AudioTrackInfo | undefined;
+  const skipped: string[] = [];
   for (const trak of top.filter((x) => x.type === 'trak')) {
-    const t = parseTrak(moov, trak, movieTimescale);
+    const t = parseTrak(moov, trak, movieTimescale, skipped);
     if (!t) continue;
     if (t.kind === 'video' && !video && t.samples.count) video = t;
     if (t.kind === 'audio' && !audio && t.samples.count) audio = t;
@@ -112,10 +113,10 @@ export async function demuxMp4(blob: Blob): Promise<DemuxedFile> {
     return m;
   };
   if (!(duration > 0)) duration = Math.max(lastEnd(video?.samples), lastEnd(audio?.samples));
-  return { container: 'mp4', duration, video, audio };
+  return { container: 'mp4', duration, video, audio, ...(skipped.length ? { skipped } : {}) };
 }
 
-function parseTrak(b: Uint8Array, trak: Box, movieTimescale: number): VideoTrackInfo | AudioTrackInfo | null {
+function parseTrak(b: Uint8Array, trak: Box, movieTimescale: number, skipped: string[] = []): VideoTrackInfo | AudioTrackInfo | null {
   const kids = childBoxes(b, trak.start, trak.end);
   const tkhd = find(kids, 'tkhd');
   const mdia = find(kids, 'mdia');
@@ -191,7 +192,10 @@ function parseTrak(b: Uint8Array, trak: Box, movieTimescale: number): VideoTrack
       codec = av1CodecFromAv1C(description);
     } else if (entry.type === 'vp08') {
       codec = 'vp8';
-    } else return null;
+    } else {
+      skipped.push(`video:${entry.type}`);
+      return null;
+    }
     let rotation: 0 | 90 | 180 | 270 = 0;
     if (tkhd) {
       const v = b[tkhd.start];
@@ -240,7 +244,10 @@ function parseTrak(b: Uint8Array, trak: Box, movieTimescale: number): VideoTrack
     codec = 'mp3';
   } else if (entry.type === 'fLaC') {
     codec = 'flac';
-  } else return null;
+  } else {
+    skipped.push(`audio:${entry.type}`);
+    return null;
+  }
   return { kind: 'audio', codec, description, sampleRate: sampleRate || 48000, channels: channels || 2, samples };
 }
 

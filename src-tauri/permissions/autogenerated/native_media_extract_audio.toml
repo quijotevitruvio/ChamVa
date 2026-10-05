@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-media-extract-audio"
+description = "Enables the native_media_extract_audio command without any pre-configured scope."
+commands.allow = ["native_media_extract_audio"]
+
+[[permission]]
+identifier = "deny-native-media-extract-audio"
+description = "Denies the native_media_extract_audio command without any pre-configured scope."
+commands.deny = ["native_media_extract_audio"]

@@ -186,3 +186,27 @@ Silero VAD (no hace falta: el VAD por energía basta para trocear).
   (la redirección real de los pesos va a `us.aws.cdn.hf.co`, comprobado con `curl -I`). La CSP es global: lo que
   limita la red a «solo esta descarga, solo tras permiso» es el código (lista cerrada del manifiesto + worker cortado).
 - Pendiente: `navigator.storage.estimate()` en Chromium tarda en reflejar el espacio liberado tras borrar.
+
+## 7. IA de video (V9a, 2026-10-04): licencias verificadas
+
+Comprobado **en línea el 2026-10-04 leyendo el `LICENSE` y la ficha reales** (curl a GitHub raw / API de Hugging Face; nada de memoria).
+Código en `src/video/ai/`. Regla: solo se integra lo permisivo verificado en **código y pesos**; lo demás se documenta y no entra.
+
+| Modelo / algoritmo | Fuente exacta | Licencia verificada | Cómo se verificó | Tamaño | Estado |
+|---|---|---|---|---|---|
+| **MODNet** (código, modelos y demos) | github.com/ZHKKKe/MODNet | **Apache-2.0** | `LICENSE` («Apache License Version 2.0») y README §License: «The code, models, and demos in this repository (excluding GIF files…) are released under the Apache License 2.0» | — | **Integrado** (quitar fondo de video, por fotograma) |
+| **Pesos ONNX MODNet** | huggingface.co/Xenova/modnet @ `fa2fa546` | **Apache-2.0** | ficha `README.md` («license: apache-2.0») + API `cardData.license` | `onnx/model.onnx` fp32 25 888 640 B (sha256 `07c308cf…`) + 2 JSON (448 B) = **25,9 MB** | **Integrado**, fijado a commit, descarga con consentimiento y huella |
+| BiRefNet-lite (código / pesos ONNX) | github.com/ZhengPeng7/BiRefNet · onnx-community/BiRefNet_lite-ONNX @ `de15b22b` | **MIT** / **MIT** | `LICENSE` («MIT License, Copyright (c) 2024 ZhengPeng») · API `cardData.license: mit` | 114 MB fp16, solo WebGPU | Ya presente en imagen; **no** para video (114 MB y GPU por fotograma: inviable) |
+| RMBG-1.4 | huggingface.co/briaai/RMBG-1.4 | **NO permisiva** (`license: other`, «bria-rmbg-1.4», «source-available model for non-commercial use») | API `cardData` | 176 MB | Sigue solo en imagen marcada «no comercial»; **no** se integra en video |
+| RVM (Robust Video Matting) | github.com/PeterL1n/RobustVideoMatting | **GPL-3.0** (código; README: «Code is re-released under GPL-3.0») | `LICENSE` (GNU GPL v3) | — | **NO se integra** (copyleft incompatible con el MIT de ChamVa); pesos sin licencia propia aparte |
+| MediaPipe Selfie Segmentation (modelo) | storage.googleapis.com/mediapipe-assets/Model Card MediaPipe Selfie Segmentation.pdf · github.com/google-ai-edge/mediapipe | **Apache-2.0** (tarjeta: «LICENSED UNDER Apache License, Version 2.0»; repo: `LICENSE` Apache-2.0) | PDF de la tarjeta descargado y leído; `LICENSE` del repo | `selfie_segmenter.tflite` 249 537 B (URL «latest», sin fijar) | Verificada pero **no integrada en V9a**: exige `@mediapipe/tasks-vision` (dependencia nueva + wasm) y la URL no está fijada a versión. Candidata para un modo «muy rápido» |
+| OpenCV.js `@techstark/opencv-js` 5.0.0 | `node_modules/@techstark/opencv-js/LICENSE` y `package.json` | **Apache-2.0** | archivos del paquete instalado; github.com/opencv/opencv `LICENSE` Apache-2.0 | 13,3 MB | **No se usa**: trae `calcOpticalFlowPyrLK`/`goodFeaturesToTrack` pero no `estimateAffinePartial2D` ni `phaseCorrelate` |
+| Estabilización | propia (`stabMath.ts`: pirámide SAD + bloques + similitud robusta + gaussiana) | MIT (ChamVa) | sin modelo ni dependencia | 0 | **Integrada** |
+| Aislar / quitar voz: Demucs | github.com/facebookresearch/demucs | código **MIT** (`LICENSE`, README «released under the MIT license») | `LICENSE` + README | 80–300 MB según variante | **NO se integra**: los puertos ONNX/web de Hugging Face los sube terceros con licencias contradictorias (MIT, Apache-2.0, OpenRAIL, **CC BY-NC 4.0**) y procedencia de pesos **sin verificar**; ninguno oficial. Queda pendiente de una auditoría propia (V9b) |
+
+**Descarga y privacidad (igual que Whisper, §6):** `matteDownloadPlan` da el tamaño exacto → la interfaz pide permiso →
+`downloadMatteModel({ consent })` (sin él, `ConsentError`); solo las 3 URL del manifiesto, al commit fijado, verificadas por
+tamaño y sha256/sha1 (lo dañado se borra); reanudable (IndexedDB + `Range`). El worker de inferencia (`matte.worker.ts`)
+tiene la red cortada para Hugging Face: sin modelo da «Falta el modelo» y no descarga nada. Los fotogramas van por
+`postMessage` al worker y no salen del equipo. La función de imagen previa (`bgcore.ts`) sigue descargando por su cuenta
+desde la rama `main` sin diálogo: pendiente de pasarla al mismo patrón.

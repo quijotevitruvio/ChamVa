@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banco de V9: quitar fondo y estabilizar</title>
+    <style>
+      body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; background: #fafafa; color: #111; }
+      canvas { width: 640px; height: 360px; background: #000; display: block; }
+      pre { background: #fff; border: 1px solid #ccc; padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Banco de V9 (solo desarrollo)</h1>
+    <p>Quitar fondo por fotograma y estabilización con el motor real sobre clips sintéticos de verdad conocida. Resultados en <code>window.__ai</code>.</p>
+    <canvas id="cv"></canvas>
+    <pre id="out"></pre>
+    <script type="module" src="/src/video/bench/aiBench.ts"></script>
+  </body>
+</html>

@@ -44,10 +44,13 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     layer.flipY,
     layer.naturalWidth,
     layer.naturalHeight,
+    layer.crop,
     fxVersion,
   ]);
+  // Mientras se recorta esta capa, la dibuja el editor de recorte (imagen completa).
+  const cropping = useEditor((s) => s.cropMode && s.selectedId === layer.id);
 
-  if (!rendered || !layer.visible) return null;
+  if (!rendered || !layer.visible || cropping) return null;
 
   const w = layer.naturalWidth;
   const h = layer.naturalHeight;

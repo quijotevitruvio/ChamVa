@@ -6,7 +6,10 @@ import { clipAudioFx } from '../model/effects';
 import { clipDuration, clipEnd, clipFadeAlpha, clipsAt, effectiveEnd, isIdentityTransform, videoTracksBottomUp } from '../model/query';
 import { blendOp } from '../../editor/core/blend';
 import type { Clip, Track, VideoProject } from '../model/types';
-import { activeFx } from '../fx/effects';
+import { activeFx, AI_FX } from '../fx/effects';
+import { hasAiFx, processAiFrame, type AiEnv } from '../ai/aiFrame';
+import { extendedSourceTime } from '../fx/transitions';
+import { sourceTimeAt } from '../model/query';
 import { applyFxStack, type Box } from '../fx/fxDraw';
 import { fxAt, transformAt, volumeAt } from '../fx/keyframes';
 import { getScratch, type Scratch } from '../fx/scratch';
@@ -220,7 +223,13 @@ function localTime(c: Clip, t: number, duration: number, ext: boolean): number {
 /** Pila de efectos del clip en t (con fotogramas clave) ya filtrada por activos. */
 function fxOfClip(c: Clip, tt: number) {
   if (!c.fx || c.fx.length === 0) return [];
-  return activeFx(c.fx.map((f) => fxAt(c, f, tt)));
+  // V9: los efectos de origen (quitar fondo, estabilizar) no van en la pila: se aplican al fotograma en `drawContent`
+  return activeFx(c.fx.filter((f) => !AI_FX.has(f.type)).map((f) => fxAt(c, f, tt)));
+}
+
+/** Entorno de los efectos de origen (V9): tamaño de salida e imágenes de fondo por id de medio. */
+function aiEnvOf(g: FrameCtx, clip: Clip): AiEnv {
+  return { outW: g.w, outH: g.h, image: (mediaId) => g.src.image({ ...clip, kind: 'image', mediaId }) };
 }
 
 /** Dibuja el contenido de un clip (sin efectos ni fusión) y devuelve su cuadro. */
@@ -231,11 +240,15 @@ function drawContent(g: FrameCtx, ctx: CanvasRenderingContext2D, clip: Clip, tra
   const ac = tr === clip.transform ? clip : { ...clip, transform: tr };
   const alpha = clipFadeAlpha(clip, tt, g.duration);
   if (clip.kind === 'video') {
-    const f = src.video(ac, ext);
+    let f = src.video(ac, ext);
+    // V9: estabilizar / quitar fondo sobre el fotograma del archivo (leído de la caché ya calculada)
+    const ai = f && hasAiFx(clip) ? aiEnvOf(g, clip) : null;
+    if (f && ai) f = processAiFrame(clip, f, ext ? extendedSourceTime(clip, g.t, (clip.mediaId ? g.p.media[clip.mediaId]?.duration : 0) ?? 0) : sourceTimeAt(clip, g.t), tt, ai);
     if (f) {
       // V8: bucle con fundido cruzado: la pasada saliente se dibuja entera y la entrante encima con su opacidad
       const ls = clip.loop?.xf ? layersAt(clip, tt - clip.start) : null;
-      const f0 = ls && ls.length === 2 ? src.video({ ...ac, id: `${ac.id}~x`, xlayer: true }, ext) : null;
+      let f0 = ls && ls.length === 2 ? src.video({ ...ac, id: `${ac.id}~x`, xlayer: true }, ext) : null;
+      if (f0 && ai && ls) f0 = processAiFrame(clip, f0, ls[0].s, tt, ai, '~x');
       if (f0 && ls) {
         drawVideoClip(ctx, f0.image, f0.width, f0.height, w, h, fit, f0.rotation, ac, alpha * ls[0].a);
         drawVideoClip(ctx, f.image, f.width, f.height, w, h, fit, f.rotation, ac, alpha * ls[1].a);

@@ -20,6 +20,7 @@ import { IDENTITY_TRANSFORM, type Clip, type MediaAsset, type VideoProject } fro
 import { BufferAudioSource, DecoderAudioSource, audioDecoderConfig } from './audioSource';
 import { ensureTitleFonts } from './titleFonts';
 import { composeFrame, type ComposedFrame, type StillImage } from './compose';
+import { aiBackgroundMedia, aiCoverageNotices } from '../ai/aiFrame';
 import { planProjectMix, resolveTrackPlan } from './audioPlan';
 import { LoudnessMeter } from '../audio/loudness';
 import { codecCorrection, measureViaCodec } from './codecProbe';
@@ -274,6 +275,13 @@ export async function renderProject(project: VideoProject, opts: RenderProjectOp
     const m = p.media[c.mediaId];
     images.set(c.mediaId, given ?? (usable(m) ? await loadImage(urlOf(m)) : null));
   }
+  // V9: fondos de imagen de «quitar fondo» y aviso de lo que aún no está calculado (sale sin el efecto)
+  for (const id of aiBackgroundMedia(p)) {
+    if (images.has(id)) continue;
+    const m = p.media[id];
+    images.set(id, opts.images?.get(id) ?? (usable(m) ? await loadImage(urlOf(m)) : null));
+  }
+  aiCoverageNotices(p).forEach(notice);
 
   const { addVideo, addAudio, finalize: finalizeMux } = createMuxer(container, vc, ac, sink);
 
