@@ -2,6 +2,7 @@
 // censurar, mockups): hornear la capa a un lienzo y volver a escribirla como nueva `src`.
 import type { ImageLayer } from '../editor/core/types';
 import { useEditor } from '../editor/state/store';
+import { applyRetouch } from '../editor/core/retouchRender';
 import { needsProcessing, processImageAsync } from '../editor/core/imageProcessing';
 
 export function loadImg(src: string): Promise<HTMLImageElement> {
@@ -16,7 +17,7 @@ export function loadImg(src: string): Promise<HTMLImageElement> {
 
 // Imagen de la capa con filtros, ajustes y volteo ya aplicados, a su resolución natural.
 export async function bakedCanvas(layer: ImageLayer): Promise<HTMLCanvasElement> {
-  const img = await loadImg(layer.src);
+  const img = await applyRetouch(await loadImg(layer.src), layer);
   const processed = needsProcessing(layer)
     ? await processImageAsync(img, layer, Infinity, { priority: 1, label: 'Procesando imagen' })
     : img;

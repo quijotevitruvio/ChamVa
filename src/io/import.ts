@@ -1,3 +1,6 @@
+import { isHeicLike } from './heic/detect';
+import type { HeicOpts } from './heic';
+
 export interface LoadedImage {
   src: string; // dataURL
   naturalWidth: number;
@@ -6,7 +9,9 @@ export interface LoadedImage {
 }
 
 // Lee un File (de un <input> o drag&drop) y devuelve dataURL + dimensiones.
-export function loadImageFile(file: File): Promise<LoadedImage> {
+// HEIC/HEIF va por su propio decodificador, cargado bajo demanda (chunk aparte).
+export function loadImageFile(file: File, opts?: HeicOpts): Promise<LoadedImage> {
+  if (isHeicLike(file)) return import('./heic').then((m) => m.decodeHeicFile(file, opts));
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       reject(new Error('El archivo no es una imagen'));

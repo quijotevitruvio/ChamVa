@@ -24,11 +24,14 @@ interface Props {
   transPanel: ReactNode;
   fxPanel: ReactNode;
   adjustPanel: ReactNode;
+  /** biblioteca de sonidos CC0 incluida (carga perezosa: solo se monta con la pestaña abierta) */
+  soundsPanel: ReactNode;
 }
 
-export type BinTab = 'media' | 'text' | 'subs' | 'trans' | 'fx' | 'adjust';
+export type BinTab = 'media' | 'sounds' | 'text' | 'subs' | 'trans' | 'fx' | 'adjust';
 const TABS: { id: BinTab; label: string }[] = [
   { id: 'media', label: 'Medios' },
+  { id: 'sounds', label: 'Sonidos' },
   { id: 'text', label: 'Texto' },
   { id: 'subs', label: 'Subtítulos' },
   { id: 'trans', label: 'Transiciones' },
@@ -39,7 +42,7 @@ const TABS: { id: BinTab; label: string }[] = [
 const ICON = { video: '🎬', audio: '🎵', image: '🖼' } as const;
 
 /** Panel de medios: importar, ver lo importado y arrastrarlo a la línea de tiempo. */
-export function MediaBin({ project, cache, onImport, onAdd, onRemove, onAddText, onOpenRecord, onOpenTemplates, tab, onTab, textPanel, subtitlePanel, transPanel, fxPanel, adjustPanel }: Props) {
+export function MediaBin({ project, cache, onImport, onAdd, onRemove, onAddText, onOpenRecord, onOpenTemplates, tab, onTab, textPanel, subtitlePanel, transPanel, fxPanel, adjustPanel, soundsPanel }: Props) {
   useSyncExternalStore(cache.subscribe, cache.getVersion);
   const file = useRef<HTMLInputElement>(null);
   const used = VM.usedMediaIds(project);
@@ -54,7 +57,7 @@ export function MediaBin({ project, cache, onImport, onAdd, onRemove, onAddText,
     requestAnimationFrame(() => document.getElementById('vx-tab-' + n.id)?.focus());
   };
   return (
-    <aside className={`vx-bin${tab === 'subs' ? ' wide' : ''}`} aria-label="Medios, texto, subtítulos, transiciones, efectos y ajustes">
+    <aside className={`vx-bin${tab === 'subs' ? ' wide' : ''}`} aria-label="Medios, sonidos, texto, subtítulos, transiciones, efectos y ajustes">
       <div className="vx-tabs" role="tablist" aria-label="Panel de medios" onKeyDown={onTabKey}>
         {TABS.map((t) => (
           <button key={t.id} id={'vx-tab-' + t.id} type="button" role="tab" aria-selected={tab === t.id} aria-controls={'vx-tabpanel-' + t.id} tabIndex={tab === t.id ? 0 : -1} className={tab === t.id ? 'on' : ''} onClick={() => onTab(t.id)}>
@@ -62,6 +65,7 @@ export function MediaBin({ project, cache, onImport, onAdd, onRemove, onAddText,
           </button>
         ))}
       </div>
+      {tab === 'sounds' && <div id="vx-tabpanel-sounds" role="tabpanel" aria-labelledby="vx-tab-sounds" className="vx-tabpanel">{soundsPanel}</div>}
       {tab === 'text' && <div id="vx-tabpanel-text" role="tabpanel" aria-labelledby="vx-tab-text" className="vx-tabpanel">{textPanel}</div>}
       {tab === 'subs' && <div id="vx-tabpanel-subs" role="tabpanel" aria-labelledby="vx-tab-subs" className="vx-tabpanel">{subtitlePanel}</div>}
       {tab === 'trans' && <div id="vx-tabpanel-trans" role="tabpanel" aria-labelledby="vx-tab-trans" className="vx-tabpanel">{transPanel}</div>}

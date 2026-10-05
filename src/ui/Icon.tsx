@@ -31,7 +31,15 @@ export type IconName =
   | 'eraser'
   | 'razor'
   | 'wand'
-  | 'lasso';
+  | 'lasso'
+  | 'stamp'
+  | 'bandage'
+  | 'spot'
+  | 'dodge'
+  | 'burn'
+  | 'blurDrop'
+  | 'sharpen'
+  | 'smudge';
 
 const PATHS: Record<IconName, ReactElement> = {
   upload: (
@@ -184,6 +192,55 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="M7 17.5C4.6 16.2 3 14.2 3 12c0-4.4 4-8 9-8s9 3.6 9 8-4 8-9 8c-1 0-2-.1-2.9-.4" />
       <path d="M7 17.5c0 1.4 1 2.5 2.1 2.1 1-.4.9-2-.4-2.5-.6-.2-1.2-.1-1.7.4z" />
       <path d="M8.5 20.5c-.3 1-1 1.5-2 1.5" />
+    </>
+  ),
+  stamp: (
+    <>
+      <path d="M5 21h14" />
+      <path d="M8 17h8l-1-5a3 3 0 1 0-6 0z" />
+      <path d="M12 9V5" />
+    </>
+  ),
+  bandage: (
+    <>
+      <rect x="2" y="8.5" width="20" height="7" rx="3.5" transform="rotate(-35 12 12)" />
+      <path d="M10.5 10.5h.01 M13.5 13.5h.01 M12 12h.01" />
+    </>
+  ),
+  spot: (
+    <>
+      <circle cx="12" cy="12" r="8" strokeDasharray="3 3" />
+      <circle cx="12" cy="12" r="2" />
+    </>
+  ),
+  dodge: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2 M12 20v2 M2 12h2 M20 12h2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4" />
+    </>
+  ),
+  burn: (
+    <>
+      <path d="M12 3a5 5 0 0 0-5 5c0 2 1 3 2 4 .7.7 1 1.4 1 2.5 0 2.5-1 3.5-1 3.5h6s-1-1-1-3.5c0-1.1.3-1.8 1-2.5 1-1 2-2 2-4a5 5 0 0 0-5-5Z" />
+      <path d="M10 21h4" />
+    </>
+  ),
+  blurDrop: (
+    <>
+      <path d="M12 3s6 6.2 6 10.5a6 6 0 0 1-12 0C6 9.2 12 3 12 3Z" />
+      <path d="M9.5 14.5a2.7 2.7 0 0 0 2.5 2" />
+    </>
+  ),
+  sharpen: (
+    <>
+      <path d="M12 3l9 16H3z" />
+      <path d="M12 9v5" />
+    </>
+  ),
+  smudge: (
+    <>
+      <path d="M7 14c0-3 2-4 3-6 .8-1.7 3-1 3 1v3l5-1c1.5-.3 2.5 1 1.8 2.3L16 20H9c-1.2 0-2-.8-2-2z" />
+      <path d="M3 21c2 0 3-1 4-2" />
     </>
   ),
 };

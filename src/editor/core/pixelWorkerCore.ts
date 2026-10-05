@@ -6,10 +6,11 @@ import { runOutlineStage, runPixelStage } from './imageProcessing';
 import { resampleRGBA, type ResampleMethod } from './resample';
 import { runSelJob, type SelJob } from './selection';
 import { featherAlpha } from './layerMask';
+import { poissonClone } from './retouch';
 
 export interface PixelJobMsg {
   id: number;
-  op: 'pixels' | 'outline' | 'resample' | 'sel' | 'maskFeather';
+  op: 'pixels' | 'outline' | 'resample' | 'sel' | 'maskFeather' | 'poisson';
   buffer: ArrayBuffer; // RGBA (se transfiere, no se copia); 'sel'/'maskFeather': RGBA o plano de 8 bits
   width: number;
   height: number;
@@ -48,6 +49,18 @@ export function handlePixelJob(
       const out = resampleRGBA(data.data, msg.width, msg.height, msg.dw ?? msg.width, msg.dh ?? msg.height, msg.method ?? 'bicubic', (f) =>
         report(f, 'Remuestreo'),
       );
+      post({ id: msg.id, done: true, buffer: out.buffer as ArrayBuffer }, [out.buffer as ArrayBuffer]);
+      return;
+    }
+    if (msg.op === 'poisson') {
+      // Retoque (parche / eliminar mancha): buffer = destino RGBA | origen RGBA | máscara de 8 bits.
+      const n = msg.width * msg.height;
+      report(0, 'Retoque');
+      const dest = new Uint8ClampedArray(msg.buffer, 0, n * 4);
+      const src = new Uint8ClampedArray(msg.buffer, n * 4, n * 4);
+      const mask = new Uint8Array(msg.buffer, n * 8, n);
+      const out = poissonClone(dest, src, mask, msg.width, msg.height);
+      report(1, 'Listo');
       post({ id: msg.id, done: true, buffer: out.buffer as ArrayBuffer }, [out.buffer as ArrayBuffer]);
       return;
     }

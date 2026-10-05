@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { classifyImportError, summarizeImport, importFailureMessage } from './importErrors';
+import { HeicError } from './heic/errors';
 
 describe('classifyImportError', () => {
-  it('HEIC', () => expect(classifyImportError({ name: 'a.HEIC', type: '' })).toBe('Formato HEIC no soportado todavía'));
+  it('HEIC sin causa concreta: guía para convertir', () => expect(classifyImportError({ name: 'a.HEIC', type: '' })).toContain('Fotos de Windows'));
+  it('HEIC con causa del decodificador', () =>
+    expect(classifyImportError({ name: 'a.heic', type: '' }, new HeicError('corrupt', 'caja truncada'))).toBe('El archivo HEIC está dañado o incompleto (caja truncada)'));
   it('TIFF', () => expect(classifyImportError({ name: 'a.tif', type: 'image/tiff' })).toContain('TIFF'));
   it('no es imagen', () => expect(classifyImportError({ name: 'a.txt', type: 'text/plain' })).toBe('El archivo no es una imagen'));
   it('corrupto', () =>

@@ -1,3 +1,4 @@
+import type { RetouchRef } from './retouch';
 import type { TextSpan } from './richText';
 
 import type { ChartSpec, TableSpec } from './charts';
@@ -226,6 +227,9 @@ export interface ImageLayer extends LayerBase, LayerShadow {
   // Recorte no destructivo (imageCrop.ts): región visible de `src`, en fracciones 0..1 de la imagen
   // completa y SIN volteo. Con recorte, naturalWidth/Height son las del trozo visible. Sin campo = entera.
   crop?: ImageCrop;
+  // Capa de retoque de píxeles (clonar, curar, esquivar…): PNG con solo lo cambiado, sobre `src` y antes de
+  // recorte/ajustes/máscara (ver retouch.ts). Sin campo = sin retoque.
+  retouch?: RetouchRef;
   iconName?: string; // si viene de Iconify, permite recolorear
   chart?: ChartSpec; // gráfica reeditable (se re-renderiza a src)
   table?: TableSpec; // tabla reeditable (se re-renderiza a src)

@@ -420,3 +420,11 @@ V1 (motor fiable) → V2 (multipista) → V3 (vista previa fluida) → V4 (texto
 V5 (subtítulos con IA, el argumento estrella frente a CapCut) → V6 → V7 → V8 → V9 → V10.
 No se añaden efectos antes de tener V1–V3: sin un motor y una vista previa fiables, cada efecto
 nuevo multiplica los fallos silenciosos.
+
+## Biblioteca de sonidos CC0 (pestaña «Sonidos»)
+
+- 109 archivos (98 efectos/jingles + 11 pistas de música), 6,5 MB en `public/sounds/` (OGG/Opus). Todo CC0 1.0: Kenney (kenney.nl) y recursos de OpenGameArt cuya página declara exactamente «CC0».
+- Se genera con `python scripts/sounds/build-sounds.py --cache <carpeta>` (ffmpeg con libopus; la herramienta verifica la licencia en la página de cada fuente y aborta si no es CC0). Produce `index.json` (con SHA-256) y `LICENCIAS.md`.
+- Carga perezosa: el índice y cada archivo se piden al abrir la pestaña / usar un sonido; no entran al bundle. El service worker NO los precachea: los guarda al usarse en la caché `sonidos-chamva-1` (la URL lleva `?v=<hash>`).
+- Pruebas: `src/video/sounds/soundIndex.test.ts` (archivos, hashes, licencias, presupuesto, búsqueda).
+- Descartados: CC-BY / OGA-BY (p. ej. «Fireworks With Applause», «Rain on Window Loop», «Up in the Sky»), «Well Done» (nombre de archivo CCBY3 contradice la licencia), Pixabay e Incompetech.

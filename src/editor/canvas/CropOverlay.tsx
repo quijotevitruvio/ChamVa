@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { Group, Rect, Shape, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import { useEditor } from '../state/store';
-import { useImage } from './useImage';
+import { useRetouchedImage } from './useRetouchedImage';
 import { useRenderedImage } from './useRenderedImage';
 import { clampBox, displayBox, fitAspect, fullSize, moveInside, type Box } from '../core/imageCrop';
 import type { ImageLayer } from '../core/types';
@@ -22,7 +22,7 @@ export function CropOverlay({ rectRef, scale }: { rectRef: RefObject<Konva.Rect 
   const cropAspect = useEditor((s) => s.cropAspect);
   const setCropRect = useEditor((s) => s.setCropRect);
   const trRef = useRef<Konva.Transformer>(null);
-  const image = useImage(layer?.src ?? '');
+  const image = useRetouchedImage(layer ?? ({ src: '', id: '' } as ImageLayer)).image;
 
   // Imagen completa con sus ajustes y volteo (vista previa reducida), sin recorte.
   const whole = useMemo<ImageLayer | null>(() => {

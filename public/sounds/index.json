@@ -1,0 +1,2273 @@
+{
+ "version": 1,
+ "verificado": "2026-10-05",
+ "licencias_permitidas": [
+  "CC0-1.0"
+ ],
+ "presupuesto_bytes": 12582912,
+ "categorias": [
+  {
+   "id": "clics",
+   "nombre": "Clics e interfaz"
+  },
+  {
+   "id": "transiciones",
+   "nombre": "Transiciones y swoosh"
+  },
+  {
+   "id": "impactos",
+   "nombre": "Impactos"
+  },
+  {
+   "id": "ambiente",
+   "nombre": "Ambiente"
+  },
+  {
+   "id": "risas",
+   "nombre": "Risas y aplausos"
+  },
+  {
+   "id": "sirenas",
+   "nombre": "Sirenas y alarmas"
+  },
+  {
+   "id": "naturaleza",
+   "nombre": "Naturaleza"
+  },
+  {
+   "id": "musica",
+   "nombre": "Música de fondo"
+  },
+  {
+   "id": "jingles",
+   "nombre": "Jingles"
+  }
+ ],
+ "sonidos": [
+  {
+   "id": "clic-suave",
+   "nombre": "Clic suave",
+   "categoria": "clics",
+   "duracion": 0.11,
+   "etiquetas": [
+    "botón",
+    "clic",
+    "interfaz"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "ca9eb6d35562185193fe50358417e59a58628231374090167ce06527c103539d",
+   "archivo": "clic-suave.ogg",
+   "bytes": 461,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "clic-seco",
+   "nombre": "Clic seco",
+   "categoria": "clics",
+   "duracion": 0.02,
+   "etiquetas": [
+    "botón",
+    "clic",
+    "interfaz"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "e836655c5c3141d1118755406d029904809f7bfb421a46c67ba7a565c3ccf52f",
+   "archivo": "clic-seco.ogg",
+   "bytes": 219,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "clic-firme",
+   "nombre": "Clic firme",
+   "categoria": "clics",
+   "duracion": 0.02,
+   "etiquetas": [
+    "botón",
+    "clic",
+    "pulsar"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "9a86634959fb4d13e366a4d3caeb740f13db5283a74bcaac9efe4338979a4a7a",
+   "archivo": "clic-firme.ogg",
+   "bytes": 224,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "tic",
+   "nombre": "Tic corto",
+   "categoria": "clics",
+   "duracion": 0.05,
+   "etiquetas": [
+    "metrónomo",
+    "reloj",
+    "tic",
+    "tictac"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "eee40964fa0012b35cc0d2b39dce050a071f543b59ff21929256e34275742b2e",
+   "archivo": "tic.ogg",
+   "bytes": 311,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "interruptor-1",
+   "nombre": "Interruptor",
+   "categoria": "clics",
+   "duracion": 0.62,
+   "etiquetas": [
+    "encender",
+    "interruptor",
+    "palanca"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "06b099c50a69847249cfdf29617fefdbcf1c12c4b650a9fc646f308341fe4f50",
+   "archivo": "interruptor-1.ogg",
+   "bytes": 1567,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "interruptor-2",
+   "nombre": "Interruptor grave",
+   "categoria": "clics",
+   "duracion": 0.62,
+   "etiquetas": [
+    "apagar",
+    "interruptor",
+    "palanca"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "8bd8ca005211818e42b8a5a942fe7af9bbebd09a2c948e6ec093637bcce0bb87",
+   "archivo": "interruptor-2.ogg",
+   "bytes": 1731,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "alternar",
+   "nombre": "Alternar",
+   "categoria": "clics",
+   "duracion": 0.15,
+   "etiquetas": [
+    "activar",
+    "alternar",
+    "casilla",
+    "toggle"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "1a158146479d9f8c866b4de1ce478d125b228a0a920216ee5f05a6f563b51238",
+   "archivo": "alternar.ogg",
+   "bytes": 763,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "seleccionar-1",
+   "nombre": "Seleccionar",
+   "categoria": "clics",
+   "duracion": 0.05,
+   "etiquetas": [
+    "elegir",
+    "menú",
+    "selección"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "701ed036ca8ff272311a75f6c10f014984fe98dbd1a872e706ba98eddef4cf8e",
+   "archivo": "seleccionar-1.ogg",
+   "bytes": 386,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "seleccionar-2",
+   "nombre": "Seleccionar brillante",
+   "categoria": "clics",
+   "duracion": 0.39,
+   "etiquetas": [
+    "elegir",
+    "menú",
+    "selección"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "b3221b68dab44c40c803e87d4439f365f8d0270510663f41689868b8c7d423d1",
+   "archivo": "seleccionar-2.ogg",
+   "bytes": 1533,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "confirmar-1",
+   "nombre": "Confirmar",
+   "categoria": "clics",
+   "duracion": 0.3,
+   "etiquetas": [
+    "aceptar",
+    "confirmación",
+    "correcto",
+    "ok"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "75a4e1d1c3fb2b07dd813578065570f51d97206f5d070ec822854735c75badc2",
+   "archivo": "confirmar-1.ogg",
+   "bytes": 1353,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "confirmar-2",
+   "nombre": "Confirmar doble",
+   "categoria": "clics",
+   "duracion": 0.33,
+   "etiquetas": [
+    "aceptar",
+    "confirmación",
+    "correcto",
+    "ok"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "87f20844c19f5e53cb5888236373110ccb6f4d23cea3458eaf7e41458272ee87",
+   "archivo": "confirmar-2.ogg",
+   "bytes": 1462,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "error-1",
+   "nombre": "Error",
+   "categoria": "clics",
+   "duracion": 0.17,
+   "etiquetas": [
+    "error",
+    "fallo",
+    "incorrecto",
+    "no"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "38a5fccfc483522a8542a58e43df2e7156b04887b883ed7a18a73655f46f012b",
+   "archivo": "error-1.ogg",
+   "bytes": 924,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "error-2",
+   "nombre": "Error grave",
+   "categoria": "clics",
+   "duracion": 0.11,
+   "etiquetas": [
+    "error",
+    "fallo",
+    "incorrecto",
+    "no"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "be38cc09db416ac44c03ce1ffe3d93827337a1ebe693cdbb197924e9cc0359b7",
+   "archivo": "error-2.ogg",
+   "bytes": 638,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "atras",
+   "nombre": "Atrás",
+   "categoria": "clics",
+   "duracion": 0.07,
+   "etiquetas": [
+    "atrás",
+    "cancelar",
+    "volver"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "3484ee8b097e37aa1cc95055a56db45f3c76b6202e38a932ba1ce6e48353d518",
+   "archivo": "atras.ogg",
+   "bytes": 396,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "abrir",
+   "nombre": "Abrir",
+   "categoria": "clics",
+   "duracion": 0.15,
+   "etiquetas": [
+    "abrir",
+    "menú",
+    "ventana"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "2d8f761c9f070ffa82684d4fbc89d23a8e0afad5d317ea63e205e2a68bf21c9c",
+   "archivo": "abrir.ogg",
+   "bytes": 820,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "cerrar",
+   "nombre": "Cerrar",
+   "categoria": "clics",
+   "duracion": 0.15,
+   "etiquetas": [
+    "cerrar",
+    "menú",
+    "ventana"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "02efb4305774ad4974af0835c873f7a32e12700ce5907e8cd1afd0264e80f439",
+   "archivo": "cerrar.ogg",
+   "bytes": 787,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pregunta",
+   "nombre": "Pregunta",
+   "categoria": "clics",
+   "duracion": 0.5,
+   "etiquetas": [
+    "aviso",
+    "duda",
+    "pregunta"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "74b6b3f64137058207c25d7e3f438033fb41971df2ccf48c4f55f5d65e2301c7",
+   "archivo": "pregunta.ogg",
+   "bytes": 2027,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pulsar-cuerda",
+   "nombre": "Pulsación de cuerda",
+   "categoria": "clics",
+   "duracion": 0.11,
+   "etiquetas": [
+    "aviso",
+    "cuerda",
+    "nota",
+    "pluck"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "8eeb35f3429b5277edeff411ebd09983a68888857b1c08bc645822972f17e0ca",
+   "archivo": "pulsar-cuerda.ogg",
+   "bytes": 597,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "cristal",
+   "nombre": "Tintineo de cristal",
+   "categoria": "clics",
+   "duracion": 0.28,
+   "etiquetas": [
+    "brillo",
+    "cristal",
+    "tintineo",
+    "vidrio"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "c0efb9d1599499ecb1fcdacce551ae81a346f037bc8d64ce9c9903cb4ddb1f97",
+   "archivo": "cristal.ogg",
+   "bytes": 1299,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "gong-suave",
+   "nombre": "Campanada suave",
+   "categoria": "clics",
+   "duracion": 0.13,
+   "etiquetas": [
+    "aviso",
+    "campana",
+    "gong",
+    "notificación"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "0991f3066500311fdc5e693549c46f6ae802f2f6ec7d2f329f9060c972a3f786",
+   "archivo": "gong-suave.ogg",
+   "bytes": 727,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "soltar",
+   "nombre": "Soltar",
+   "categoria": "clics",
+   "duracion": 0.14,
+   "etiquetas": [
+    "arrastrar",
+    "caer",
+    "soltar"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/interface-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "be9e42f99a08dfaa1cec87e64f1d78e23a2a7069711085c004ef9b7c6cdabd37",
+   "archivo": "soltar.ogg",
+   "bytes": 668,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "clic-raton",
+   "nombre": "Clic de ratón",
+   "categoria": "clics",
+   "duracion": 0.07,
+   "etiquetas": [
+    "clic",
+    "pulsar",
+    "ratón"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/ui-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "46cecaba6cad9a0389425378d5de1b32a02bc756034fdb23320ef008612280ac",
+   "archivo": "clic-raton.ogg",
+   "bytes": 468,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pasar-por-encima",
+   "nombre": "Pasar por encima",
+   "categoria": "clics",
+   "duracion": 0.06,
+   "etiquetas": [
+    "encima",
+    "hover",
+    "pasar",
+    "rollover"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/ui-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "1d8c73b77097b3db74f2c83bbe7840a96770523e11effd2454d920fb4dde00d1",
+   "archivo": "pasar-por-encima.ogg",
+   "bytes": 429,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "swoosh-1",
+   "nombre": "Swoosh 1",
+   "categoria": "transiciones",
+   "duracion": 0.13,
+   "etiquetas": [
+    "aire",
+    "barrido",
+    "paso",
+    "swoosh",
+    "transición",
+    "whoosh"
+   ],
+   "autor": "artisticdude",
+   "fuente": "https://opengameart.org/content/swishes-sound-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "768ab756d0721a95a8ca1751afa608e1dcab230c713831bb06e67690c693b946",
+   "archivo": "swoosh-1.ogg",
+   "bytes": 845,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "swoosh-3",
+   "nombre": "Swoosh 3",
+   "categoria": "transiciones",
+   "duracion": 0.15,
+   "etiquetas": [
+    "aire",
+    "barrido",
+    "paso",
+    "swoosh",
+    "transición",
+    "whoosh"
+   ],
+   "autor": "artisticdude",
+   "fuente": "https://opengameart.org/content/swishes-sound-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "768a43aa4888e738494438c068f5251fe742196c874049cde7e0263424e75dc5",
+   "archivo": "swoosh-3.ogg",
+   "bytes": 891,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "swoosh-5",
+   "nombre": "Swoosh 5",
+   "categoria": "transiciones",
+   "duracion": 0.13,
+   "etiquetas": [
+    "aire",
+    "barrido",
+    "paso",
+    "swoosh",
+    "transición",
+    "whoosh"
+   ],
+   "autor": "artisticdude",
+   "fuente": "https://opengameart.org/content/swishes-sound-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "ddaccc9f53eff8e6e4adceb91c136bfc6ab882931d99c5a1bc2dce7167f09540",
+   "archivo": "swoosh-5.ogg",
+   "bytes": 836,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "swoosh-7",
+   "nombre": "Swoosh 7",
+   "categoria": "transiciones",
+   "duracion": 0.19,
+   "etiquetas": [
+    "aire",
+    "barrido",
+    "paso",
+    "swoosh",
+    "transición",
+    "whoosh"
+   ],
+   "autor": "artisticdude",
+   "fuente": "https://opengameart.org/content/swishes-sound-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "ff242a1c1a376b748bcfae5f57d30e820d2f2463569dd14d2192285b74966a00",
+   "archivo": "swoosh-7.ogg",
+   "bytes": 1090,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "swoosh-9",
+   "nombre": "Swoosh 9",
+   "categoria": "transiciones",
+   "duracion": 0.2,
+   "etiquetas": [
+    "aire",
+    "barrido",
+    "paso",
+    "swoosh",
+    "transición",
+    "whoosh"
+   ],
+   "autor": "artisticdude",
+   "fuente": "https://opengameart.org/content/swishes-sound-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "1611e607d39a41e589e8c1fe4ed70668809d954b5eab45ba8e4afbbb9305776b",
+   "archivo": "swoosh-9.ogg",
+   "bytes": 1161,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "viento-rapido",
+   "nombre": "Ráfaga de viento",
+   "categoria": "transiciones",
+   "duracion": 5.97,
+   "etiquetas": [
+    "aire",
+    "ráfaga",
+    "transición",
+    "viento",
+    "whoosh"
+   ],
+   "autor": "SketchMan3",
+   "fuente": "https://opengameart.org/content/wind-whoosh-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "0cc84b368f5fd99f131a4914e46abce442638d44e6ba07ec33e86d5281c1ba74",
+   "archivo": "viento-rapido.ogg",
+   "bytes": 32622,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "subida-fase-1",
+   "nombre": "Barrido ascendente",
+   "categoria": "transiciones",
+   "duracion": 0.53,
+   "etiquetas": [
+    "barrido",
+    "riser",
+    "sintetizador",
+    "subida",
+    "transición"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "f2708a87a4568f141bd369535da7b4710ab9aa575deed12b294488d1f43c66ac",
+   "archivo": "subida-fase-1.ogg",
+   "bytes": 2123,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "subida-fase-4",
+   "nombre": "Barrido ascendente largo",
+   "categoria": "transiciones",
+   "duracion": 0.37,
+   "etiquetas": [
+    "barrido",
+    "riser",
+    "sintetizador",
+    "subida",
+    "transición"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "f65d98285cf168126926716f375e574ac6aeb4d86ee5066921b3c24b641a85e1",
+   "archivo": "subida-fase-4.ogg",
+   "bytes": 1646,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "bajada-fase-1",
+   "nombre": "Barrido descendente",
+   "categoria": "transiciones",
+   "duracion": 0.48,
+   "etiquetas": [
+    "bajada",
+    "barrido",
+    "sintetizador",
+    "transición"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "9e01abbbb7f943f736daa3cd7464f9d4fd3013fa8e9c884c4fa119f8cd5ee6ed",
+   "archivo": "bajada-fase-1.ogg",
+   "bytes": 2025,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "salto-fase",
+   "nombre": "Salto de fase",
+   "categoria": "transiciones",
+   "duracion": 0.48,
+   "etiquetas": [
+    "fase",
+    "salto",
+    "sintetizador",
+    "teletransporte"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "8cd1e321dba729d7bd6a6c7c2ce32983989ef7572260d3b78c0190789c48a657",
+   "archivo": "salto-fase.ogg",
+   "bytes": 1885,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "agudo-sube",
+   "nombre": "Agudo ascendente",
+   "categoria": "transiciones",
+   "duracion": 0.56,
+   "etiquetas": [
+    "agudo",
+    "sintetizador",
+    "subida"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "8115faed310a8afba2969656aba82199c89d3def87779d63680ab1ab7e4960e9",
+   "archivo": "agudo-sube.ogg",
+   "bytes": 2488,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "agudo-baja",
+   "nombre": "Agudo descendente",
+   "categoria": "transiciones",
+   "duracion": 0.53,
+   "etiquetas": [
+    "agudo",
+    "bajada",
+    "sintetizador"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "2b9f87e7cf030e29024ce49d8c70ca0ae8b179c0f52a00b670b9d85a7f61bf74",
+   "archivo": "agudo-baja.ogg",
+   "bytes": 2304,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "campo-fuerza",
+   "nombre": "Campo de fuerza",
+   "categoria": "transiciones",
+   "duracion": 0.96,
+   "etiquetas": [
+    "campo",
+    "ciencia",
+    "escudo",
+    "ficción",
+    "fuerza",
+    "zumbido"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/sci-fi-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "4acc5d766fd5125e66a9d5c251174812c3712681f0ef54fd15af15a8794c77c3",
+   "archivo": "campo-fuerza.ogg",
+   "bytes": 4283,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pasar-pagina",
+   "nombre": "Pasar página",
+   "categoria": "transiciones",
+   "duracion": 0.78,
+   "etiquetas": [
+    "libro",
+    "papel",
+    "pasar",
+    "página"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "5b572f3e6f7576580c711faa36f559cd1b0ad8a4e59c2a40b1ab542d4bb924e3",
+   "archivo": "pasar-pagina.ogg",
+   "bytes": 3343,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "tela",
+   "nombre": "Roce de tela",
+   "categoria": "transiciones",
+   "duracion": 0.67,
+   "etiquetas": [
+    "cortina",
+    "roce",
+    "ropa",
+    "tela"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "4f41ed21425c4d330497b28f259b9398cce4b690b3592299e6c7a34f7fd813ad",
+   "archivo": "tela.ogg",
+   "bytes": 2835,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "punetazo-fuerte",
+   "nombre": "Puñetazo fuerte",
+   "categoria": "impactos",
+   "duracion": 0.66,
+   "etiquetas": [
+    "golpe",
+    "pelea",
+    "puñetazo"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "9ae7d1b0d6f108da735f982eadc1275bb3a487372f68334d85c50bf5217f3b32",
+   "archivo": "punetazo-fuerte.ogg",
+   "bytes": 2758,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "punetazo-medio",
+   "nombre": "Puñetazo medio",
+   "categoria": "impactos",
+   "duracion": 0.44,
+   "etiquetas": [
+    "golpe",
+    "pelea",
+    "puñetazo"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "0241776a221988ec56806b9831e4b4ff0392bc61fdd48b8402943e0098e3b65d",
+   "archivo": "punetazo-medio.ogg",
+   "bytes": 1599,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "metal-pesado",
+   "nombre": "Golpe de metal pesado",
+   "categoria": "impactos",
+   "duracion": 0.17,
+   "etiquetas": [
+    "choque",
+    "golpe",
+    "metal",
+    "pesado"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "fc555f8ecf9e9eb6eb10a7f7664c1ca4355f6a7c1e5ff29c4650c42b2bf23c27",
+   "archivo": "metal-pesado.ogg",
+   "bytes": 813,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "metal-ligero",
+   "nombre": "Golpe de metal ligero",
+   "categoria": "impactos",
+   "duracion": 0.38,
+   "etiquetas": [
+    "choque",
+    "golpe",
+    "ligero",
+    "metal"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "f531fbb7709f52a5f5ff71b213c7ec1c3843942836b404f68bac29186da9e71d",
+   "archivo": "metal-ligero.ogg",
+   "bytes": 1713,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "madera",
+   "nombre": "Golpe de madera",
+   "categoria": "impactos",
+   "duracion": 0.79,
+   "etiquetas": [
+    "golpe",
+    "madera",
+    "tabla"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "601d377265d3535fa262d822d47252031d59dba569896a6aad47fd83c64a47df",
+   "archivo": "madera.ogg",
+   "bytes": 2420,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "cristal-roto",
+   "nombre": "Impacto de cristal",
+   "categoria": "impactos",
+   "duracion": 0.25,
+   "etiquetas": [
+    "cristal",
+    "golpe",
+    "rotura",
+    "vidrio"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "db2cac2cfda04583d36bc5a0ce22867aa130164f0bce0e69775ca65aab030525",
+   "archivo": "cristal-roto.ogg",
+   "bytes": 1138,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "campana-pesada",
+   "nombre": "Campana pesada",
+   "categoria": "impactos",
+   "duracion": 1.49,
+   "etiquetas": [
+    "campana",
+    "golpe",
+    "resonancia"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "7f92e3233469734dbcf322e5dbd4ac917299db6635cb38d72809d400265d2566",
+   "archivo": "campana-pesada.ogg",
+   "bytes": 7164,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pico",
+   "nombre": "Golpe de pico",
+   "categoria": "impactos",
+   "duracion": 0.94,
+   "etiquetas": [
+    "golpe",
+    "minería",
+    "pico",
+    "piedra"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "29b97c6b3e74a9d40afe9433c7b2cb39045936e4afcd921ea5ef15f0ba3d86b7",
+   "archivo": "pico.ogg",
+   "bytes": 5351,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "explosion",
+   "nombre": "Explosión",
+   "categoria": "impactos",
+   "duracion": 0.78,
+   "etiquetas": [
+    "bum",
+    "estallido",
+    "explosión"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/sci-fi-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "70f3d865d092831ee6e14af1a16e00de4edf79646c55511a0b95ff80aea570a5",
+   "archivo": "explosion.ogg",
+   "bytes": 3008,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "explosion-grave",
+   "nombre": "Explosión grave",
+   "categoria": "impactos",
+   "duracion": 2.01,
+   "etiquetas": [
+    "bum",
+    "estallido",
+    "explosión",
+    "grave"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/sci-fi-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "c95fcad377a7e286d34aa89c6f31bfad441f134bb7e391a9ca8b2eb89e0f807c",
+   "archivo": "explosion-grave.ogg",
+   "bytes": 7252,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pisada-cemento",
+   "nombre": "Pisada en cemento",
+   "categoria": "impactos",
+   "duracion": 0.11,
+   "etiquetas": [
+    "calle",
+    "cemento",
+    "paso",
+    "pisada"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "41c822b01851cce8c720dce083a882b2b9d0339995d59ae3e8d988142598e709",
+   "archivo": "pisada-cemento.ogg",
+   "bytes": 553,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pisada-madera",
+   "nombre": "Pisada en madera",
+   "categoria": "impactos",
+   "duracion": 0.28,
+   "etiquetas": [
+    "madera",
+    "paso",
+    "pisada",
+    "suelo"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "4827f91b347ac65615a74060e5e22f1940f6584be3404ce4792c6c5b449f0ab8",
+   "archivo": "pisada-madera.ogg",
+   "bytes": 1042,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "pisada-hierba",
+   "nombre": "Pisada en hierba",
+   "categoria": "impactos",
+   "duracion": 0.78,
+   "etiquetas": [
+    "césped",
+    "hierba",
+    "paso",
+    "pisada"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/impact-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "e48bffce574dfe3fc39b50ad29fd1d53335fe31bc718ee9a8a0e011f20e7b8af",
+   "archivo": "pisada-hierba.ogg",
+   "bytes": 2049,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "tajo",
+   "nombre": "Tajo",
+   "categoria": "impactos",
+   "duracion": 0.25,
+   "etiquetas": [
+    "corte",
+    "golpe",
+    "hacha",
+    "tajo"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "384aa83a4a67ab1da4163933440174b3811cfbcc758e1a50ae2201d6cbe29389",
+   "archivo": "tajo.ogg",
+   "bytes": 1184,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "puerta-cierra",
+   "nombre": "Puerta que se cierra",
+   "categoria": "impactos",
+   "duracion": 0.68,
+   "etiquetas": [
+    "cerrar",
+    "portazo",
+    "puerta"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "e3c861223b73204370d0cbe741297d55b1b9f1523663bd0b14d48e5357cce269",
+   "archivo": "puerta-cierra.ogg",
+   "bytes": 2609,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "puerta-abre",
+   "nombre": "Puerta que se abre",
+   "categoria": "impactos",
+   "duracion": 0.93,
+   "etiquetas": [
+    "abrir",
+    "puerta"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "09b2ad3b2e14e6be785031626da6c6203bf6289567e3c3face8da02055bbb3e7",
+   "archivo": "puerta-abre.ogg",
+   "bytes": 3803,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "monedas",
+   "nombre": "Monedas",
+   "categoria": "impactos",
+   "duracion": 0.85,
+   "etiquetas": [
+    "caja",
+    "dinero",
+    "monedas"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "a3fc90c88758e0e9f4e14c08abba723103b936e68315ae6f5bdd52266ac9ae46",
+   "archivo": "monedas.ogg",
+   "bytes": 3332,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "multitud",
+   "nombre": "Multitud gritando",
+   "categoria": "ambiente",
+   "duracion": 27.39,
+   "etiquetas": [
+    "estadio",
+    "gente",
+    "gritos",
+    "multitud",
+    "público"
+   ],
+   "autor": "StarNinjas",
+   "fuente": "https://opengameart.org/content/crowd-shoutingspeaking-ambience",
+   "licencia": "CC0-1.0",
+   "sha256": "45e2d6ea0ceba1ed4a99e8323c0b5b95ff49c677ada5ef42acca5023ee9023f3",
+   "archivo": "multitud.ogg",
+   "bytes": 135099,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "motor-circular",
+   "nombre": "Motor circular",
+   "categoria": "ambiente",
+   "duracion": 5.01,
+   "etiquetas": [
+    "ciencia",
+    "ficción",
+    "motor",
+    "máquina",
+    "zumbido"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/sci-fi-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "a6842332965fe529c43aa97956b9e9eed0ac50396e51717cbba0bd2b5e397cfb",
+   "archivo": "motor-circular.ogg",
+   "bytes": 24481,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "motor-espacial",
+   "nombre": "Motor de nave",
+   "categoria": "ambiente",
+   "duracion": 5.01,
+   "etiquetas": [
+    "espacio",
+    "motor",
+    "nave",
+    "zumbido"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/sci-fi-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "009ec578604dbd51fa6c7034a4cd2b5637505624f358f8bb9f01c65e6b6b6c93",
+   "archivo": "motor-espacial.ogg",
+   "bytes": 24381,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "crujido",
+   "nombre": "Crujido de madera",
+   "categoria": "ambiente",
+   "duracion": 0.67,
+   "etiquetas": [
+    "casa",
+    "crujido",
+    "madera",
+    "terror",
+    "vieja"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/rpg-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "a2cedc3c10713005f50a1cb99f37ea56c9bf96361f1af58fecd04e2087b1ad48",
+   "archivo": "crujido.ogg",
+   "bytes": 3208,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "aplausos",
+   "nombre": "Aplausos de sala",
+   "categoria": "risas",
+   "duracion": 30.01,
+   "etiquetas": [
+    "aplausos",
+    "ovación",
+    "palmas",
+    "público",
+    "sala"
+   ],
+   "autor": "eXpl0it3r",
+   "fuente": "https://opengameart.org/content/applause-in-a-large-hall-or-church",
+   "licencia": "CC0-1.0",
+   "sha256": "0c65f1b4cb9c89b52983af0dd479fd46cfd00f4e4702c53a7f0dfc41231108fc",
+   "archivo": "aplausos.ogg",
+   "bytes": 158069,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "risitas-grupo",
+   "nombre": "Risitas de grupo",
+   "categoria": "risas",
+   "duracion": 5.49,
+   "etiquetas": [
+    "gente",
+    "grupo",
+    "risas",
+    "risitas"
+   ],
+   "autor": "Nocturnal_Vanguard",
+   "fuente": "https://opengameart.org/content/group-giggling",
+   "licencia": "CC0-1.0",
+   "sha256": "4480306141a409f1862112f3725cb18d1eb56b3e452da94c8189c02b8f58d9c7",
+   "archivo": "risitas-grupo.ogg",
+   "bytes": 22990,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "risa-bruja",
+   "nombre": "Risa de bruja",
+   "categoria": "risas",
+   "duracion": 1.17,
+   "etiquetas": [
+    "bruja",
+    "cacareo",
+    "risa",
+    "terror"
+   ],
+   "autor": "AntumDeluge",
+   "fuente": "https://opengameart.org/content/witch-cackle",
+   "licencia": "CC0-1.0",
+   "sha256": "a60102e52454a2b12de2523e978576b1876adbfe19a1bbbf322ea1fea218b43d",
+   "archivo": "risa-bruja.ogg",
+   "bytes": 5263,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "risas-maniacas",
+   "nombre": "Risas maníacas",
+   "categoria": "risas",
+   "duracion": 20.01,
+   "etiquetas": [
+    "malvada",
+    "maníaca",
+    "risa",
+    "villano"
+   ],
+   "autor": "Nocturnal_Vanguard",
+   "fuente": "https://opengameart.org/content/maniacal-laughter-pack-1",
+   "licencia": "CC0-1.0",
+   "sha256": "fcebbc1cb5b2572a08072c2b44682f860232c402631ad719476e068949333433",
+   "archivo": "risas-maniacas.ogg",
+   "bytes": 82987,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "risa-malvada",
+   "nombre": "Risa malvada",
+   "categoria": "risas",
+   "duracion": 2.55,
+   "etiquetas": [
+    "malvada",
+    "risa",
+    "villano"
+   ],
+   "autor": "AntumDeluge",
+   "fuente": "https://opengameart.org/content/evil-laugh",
+   "licencia": "CC0-1.0",
+   "sha256": "36949a4fcb3e2fd625c8dc231b85fccf9275d80881f53d8c520dcebdbabd7fa5",
+   "archivo": "risa-malvada.ogg",
+   "bytes": 10589,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "risa-malvada-2",
+   "nombre": "Risa malvada 2",
+   "categoria": "risas",
+   "duracion": 4.42,
+   "etiquetas": [
+    "malvada",
+    "risa",
+    "villano"
+   ],
+   "autor": "Eldritch Grim",
+   "fuente": "https://opengameart.org/content/evil-laughs-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "2b36bce753b91c563f9981ac5f0eb13d823510f04ca17ecd4123a625e7a9a9b0",
+   "archivo": "risa-malvada-2.ogg",
+   "bytes": 18896,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "risa-malvada-4",
+   "nombre": "Risa malvada 4",
+   "categoria": "risas",
+   "duracion": 4.06,
+   "etiquetas": [
+    "malvada",
+    "risa",
+    "villano"
+   ],
+   "autor": "Eldritch Grim",
+   "fuente": "https://opengameart.org/content/evil-laughs-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "b91f84693f92f8260eb1d9601d897a2dff7254bf58c4583d8f745f50bf2d1619",
+   "archivo": "risa-malvada-4.ogg",
+   "bytes": 13690,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "risa-malvada-6",
+   "nombre": "Risa malvada 6",
+   "categoria": "risas",
+   "duracion": 6.87,
+   "etiquetas": [
+    "malvada",
+    "risa",
+    "villano"
+   ],
+   "autor": "Eldritch Grim",
+   "fuente": "https://opengameart.org/content/evil-laughs-pack",
+   "licencia": "CC0-1.0",
+   "sha256": "72bb1b881895952bc52f8785b1882a3c7c91806f9a50c8c744257fc5ad01e58f",
+   "archivo": "risa-malvada-6.ogg",
+   "bytes": 22551,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "sirena",
+   "nombre": "Sirena",
+   "categoria": "sirenas",
+   "duracion": 20.01,
+   "etiquetas": [
+    "ambulancia",
+    "emergencia",
+    "policía",
+    "sirena"
+   ],
+   "autor": "aquinn",
+   "fuente": "https://opengameart.org/content/sirens-and-alarm-noise",
+   "licencia": "CC0-1.0",
+   "sha256": "53483a3e75202bb53a475e16f9d074fa0c27fa0a467008468b1b20b53a06db26",
+   "archivo": "sirena.ogg",
+   "bytes": 93895,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "alarma-1",
+   "nombre": "Alarma de pitidos",
+   "categoria": "sirenas",
+   "duracion": 2.01,
+   "etiquetas": [
+    "alarma",
+    "aviso",
+    "peligro",
+    "pitidos"
+   ],
+   "autor": "Frenchyboy",
+   "fuente": "https://opengameart.org/content/alarm-2",
+   "licencia": "CC0-1.0",
+   "sha256": "e585a8fae499a46d073832b4868b8b28f832247587825046fee439a5d02649f8",
+   "archivo": "alarma-1.ogg",
+   "bytes": 8072,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "alarma-2",
+   "nombre": "Alarma larga",
+   "categoria": "sirenas",
+   "duracion": 5.58,
+   "etiquetas": [
+    "alarma",
+    "aviso",
+    "despertador",
+    "peligro"
+   ],
+   "autor": "bonzille",
+   "fuente": "https://opengameart.org/content/alarm-sound-effect",
+   "licencia": "CC0-1.0",
+   "sha256": "87982c8ff93a57ced46f9a0033be05b10cfafe5491851bdd25a07412d6034943",
+   "archivo": "alarma-2.ogg",
+   "bytes": 29382,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "alarma-3",
+   "nombre": "Alarma corta",
+   "categoria": "sirenas",
+   "duracion": 1.85,
+   "etiquetas": [
+    "alarma",
+    "aviso",
+    "peligro"
+   ],
+   "autor": "EZduzziteh",
+   "fuente": "https://opengameart.org/content/alarm-1",
+   "licencia": "CC0-1.0",
+   "sha256": "199f5c5872492974d8d28c608d046862a553697b32ce3698fbcb048a762d602c",
+   "archivo": "alarma-3.ogg",
+   "bytes": 13173,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "alarma-4",
+   "nombre": "Alarma breve",
+   "categoria": "sirenas",
+   "duracion": 1.71,
+   "etiquetas": [
+    "alarma",
+    "aviso",
+    "peligro"
+   ],
+   "autor": "yd",
+   "fuente": "https://opengameart.org/content/short-alarm",
+   "licencia": "CC0-1.0",
+   "sha256": "20245b7c28e9addd422a66aa278af40b6698ef5ad45988b0fec821f2f94bb0b2",
+   "archivo": "alarma-4.ogg",
+   "bytes": 6689,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "lluvia-1",
+   "nombre": "Lluvia constante (bucle)",
+   "categoria": "naturaleza",
+   "duracion": 27.01,
+   "etiquetas": [
+    "agua",
+    "ambiente",
+    "llover",
+    "lluvia",
+    "tormenta"
+   ],
+   "autor": "Ylmir",
+   "fuente": "https://opengameart.org/content/rain-loopable",
+   "licencia": "CC0-1.0",
+   "sha256": "a110c54e6aa0038a93db4ff801fb7f3510cd90df3b2c2f80b7cfd8492e1bb8f2",
+   "archivo": "lluvia-1.ogg",
+   "bytes": 120342,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "lluvia-2",
+   "nombre": "Lluvia suave (bucle)",
+   "categoria": "naturaleza",
+   "duracion": 26.01,
+   "etiquetas": [
+    "agua",
+    "ambiente",
+    "llover",
+    "lluvia",
+    "suave"
+   ],
+   "autor": "Ylmir",
+   "fuente": "https://opengameart.org/content/rain-loopable",
+   "licencia": "CC0-1.0",
+   "sha256": "6873be522f2fc35f8b51f5aa893f171b3af50295198672d536aa62a3375cbded",
+   "archivo": "lluvia-2.ogg",
+   "bytes": 115657,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "lluvia-truenos",
+   "nombre": "Lluvia con trueno",
+   "categoria": "naturaleza",
+   "duracion": 44.38,
+   "etiquetas": [
+    "lluvia",
+    "relámpago",
+    "tormenta",
+    "trueno"
+   ],
+   "autor": "WuxiaScrub",
+   "fuente": "https://opengameart.org/content/rain-long-thunder",
+   "licencia": "CC0-1.0",
+   "sha256": "606ad93e0b57a39d99db0c4f1386f8a425cb7ad0495f7c105e8f12b0d2ed78bd",
+   "archivo": "lluvia-truenos.ogg",
+   "bytes": 198776,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "pajaros",
+   "nombre": "Pájaros del bosque",
+   "categoria": "naturaleza",
+   "duracion": 30.69,
+   "etiquetas": [
+    "aves",
+    "bosque",
+    "canto",
+    "mañana",
+    "pájaros"
+   ],
+   "autor": "isaiah658",
+   "fuente": "https://opengameart.org/content/ambient-bird-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "3e87958a809b2403a6ab6844243d61db75b7fade0487632774d9eb9892cb8989",
+   "archivo": "pajaros.ogg",
+   "bytes": 140203,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "pajaros-cortos",
+   "nombre": "Gorjeo de pájaros",
+   "categoria": "naturaleza",
+   "duracion": 3.01,
+   "etiquetas": [
+    "aves",
+    "canto",
+    "gorjeo",
+    "pájaros"
+   ],
+   "autor": "syncopika",
+   "fuente": "https://opengameart.org/content/bird-chirping-sounds",
+   "licencia": "CC0-1.0",
+   "sha256": "e54a462ed46193fdbf6d2773fd079b9aa926c369c0da9ea68dec5d9faf136f79",
+   "archivo": "pajaros-cortos.ogg",
+   "bytes": 14847,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "grillos",
+   "nombre": "Grillos nocturnos (bucle)",
+   "categoria": "naturaleza",
+   "duracion": 11.46,
+   "etiquetas": [
+    "campo",
+    "grillo",
+    "grillos",
+    "insectos",
+    "noche"
+   ],
+   "autor": "Wolfgang_",
+   "fuente": "https://opengameart.org/content/crickets-ambient-noise-loopable",
+   "licencia": "CC0-1.0",
+   "sha256": "b44f643ed23d9d734392e872a19c6a869d9c0fc29e0024a2328d31b8823cfe4b",
+   "archivo": "grillos.ogg",
+   "bytes": 65141,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "olas-1",
+   "nombre": "Ola de mar 1",
+   "categoria": "naturaleza",
+   "duracion": 1.76,
+   "etiquetas": [
+    "agua",
+    "mar",
+    "olas",
+    "playa"
+   ],
+   "autor": "transitking",
+   "fuente": "https://opengameart.org/content/water-waves",
+   "licencia": "CC0-1.0",
+   "sha256": "3f7c860e04100239e3ff1254b921ed37f40a2b45fec97a11c129f4b4d0e049f2",
+   "archivo": "olas-1.ogg",
+   "bytes": 7218,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "olas-playa-1",
+   "nombre": "Olas en la playa 1",
+   "categoria": "naturaleza",
+   "duracion": 4.01,
+   "etiquetas": [
+    "agua",
+    "mar",
+    "olas",
+    "orilla",
+    "playa"
+   ],
+   "autor": "jasinski",
+   "fuente": "https://opengameart.org/content/beach-ocean-waves",
+   "licencia": "CC0-1.0",
+   "sha256": "84f1b444f2d20c8a85ee2c94b37d4f18110d67e83dd4b7d7623bd5537fcc9f72",
+   "archivo": "olas-playa-1.ogg",
+   "bytes": 19024,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "viento-1",
+   "nombre": "Viento suave",
+   "categoria": "naturaleza",
+   "duracion": 6.64,
+   "etiquetas": [
+    "aire",
+    "ambiente",
+    "brisa",
+    "viento"
+   ],
+   "autor": "IgnasD",
+   "fuente": "https://opengameart.org/content/wind",
+   "licencia": "CC0-1.0",
+   "sha256": "dcafc620936f33d77664ab906b52e75bf0a26b351a492191f2f09e9b425f1cf1",
+   "archivo": "viento-1.ogg",
+   "bytes": 30941,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "viento-2",
+   "nombre": "Viento fuerte",
+   "categoria": "naturaleza",
+   "duracion": 6.66,
+   "etiquetas": [
+    "aire",
+    "ambiente",
+    "racha",
+    "viento"
+   ],
+   "autor": "IgnasD",
+   "fuente": "https://opengameart.org/content/wind",
+   "licencia": "CC0-1.0",
+   "sha256": "cc155d140ccd5d228413b321b5324ea0e1182f2e44a803852a66e0e59d24b6d2",
+   "archivo": "viento-2.ogg",
+   "bytes": 30771,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "fuego",
+   "nombre": "Fuego crepitando",
+   "categoria": "naturaleza",
+   "duracion": 3.6,
+   "etiquetas": [
+    "crepitar",
+    "fuego",
+    "hoguera",
+    "llamas"
+   ],
+   "autor": "AntumDeluge",
+   "fuente": "https://opengameart.org/content/fire-crackling",
+   "licencia": "CC0-1.0",
+   "sha256": "e50610f9844d0ec911f536c1583eb720ef0a1a5b782b81f7e14b19da30596e15",
+   "archivo": "fuego.ogg",
+   "bytes": 17593,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "chimenea",
+   "nombre": "Chimenea (bucle)",
+   "categoria": "naturaleza",
+   "duracion": 29.27,
+   "etiquetas": [
+    "chimenea",
+    "crepitar",
+    "fuego",
+    "hoguera",
+    "llamas"
+   ],
+   "autor": "PagDev",
+   "fuente": "https://opengameart.org/content/fireplace-sound-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "46f0d5091d3f28b3091cd84410ddfcceadd3cfd2d78ddac83d2a1d5749b3ff49",
+   "archivo": "chimenea.ogg",
+   "bytes": 125084,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "jingle-nes00",
+   "nombre": "Jingle 8 bits 1",
+   "categoria": "jingles",
+   "duracion": 1.76,
+   "etiquetas": [
+    "8",
+    "bits",
+    "final",
+    "intro",
+    "jingle",
+    "logo",
+    "retro",
+    "videojuego"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "181f0d3df41e041a877ef01c7f5e6a03e214ee919f4471238e11818f6642eef6",
+   "archivo": "jingle-nes00.ogg",
+   "bytes": 16263,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-nes05",
+   "nombre": "Jingle 8 bits 2",
+   "categoria": "jingles",
+   "duracion": 0.91,
+   "etiquetas": [
+    "8",
+    "bits",
+    "final",
+    "intro",
+    "jingle",
+    "logo",
+    "retro",
+    "videojuego"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "da36f691816b20a92f37032d5056065107dc53b075e86e54468166460b2f6a22",
+   "archivo": "jingle-nes05.ogg",
+   "bytes": 9030,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-hit00",
+   "nombre": "Jingle de golpe 1",
+   "categoria": "jingles",
+   "duracion": 0.29,
+   "etiquetas": [
+    "final",
+    "golpe",
+    "intro",
+    "jingle",
+    "logo",
+    "remate"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "5ed5f52e418628c89b29abd86f88e4cebb4acd9bb26a00aa9229b650aefd1114",
+   "archivo": "jingle-hit00.ogg",
+   "bytes": 1857,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-hit05",
+   "nombre": "Jingle de golpe 2",
+   "categoria": "jingles",
+   "duracion": 0.62,
+   "etiquetas": [
+    "final",
+    "golpe",
+    "intro",
+    "jingle",
+    "logo",
+    "remate"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "87863e6b262af5ced100af334c5b03fa0da66b3d87456a20f78f3f22aebcff61",
+   "archivo": "jingle-hit05.ogg",
+   "bytes": 3864,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-pizzi00",
+   "nombre": "Jingle de pizzicato 1",
+   "categoria": "jingles",
+   "duracion": 0.5,
+   "etiquetas": [
+    "alegre",
+    "cuerdas",
+    "final",
+    "intro",
+    "jingle",
+    "logo",
+    "pizzicato"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "56823fdd5a0e79bfb203d022051ae58d7dbf5170f8b2b2f59ba98bc8d63ab0ff",
+   "archivo": "jingle-pizzi00.ogg",
+   "bytes": 3102,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-pizzi06",
+   "nombre": "Jingle de pizzicato 2",
+   "categoria": "jingles",
+   "duracion": 0.7,
+   "etiquetas": [
+    "alegre",
+    "cuerdas",
+    "final",
+    "intro",
+    "jingle",
+    "logo",
+    "pizzicato"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "2a885c2f666357d01ba438d9569171f73d8bb0f029e362cdb60c5ed451773ffc",
+   "archivo": "jingle-pizzi06.ogg",
+   "bytes": 4463,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-sax00",
+   "nombre": "Jingle de saxofón 1",
+   "categoria": "jingles",
+   "duracion": 0.4,
+   "etiquetas": [
+    "final",
+    "intro",
+    "jazz",
+    "jingle",
+    "logo",
+    "saxofón"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "d506cf94fad5109616fb478901b4a1c7f198e01f518b97f741eb2661b70b7917",
+   "archivo": "jingle-sax00.ogg",
+   "bytes": 3176,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-sax05",
+   "nombre": "Jingle de saxofón 2",
+   "categoria": "jingles",
+   "duracion": 0.47,
+   "etiquetas": [
+    "final",
+    "intro",
+    "jazz",
+    "jingle",
+    "logo",
+    "saxofón"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "cc57dcf53099472c1cb980a829689f4b0e6766c031d59122de2a36fab2bd1d21",
+   "archivo": "jingle-sax05.ogg",
+   "bytes": 3441,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-steel00",
+   "nombre": "Jingle de acero 1",
+   "categoria": "jingles",
+   "duracion": 0.94,
+   "etiquetas": [
+    "acero",
+    "final",
+    "intro",
+    "jingle",
+    "logo",
+    "percusión"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "bb305df5e95e4f3bebc1f4ffaede695169c674f0c02c9ebfb9d95c781c575310",
+   "archivo": "jingle-steel00.ogg",
+   "bytes": 6015,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "jingle-steel05",
+   "nombre": "Jingle de acero 2",
+   "categoria": "jingles",
+   "duracion": 0.95,
+   "etiquetas": [
+    "acero",
+    "final",
+    "intro",
+    "jingle",
+    "logo",
+    "percusión"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/music-jingles",
+   "licencia": "CC0-1.0",
+   "sha256": "baf2182ff6c0a0434839ac9b2351ee9b3789fe1e3420472577e2cf959ba27bd5",
+   "archivo": "jingle-steel05.ogg",
+   "bytes": 5893,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "subida-1",
+   "nombre": "Subida de nivel",
+   "categoria": "jingles",
+   "duracion": 1.16,
+   "etiquetas": [
+    "jingle",
+    "logro",
+    "mejora",
+    "nivel",
+    "subida"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "ed66ad38275b48c513e91d5322e145ccba10986592ecdccca7796398cd60b0c7",
+   "archivo": "subida-1.ogg",
+   "bytes": 5604,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "subida-2",
+   "nombre": "Mejora conseguida",
+   "categoria": "jingles",
+   "duracion": 0.61,
+   "etiquetas": [
+    "jingle",
+    "logro",
+    "mejora",
+    "premio"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "aea32fc7b913bb5f81822fdef7644aaa3386e45b0a555f54e5f58d3f21dc386b",
+   "archivo": "subida-2.ogg",
+   "bytes": 2456,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "tres-tonos",
+   "nombre": "Tres tonos",
+   "categoria": "jingles",
+   "duracion": 0.86,
+   "etiquetas": [
+    "aviso",
+    "jingle",
+    "notificación",
+    "tonos"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "b9f61a0e4df46e969c64ebbc0f150f9c82a522343331a50af9390ef695a24ec2",
+   "archivo": "tres-tonos.ogg",
+   "bytes": 3065,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "dos-tonos",
+   "nombre": "Dos tonos",
+   "categoria": "jingles",
+   "duracion": 0.73,
+   "etiquetas": [
+    "aviso",
+    "jingle",
+    "notificación",
+    "tonos"
+   ],
+   "autor": "Kenney (kenney.nl)",
+   "fuente": "https://kenney.nl/assets/digital-audio",
+   "licencia": "CC0-1.0",
+   "sha256": "1adce9375a3b010092211b66d751369d3b2f52ff98cc4d136328bd4d3c7ac2f5",
+   "archivo": "dos-tonos.ogg",
+   "bytes": 2726,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "musica-vaquero",
+   "nombre": "Vaquero (bucle)",
+   "categoria": "musica",
+   "duracion": 73.81,
+   "etiquetas": [
+    "alegre",
+    "bucle",
+    "fondo",
+    "guitarra",
+    "música",
+    "western"
+   ],
+   "autor": "congusbongus",
+   "fuente": "https://opengameart.org/content/lasso-lady-seamless-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "705e0867cf6e34752e39a0c10286286d0c32d63dc56a9a09a53fecd2227cd5f8",
+   "archivo": "musica-vaquero.ogg",
+   "bytes": 613988,
+   "bucle": true,
+   "canales": 1
+  },
+  {
+   "id": "musica-campos",
+   "nombre": "Campos de flores (bucle)",
+   "categoria": "musica",
+   "duracion": 106.01,
+   "etiquetas": [
+    "bucle",
+    "fondo",
+    "música",
+    "naturaleza",
+    "suave",
+    "tranquilo"
+   ],
+   "autor": "Zane Little Music",
+   "fuente": "https://opengameart.org/content/flowerbed-fields-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "545b8e1aeb7c3695ce699e2a3074af02bb48c9cb6be00d94fe2dc338b3ab163c",
+   "archivo": "musica-campos.ogg",
+   "bytes": 762647,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-parque",
+   "nombre": "Parque de verano 8 bits (bucle)",
+   "categoria": "musica",
+   "duracion": 44.01,
+   "etiquetas": [
+    "8",
+    "alegre",
+    "bits",
+    "bucle",
+    "fondo",
+    "música",
+    "retro",
+    "videojuego"
+   ],
+   "autor": "Scribe",
+   "fuente": "https://opengameart.org/content/summer-park-8bit-tune-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "02270603c95de9c93d549b73354f057814da7f2dd1058f0a034025497682d311",
+   "archivo": "musica-parque.ogg",
+   "bytes": 352778,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-celestial",
+   "nombre": "Celestial (bucle)",
+   "categoria": "musica",
+   "duracion": 33.71,
+   "etiquetas": [
+    "bucle",
+    "calma",
+    "etéreo",
+    "fondo",
+    "música"
+   ],
+   "autor": "isaiah658",
+   "fuente": "https://opengameart.org/content/heavenly-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "1735c7c1ab5ef7cf2fefdb08f5fda4f2717b3a81b661a658be20e74766ee882e",
+   "archivo": "musica-celestial.ogg",
+   "bytes": 379906,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-ambiental",
+   "nombre": "Ambiental relajante (bucle)",
+   "categoria": "musica",
+   "duracion": 24.61,
+   "etiquetas": [
+    "ambiental",
+    "bucle",
+    "calma",
+    "fondo",
+    "música",
+    "relajante"
+   ],
+   "autor": "isaiah658",
+   "fuente": "https://opengameart.org/content/ambient-relaxing-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "60a906e7010dbd8e63ab67e930bb476731768f304767b4e71cddcf912669458b",
+   "archivo": "musica-ambiental.ogg",
+   "bytes": 264185,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-fiebre-chill",
+   "nombre": "Chill suave (bucle)",
+   "categoria": "musica",
+   "duracion": 59.21,
+   "etiquetas": [
+    "bucle",
+    "chill",
+    "electrónica",
+    "fondo",
+    "música",
+    "relajado"
+   ],
+   "autor": "Pro Sensory",
+   "fuente": "https://opengameart.org/content/a-chill-fever-loopable",
+   "licencia": "CC0-1.0",
+   "sha256": "1400075119dc2470f114d4f09b2c6247267c0cc00fdaad17637f0df1b871bf31",
+   "archivo": "musica-fiebre-chill.ogg",
+   "bytes": 499886,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-piano",
+   "nombre": "Piano emotivo (bucle)",
+   "categoria": "musica",
+   "duracion": 27.91,
+   "etiquetas": [
+    "bucle",
+    "emotiva",
+    "fondo",
+    "música",
+    "piano"
+   ],
+   "autor": "extenz",
+   "fuente": "https://opengameart.org/content/emotional-piano-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "5c4ba44d03b80f2ac302103b66311047a9802cf38f0caa1a063e4d4090b80517",
+   "archivo": "musica-piano.ogg",
+   "bytes": 228605,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-percusion",
+   "nombre": "Percusión cinematográfica (bucle)",
+   "categoria": "musica",
+   "duracion": 12.01,
+   "etiquetas": [
+    "bucle",
+    "cine",
+    "fondo",
+    "música",
+    "percusión",
+    "tensión",
+    "épica"
+   ],
+   "autor": "Marwan Antonios",
+   "fuente": "https://opengameart.org/content/cinematic-percussion-loop",
+   "licencia": "CC0-1.0",
+   "sha256": "33d0a8aa173e011fc1bcd309f96986289fe1ff9a7086d2d8df50a1c44a799972",
+   "archivo": "musica-percusion.ogg",
+   "bytes": 75867,
+   "bucle": true,
+   "canales": 2
+  },
+  {
+   "id": "musica-lofi-otra-vez",
+   "nombre": "Lofi otra vez",
+   "categoria": "musica",
+   "duracion": 87.91,
+   "etiquetas": [
+    "chill",
+    "estudio",
+    "fondo",
+    "lofi",
+    "música",
+    "relajado"
+   ],
+   "autor": "omfgdude",
+   "fuente": "https://opengameart.org/content/lofi-again",
+   "licencia": "CC0-1.0",
+   "sha256": "190043f5d1598c84ab749ec5e0c675a405bf268fec63be5543ccddf3a8666c91",
+   "archivo": "musica-lofi-otra-vez.ogg",
+   "bytes": 562931,
+   "bucle": false,
+   "canales": 1
+  },
+  {
+   "id": "musica-lofi-inspirada",
+   "nombre": "Lofi inspirado",
+   "categoria": "musica",
+   "duracion": 90.01,
+   "etiquetas": [
+    "chill",
+    "estudio",
+    "fondo",
+    "lofi",
+    "música",
+    "relajado"
+   ],
+   "autor": "omfgdude",
+   "fuente": "https://opengameart.org/content/chill-lofi-inspired",
+   "licencia": "CC0-1.0",
+   "sha256": "935e62749f41559c3f281c8c86040c37a395a029b182ec66657e4be448947cc4",
+   "archivo": "musica-lofi-inspirada.ogg",
+   "bytes": 662870,
+   "bucle": false,
+   "canales": 2
+  },
+  {
+   "id": "musica-nube",
+   "nombre": "Siesta en una nube",
+   "categoria": "musica",
+   "duracion": 90.01,
+   "etiquetas": [
+    "calma",
+    "fondo",
+    "música",
+    "suave",
+    "sueño",
+    "tranquilo"
+   ],
+   "autor": "congusbongus",
+   "fuente": "https://opengameart.org/content/napping-on-a-cloud",
+   "licencia": "CC0-1.0",
+   "sha256": "7ef2ff2d0e2bfd9e32fb2cc81947486da9dde24acc0916701faf743534c4d4d0",
+   "archivo": "musica-nube.ogg",
+   "bytes": 616530,
+   "bucle": false,
+   "canales": 2
+  }
+ ]
+}

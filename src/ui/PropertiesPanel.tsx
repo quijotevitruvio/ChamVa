@@ -33,6 +33,7 @@ import { SharedStyles } from './SharedStyles';
 import { Constraints } from './Constraints';
 import { LayerBlendButton } from './BlendPicker';
 import { MaskPanel, SelectionPanel } from './MaskPanel';
+import { RetouchPanel } from './RetouchPanel';
 
 
 // Sección plegable; recuerda si el usuario la dejó abierta o cerrada.
@@ -386,6 +387,7 @@ export function PropertiesPanel(p: Props) {
         )}
 
         <SelectionPanel />
+        <RetouchPanel />
         {!multi && (
           <Section id="layer-mask" title="Máscara" defaultOpen={!!selected.mask}>
             <MaskPanel layer={selected} />

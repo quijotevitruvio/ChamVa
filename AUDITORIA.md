@@ -210,3 +210,37 @@ tamaño y sha256/sha1 (lo dañado se borra); reanudable (IndexedDB + `Range`). E
 tiene la red cortada para Hugging Face: sin modelo da «Falta el modelo» y no descarga nada. Los fotogramas van por
 `postMessage` al worker y no salen del equipo. La función de imagen previa (`bgcore.ts`) sigue descargando por su cuenta
 desde la rama `main` sin diálogo: pendiente de pasarla al mismo patrón.
+
+## 8. Importar HEIC/HEIF (2026-10-05): licencias verificadas y decisión
+
+Comprobado **en línea el 2026-10-05** leyendo el `LICENSE`/`COPYING` real (GitHub raw) y el registro de npm.
+El problema no es solo la licencia de autor: **HEVC (H.265) está cubierto por patentes** de varios consorcios
+(Access Advance, Via LA/MPEG LA, Velos) y titulares sueltos. Fedora/Red Hat retiran libde265 por ese motivo.
+
+| Candidato | Qué trae dentro | Licencia verificada | Decisión |
+|---|---|---|---|
+| `libheif-js` 1.23.5 | libheif + libde265 (Emscripten) | **LGPL-3.0** (`LICENSE` del repo; `COPYING` de libheif y de libde265: «distributed under the terms of the GNU LGPL») | **No.** Cumplir LGPL sería defendible (ChamVa es MIT con fuente pública: §4(d)(0)), pero Tauri incrusta el frontend en el ejecutable (el wasm no es reemplazable por el usuario sin recompilar) y, sobre todo, se distribuiría un decodificador HEVC: riesgo de patentes no resoluble aquí |
+| `heic2any` 0.0.4 | build antiguo de libheif (`src/libheif.js`, Emscripten) | paquete «MIT» (`LICENSE.md`), pero el código empaquetado es libheif **LGPL** | **No**: etiqueta engañosa + HEVC |
+| `heic-decode` / `heic-convert` 2.1.0 | `libheif-js` | ISC (envoltorio) sobre **LGPL-3.0** | **No** (mismo caso que libheif-js) |
+| `heic-to` 1.6.5 | libheif | **LGPL-3.0** (npm) | **No** |
+| `elheif` 0.1.0 | libheif + libde265 + kvazaar | envoltorio MIT (`LICENSE`); dentro **LGPL** | **No** |
+| `hs265` 1.0.0 (libde265.js) | libde265 | npm dice MIT; es libde265 **LGPL** | **No** |
+| `hevc.js` / `@hevcjs/core` (github.com/privaloops/hevc.js) | decodificador HEVC propio en C++17 → wasm (262 KB), sin dependencias | **MIT** (`LICENSE`, «Copyright (c) 2025 Thibaut Lion») | **No integrado**: licencia de autor permisiva, pero sigue siendo un decodificador HEVC distribuido por ChamVa (patentes); proyecto de 2025 sin historial con HEIC (Main Still Picture, alfa 4:0:0, 10 bits) **sin verificar**. Solo con decisión legal expresa del autor de ChamVa |
+| Decodificador del navegador/SO | Safari / WKWebView (macOS, iOS) abren HEIC en `<img>`; Chromium/WebView2 no | licencia del SO/GPU (no la distribuye ChamVa) | **Integrado, paso 1** |
+| WebCodecs `VideoDecoder` con HEVC/AV1 | decodificador de la GPU/SO (Chromium/WebView2 en Windows con HEVC por hardware; Safari) | ídem | **Integrado, paso 2** |
+
+**Implementación (`src/io/heic/`, código propio MIT, sin dependencias nuevas; `package.json` intacto):**
+el contenedor HEIF (ítems, rejilla, `irot`/`imir`/`clap`, `colr` nclx/ICC, alfa `auxl`, EXIF) lo lee ChamVa
+(`isobmff.ts`, `plan.ts`); las teselas HEVC/AV1 las decodifica `VideoDecoder` en un worker (`heic.worker.ts`,
+chunk propio de ~20 kB; el lector, otro chunk de ~17 kB cargado bajo demanda). Una tesela a la vez, progreso en el
+indicador «Procesando…» con Cancelar (termina el worker), tope de 120 MP. Orientación: `irot`/`imir` mandan y EXIF
+solo se aplica si faltan (ISO/IEC 23008-12). Color: primarias de nclx o del perfil ICC «Display P3» → el navegador
+convierte a sRGB al dibujar (solo P3/sRGB; otros perfiles ICC no se interpretan). Se usa la imagen principal
+(`pitm`); miniaturas, profundidad, mapas HDR y otras imágenes se ignoran (aviso solo si hay más fotos). Salida
+JPEG 95 % (PNG si hay alfa). Si nada puede decodificar: mensaje con la guía «Fotos de Windows › Guardar como JPG».
+El archivo no sale del equipo y no se descarga nada.
+
+**Límites conocidos:** sin HEVC por hardware (GPU antigua, VM, Linux sin VA-API) no abre HEIC; el alfa HEVC es
+monocromo 4:0:0 y la GPU probada no lo admite → se abre opaca con aviso; imágenes diminutas (< ~64 px) las rechaza la
+GPU. Pendiente con mejor cobertura y sin patentes propias: en Tauri/Windows, decodificar por WIC (extensión HEIF + HEVC
+de Microsoft) desde Rust.

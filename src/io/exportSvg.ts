@@ -9,6 +9,7 @@ import {
   type ShapeLayer,
   type TextLayer,
 } from '../editor/core/types';
+import { applyRetouch } from '../editor/core/retouchRender';
 import { needsProcessing, processImageAsync } from '../editor/core/imageProcessing';
 import { renderCastShadow, renderReflection } from '../editor/core/groundFx';
 import { preloadFxImages } from '../editor/core/imageEffects';
@@ -218,11 +219,13 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
       mClose = '</g>';
     }
     if (layer.type === 'image') {
-      const img = await loadImg(layer.src);
+      const img = await applyRetouch(await loadImg(layer.src), layer);
       await preloadFxImages(layer.adjust);
       let baked = needsProcessing(layer)
         ? (await processImageAsync(img, layer, Infinity, { priority: 1, label: 'Exportando SVG' })).toDataURL('image/png')
-        : layer.src;
+        : layer.retouch && img instanceof HTMLCanvasElement
+          ? img.toDataURL('image/png') // fuente + retoque horneados
+          : layer.src;
       // Reflejo y sombra proyectada: se hornean a PNG y van como <image> bajo la capa.
       let fxSvg = '';
       if (layer.castShadow || layer.reflection) {

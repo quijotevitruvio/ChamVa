@@ -675,3 +675,15 @@
 .vx-pl-jump.on { color: var(--accent); font-weight: 600; }
 @media (max-width: 720px) { .vx-rec-modes { grid-template-columns: 1fr; } }
 .vx-rec-count.inline { position: static; background: none; color: var(--text); font-size: 56px; margin: 0; justify-content: center; }
+
+/* Pestaña «Sonidos» */
+.vx-snd { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+.vx-snd-head { display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 0; }
+.vx-snd-head input[type="search"] { width: 100%; box-sizing: border-box; }
+.vx-snd-cats { display: flex; flex-wrap: wrap; gap: 4px; }
+.vx-root .vx-snd-cats button { padding: 2px 8px; font-size: 11px; border-radius: 999px; }
+.vx-root .vx-snd-cats button.on { background: var(--panel-2); border-color: var(--accent); font-weight: 600; }
+.vx-snd-item { cursor: grab; }
+.vx-snd-item.playing { border-color: var(--accent); }
+.vx-snd-play { width: 28px; flex: none; }
+.vx-snd-foot { padding: 0 8px 8px; }

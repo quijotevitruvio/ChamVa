@@ -68,6 +68,10 @@ self.addEventListener('activate', (event) => {
 });
 
 const isHashed = (url) => url.pathname.startsWith(BASE.pathname + 'assets/');
+// Biblioteca de sonidos (public/sounds/*.ogg, ~6,5 MB): NO se precachea; cada archivo se guarda la primera vez que se usa, en una
+// caché propia (que no se borra al actualizar la app: la URL lleva ?v=<hash>, así que un sonido cambiado es otra entrada).
+const SOUNDS_CACHE = 'sonidos-chamva-1';
+const isSound = (url) => url.pathname.startsWith(BASE.pathname + 'sounds/') && url.pathname.endsWith('.ogg');
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
@@ -77,7 +81,9 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/sw.js')) return;
   if (req.headers.has('range')) return; // vídeo/audio con rangos: directo a red
 
-  if (isHashed(url)) {
+  if (isSound(url)) {
+    event.respondWith(cacheFirst(req, SOUNDS_CACHE));
+  } else if (isHashed(url)) {
     event.respondWith(cacheFirst(req));
   } else if (req.mode === 'navigate') {
     event.respondWith(navigate(req));
@@ -86,8 +92,8 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-async function cacheFirst(req) {
-  const cache = await caches.open(CACHE);
+async function cacheFirst(req, name = CACHE) {
+  const cache = await caches.open(name);
   const hit = await cache.match(req);
   if (hit) return hit;
   const res = await fetch(req);

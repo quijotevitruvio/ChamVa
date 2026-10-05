@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useProcessing } from '../editor/core/processingStore';
 import { cancelAllProcessing } from '../editor/core/pixelPool';
 import { cancelExport } from '../io/runExport';
+import { cancelHeicImports } from '../io/heic/cancel';
 import './processing.css';
 
 const SHOW_AFTER_MS = 500; // las operaciones cortas no parpadean
@@ -39,6 +40,7 @@ export function ProcessingIndicator() {
           onClick={() => {
             if (visible.some((j) => j.priority >= 1)) cancelExport();
             cancelAllProcessing();
+            cancelHeicImports();
           }}
         >
           Cancelar

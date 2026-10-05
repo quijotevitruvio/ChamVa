@@ -22,6 +22,7 @@ import { getTheme, setTheme, type Theme } from '../theme';
 import { externalClick, openExternal } from '../io/openExternal';
 import { useDismiss } from './useDismiss';
 import { FfmpegLicenseSection } from '../video/native/FfmpegLicenseSection';
+import { SoundsLicenseSection } from '../video/sounds/SoundsLicenseSection';
 
 const copyNequi = async () => {
   try {
@@ -349,6 +350,7 @@ export function SettingsDialog({
         </div>
 
         <FfmpegLicenseSection />
+        <SoundsLicenseSection />
 
         <div className="settings-section">
           <span className="settings-label">{t('Sobre el autor')}</span>

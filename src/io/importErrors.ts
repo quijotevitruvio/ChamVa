@@ -1,4 +1,5 @@
 // Mensajes legibles cuando una imagen no se puede importar (lógica pura).
+import { HEIC_CONVERT_TIP, isHeicError } from './heic/errors';
 
 export interface ImportFailure {
   name: string;
@@ -11,7 +12,8 @@ const ext = (name: string) => (/\.([^.\\/]+)$/.exec(name)?.[1] ?? '').toLowerCas
 export function classifyImportError(file: { name: string; type: string }, err?: unknown): string {
   const e = ext(file.name);
   const t = (file.type || '').toLowerCase();
-  if (e === 'heic' || e === 'heif' || t === 'image/heic' || t === 'image/heif') return 'Formato HEIC no soportado todavía';
+  if (isHeicError(err)) return err.message; // causa concreta + guía, de io/heic
+  if (['heic', 'heif', 'hif'].includes(e) || t === 'image/heic' || t === 'image/heif') return `No se pudo abrir la foto HEIC. ${HEIC_CONVERT_TIP}`;
   if (e === 'tif' || e === 'tiff' || t === 'image/tiff') return 'Formato TIFF no soportado todavía';
   if (['cr2', 'cr3', 'nef', 'arw', 'dng', 'raf', 'orf', 'rw2'].includes(e)) return 'Formato RAW no soportado todavía';
   if (e === 'psd' || t === 'image/vnd.adobe.photoshop') return 'Formato PSD no soportado todavía';

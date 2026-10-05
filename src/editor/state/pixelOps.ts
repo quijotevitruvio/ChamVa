@@ -45,6 +45,7 @@ import {
   prepareMask,
 } from '../core/maskRender';
 import { cropPixelRect } from '../core/imageCrop';
+import { applyRetouch } from '../core/retouchRender';
 import { needsProcessing, processImageAsync } from '../core/imageProcessing';
 import { preloadFxImages } from '../core/imageEffects';
 import { preloadTextFxImages } from '../core/textFx';
@@ -271,7 +272,7 @@ async function renderLayerLocal(l: Layer, rect: MaskRect, w: number, h: number):
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   ctx.setTransform(w / rect.w, 0, 0, h / rect.h, (-rect.x * w) / rect.w, (-rect.y * h) / rect.h);
   if (l.type === 'image') {
-    const img = await loadImg(l.src);
+    const img = await applyRetouch(await loadImg(l.src), l);
     await preloadFxImages(l.adjust);
     const src = needsProcessing(l) ? await processImageAsync(img, l, Math.max(w, h) * 1.01, { label: 'Máscara' }) : img;
     drawImageBody(ctx, src, l.naturalWidth, l.naturalHeight, l.maskShape);
@@ -549,9 +550,10 @@ export async function applyMask(id: string) {
   if (!mc) return toast('La máscara no está disponible.', 'error');
   const r = l.mask.rect;
   if (l.type === 'image') {
-    const img = await loadImg(l.src);
-    const W = img.naturalWidth;
-    const H = img.naturalHeight;
+    const img0 = await loadImg(l.src);
+    const img = await applyRetouch(img0, l); // la máscara se hornea con el retoque incluido
+    const W = img0.naturalWidth;
+    const H = img0.naturalHeight;
     const c = document.createElement('canvas');
     c.width = W;
     c.height = H;
@@ -566,7 +568,7 @@ export async function applyMask(id: string) {
     if (mc.outside === 0) ctx.drawImage(mc.normal, r.x, r.y, r.w, r.h);
     else ctx.drawImage(mc.inverse, r.x, r.y, r.w, r.h);
     if (st().maskEditId === id) st().setMaskEdit(null);
-    st().updateLayer(id, { src: c.toDataURL('image/png'), mask: undefined } as Partial<Layer>);
+    st().updateLayer(id, { src: c.toDataURL('image/png'), mask: undefined, retouch: undefined } as Partial<Layer>);
     return;
   }
   // Rasterizar: contenido + máscara en su caja local, a la resolución con que se ve (×2 como mínimo).

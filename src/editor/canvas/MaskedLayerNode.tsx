@@ -3,7 +3,7 @@ import { Shape as KonvaShape } from 'react-konva';
 import type Konva from 'konva';
 import type { ImageLayer, Layer } from '../core/types';
 import { blendOpOrUndefined } from '../core/blend';
-import { useImage } from './useImage';
+import { useRetouchedImage } from './useRetouchedImage';
 import { useRenderedImage } from './useRenderedImage';
 import { useFxImagesVersion } from './useFxImages';
 import { useTextFxImagesVersion } from './useTextFxImages';
@@ -85,7 +85,7 @@ const flip = (l: Layer) => ({ x: Math.sign(l.scaleX) || 1, y: Math.sign(l.scaleY
 
 function MaskedImage({ layer, registerRef }: { layer: ImageLayer; registerRef: Props['registerRef'] }) {
   useMaskReady();
-  const image = useImage(layer.src);
+  const { image, rev: retouchRev } = useRetouchedImage(layer);
   const fxVersion = useFxImagesVersion(layer.adjust);
   const rendered = useRenderedImage(image, layer, PREVIEW_MAX, [
     image,
@@ -97,6 +97,7 @@ function MaskedImage({ layer, registerRef }: { layer: ImageLayer; registerRef: P
     layer.naturalHeight,
     layer.crop,
     fxVersion,
+    retouchRev,
   ]);
   const cropping = useEditor((s) => s.cropMode && s.selectedId === layer.id);
   const { props, overlay } = useCommon(layer, registerRef);

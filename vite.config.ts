@@ -25,7 +25,8 @@ function chamvaPwa() {
           if (statSync(full).isDirectory()) walk(full);
           else {
             const url = relative(outDir, full).split("\\").join("/");
-            if (url === "sw.js" || url === "asset-manifest.json" || url.endsWith(".map")) continue;
+            // los sonidos (public/sounds) NO se precachean: se guardan al usarse (ver sw.js)
+            if (url === "sw.js" || url === "asset-manifest.json" || url.endsWith(".map") || url.startsWith("sounds/")) continue;
             files.push({ url, size: statSync(full).size });
           }
         }

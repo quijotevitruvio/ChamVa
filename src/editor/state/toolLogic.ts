@@ -1,7 +1,25 @@
 // Lógica pura de las herramientas de cursor (sin React ni Zustand): transiciones,
 // prioridad del cursor, zoom a un recuadro y geometría de las formas arrastradas.
 
-export type ToolId = 'select' | 'hand' | 'zoom' | 'text' | 'shape' | 'brush' | 'eraser' | 'wand' | 'lasso';
+export type ToolId =
+  | 'select'
+  | 'hand'
+  | 'zoom'
+  | 'text'
+  | 'shape'
+  | 'brush'
+  | 'eraser'
+  | 'wand'
+  | 'lasso'
+  // Retoque de píxeles en capas de imagen (core/retouch.ts)
+  | 'clone'
+  | 'heal'
+  | 'spot'
+  | 'dodge'
+  | 'burn'
+  | 'blur'
+  | 'sharpen'
+  | 'smudge';
 export type ShapeTool = 'rect' | 'ellipse' | 'line';
 
 export interface ToolDef {
@@ -28,6 +46,15 @@ export const TOOL_DEFS: ToolDef[] = [
   // Selección de píxeles. «L» ya es la línea: el lazo va en Mayús+L.
   { id: 'wand', label: 'Varita mágica', action: 'toolWand', key: 'W', icon: 'wand' },
   { id: 'lasso', label: 'Lazo', action: 'toolLasso', key: 'Shift+L', icon: 'lasso' },
+  // Retoque de píxeles (sobre la capa de imagen). S, J, D, U y M estaban libres.
+  { id: 'clone', label: 'Clonar', action: 'toolClone', key: 'S', icon: 'stamp' },
+  { id: 'heal', label: 'Curar', action: 'toolHeal', key: 'J', icon: 'bandage' },
+  { id: 'spot', label: 'Eliminar mancha', action: 'toolSpot', key: 'Shift+J', icon: 'spot' },
+  { id: 'dodge', label: 'Esquivar (aclarar)', action: 'toolDodge', key: 'D', icon: 'dodge' },
+  { id: 'burn', label: 'Quemar (oscurecer)', action: 'toolBurn', key: 'Shift+D', icon: 'burn' },
+  { id: 'blur', label: 'Desenfocar', action: 'toolBlur', key: 'U', icon: 'blurDrop' },
+  { id: 'sharpen', label: 'Enfocar', action: 'toolSharpen', key: 'Shift+U', icon: 'sharpen' },
+  { id: 'smudge', label: 'Dedo', action: 'toolSmudge', key: 'M', icon: 'smudge' },
 ];
 
 /** Herramienta efectiva: mantener Espacio activa la mano de forma temporal. */
@@ -81,6 +108,14 @@ export function cursorFor(c: CursorCtx): string {
     case 'eraser':
     case 'wand':
     case 'lasso':
+    case 'clone':
+    case 'heal':
+    case 'spot':
+    case 'dodge':
+    case 'burn':
+    case 'blur':
+    case 'sharpen':
+    case 'smudge':
       return 'crosshair';
     default:
       if (c.over === 'locked') return 'not-allowed';

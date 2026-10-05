@@ -82,7 +82,7 @@ export function HomeScreen({
         <input
           ref={photoInput}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];

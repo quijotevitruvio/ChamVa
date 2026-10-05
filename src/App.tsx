@@ -888,6 +888,7 @@ export default function App() {
       updateLayer(selected.id, {
         src: res.dataUrl,
         originalSrc: undefined,
+        retouch: selected.retouch, // mismo contenido a más resolución: el retoque se escala solo
         crop: c,
         naturalWidth: nw,
         naturalHeight: nh,
@@ -931,9 +932,10 @@ export default function App() {
     if (!files) return;
     const failures: ImportFailure[] = [];
     let ok = 0;
+    const notes = new Set<string>(); // avisos no fatales (HEIC: miniatura ignorada, sin transparencia…)
     for (const file of Array.from(files)) {
       try {
-        const img = await loadImageFile(file);
+        const img = await loadImageFile(file, { onWarning: (w) => notes.add(w) });
         const id =
           typeof crypto !== 'undefined' && 'randomUUID' in crypto
             ? crypto.randomUUID()
@@ -948,6 +950,7 @@ export default function App() {
     }
     const msg = importFailureMessage(ok, failures);
     if (msg) toast(msg, 'error');
+    for (const n of notes) toast(n, 'info');
   };
 
   // «Editar una foto» desde el inicio: diseño nuevo con el lienzo del tamaño de la foto.
@@ -967,7 +970,7 @@ export default function App() {
         toast('La foto es muy grande: el lienzo se ajustó a 8000 px', 'info');
     } catch (err) {
       console.error(err);
-      toast('No se pudo abrir esa foto.', 'error');
+      toast(`No se pudo abrir esa foto: ${classifyImportError(file, err)}`, 'error');
     }
   };
   const startFromPhotoRef = useRef(startFromPhoto);
@@ -1531,7 +1534,7 @@ export default function App() {
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           multiple
           hidden
           onChange={(e) => {

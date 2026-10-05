@@ -3,6 +3,8 @@ import { canvasGradient } from '../editor/core/gradients';
 import { fillPatternBackground } from '../editor/core/patterns';
 import { fillDither, fillGrain, grainActive } from '../editor/core/grain';
 import { needsProcessing, processImageAsync } from '../editor/core/imageProcessing';
+import { applyRetouch } from '../editor/core/retouchRender';
+import { flushRetouch } from '../editor/core/retouchLive';
 import { drawGroundFx, hasGroundFx } from '../editor/core/groundFx';
 import { preloadFxImages } from '../editor/core/imageEffects';
 import { drawStroke } from '../editor/core/brush';
@@ -55,6 +57,7 @@ export async function renderDocToCanvas(
   animTime?: number,
   animTotal = 1,
 ): Promise<HTMLCanvasElement> {
+  await flushRetouch(); // el último trazo de retoque ya está en el documento
   doc = withRegisteredMaster(doc); // capas de la página maestra detrás (solo lectura)
   const textFields = fieldsForDoc(doc, await pagesForFields());
   const canvas = document.createElement('canvas');
@@ -92,7 +95,7 @@ export async function renderDocToCanvas(
       await prepareMask(layer.mask);
       let source: CanvasImageSource | null = null;
       if (layer.type === 'image') {
-        const img = await loadImg(layer.src);
+        const img = await applyRetouch(await loadImg(layer.src), layer);
         await preloadFxImages(layer.adjust);
         source = needsProcessing(layer)
           ? await processImageAsync(img, layer, Infinity, { priority: 1, label: 'Exportando imagen' })
@@ -125,7 +128,7 @@ export async function renderDocToCanvas(
       continue;
     }
     if (layer.type === 'image') {
-      const img = await loadImg(layer.src);
+      const img = await applyRetouch(await loadImg(layer.src), layer);
       await preloadFxImages(layer.adjust); // doble exposición: imagen lista antes de hornear
       // Filtros/volteo horneados a resolución completa (idéntico al editor).
       // Píxeles en worker (cola, progreso, cancelación); espera el resultado completo a resolución final.

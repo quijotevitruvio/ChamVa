@@ -83,6 +83,7 @@ export async function dehydrateDocs(pages: Doc[]): Promise<Doc[]> {
           ...l,
           src: await putAsset(l.src),
           originalSrc: l.originalSrc ? await putAsset(l.originalSrc) : undefined,
+          ...(l.retouch?.src ? { retouch: { ...l.retouch, src: await putAsset(l.retouch.src) } } : {}),
         });
       } else layers.push(l);
     }
@@ -102,6 +103,7 @@ export async function rehydrateDocs(pages: Doc[]): Promise<Doc[]> {
           ...l,
           src: await getAsset(l.src),
           originalSrc: l.originalSrc ? await getAsset(l.originalSrc) : undefined,
+          ...(l.retouch?.src ? { retouch: { ...l.retouch, src: await getAsset(l.retouch.src) } } : {}),
         });
       } else layers.push(l);
     }

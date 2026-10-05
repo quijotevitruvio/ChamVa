@@ -16,6 +16,9 @@ import { addAdjustClip, newFxId } from '../video/fx/clipOps';
 import { makeFx } from '../video/fx/effects';
 import { MediaBin, type BinTab } from './video/MediaBin';
 import { SubtitlePanel } from './video/SubtitlePanel';
+import { SoundsPanel } from './video/SoundsPanel';
+import { loadSoundIndex, soundFile } from '../video/sounds/soundLibrary';
+import type { SoundEntry } from '../video/sounds/soundIndex';
 import { TextPanel } from './video/TextPanel';
 import { PreviewPanel, Transport } from './video/PreviewPanel';
 import { Timeline, type TimelineApi } from './video/Timeline';
@@ -243,6 +246,22 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const onDropFiles = async (files: File[], trackId: string | null, t: number) => {
     const r = await vp.importFiles(files, { trackId: trackId ?? '__new__', at: t });
     if (r.clipIds.length) setSelection(r.clipIds);
+  };
+
+  /** Biblioteca de sonidos: el sonido entra como medio de audio y se coloca en el cabezal (pista de audio) en un solo paso de deshacer. */
+  const addSound = async (s: SoundEntry, place: { trackId?: string; at: number } = { at: engine.time }) => {
+    try {
+      const r = await vp.importFiles([await soundFile(s)], place);
+      if (r.clipIds.length) setSelection(r.clipIds.slice(-1));
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'No se pudo añadir el sonido.', 'error');
+    }
+  };
+  const onDropSound = (id: string, trackId: string | null, t: number) => {
+    void loadSoundIndex().then((ix) => {
+      const s = ix.sonidos.find((x) => x.id === id);
+      if (s) return addSound(s, { trackId: trackId ?? '__new__', at: t });
+    }, () => toast('No se pudo leer la biblioteca de sonidos.', 'error'));
   };
 
   /** Lo grabado entra como medio del proyecto y se coloca en el cabezal en una pista nueva: un solo paso de deshacer. */
@@ -489,6 +508,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             onOpenTemplates={() => setTplOpen(true)}
             tab={binTab}
             onTab={setBinTab}
+            soundsPanel={<SoundsPanel onAddSound={addSound} />}
             textPanel={<TextPanel canApply={canApplyStyle} onAdd={addTitle} onApply={applyTitle} onAddPair={addPair} onAddPlain={addText} />}
             transPanel={<TransitionsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} />}
             fxPanel={<EffectsPanel project={project} selection={selection} getProject={() => vp.histRef.current.present} commit={commit} ai={{ engine, autoKey, setAutoKey, keyClip, setKeyClip, onSelect: select, marks }} />}
@@ -533,6 +553,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           apiRef={apiRef}
           onDropMedia={(id, trackId, t) => addMediaAt(id, trackId, t)}
           onDropFiles={onDropFiles}
+          onDropSound={onDropSound}
           onAddTrack={addTrack}
           marks={marks}
           onClipMenu={(id, x, y) => setClipMenu({ id, x, y })}

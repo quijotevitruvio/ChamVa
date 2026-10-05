@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import './tools.css';
 
 // Grupos con separador: selección/vista · crear · dibujo · selección de píxeles.
-const GROUPS: ToolDef['id'][][] = [['select', 'hand', 'zoom'], ['text', 'shape'], ['brush', 'eraser'], ['wand', 'lasso']];
+const GROUPS: ToolDef['id'][][] = [['select', 'hand', 'zoom'], ['text', 'shape'], ['brush', 'eraser'], ['wand', 'lasso'], ['clone', 'heal', 'spot'], ['dodge', 'burn', 'blur', 'sharpen', 'smudge']];
 
 // Barra de herramientas flotante del lienzo (vertical a la izquierda; compacta y horizontal en móvil).
 export function ToolBar() {

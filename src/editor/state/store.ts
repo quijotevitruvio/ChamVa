@@ -154,6 +154,11 @@ function patchLayer(l: Layer, patch: Partial<Layer>): Layer {
   if (l.type === 'image' && l.crop && ('naturalWidth' in patch || 'naturalHeight' in patch) && !('crop' in patch)) {
     return { ...l, ...patch, crop: undefined } as Layer;
   }
+  // Imagen nueva (quitar fondo, perspectiva, censurar…): el retoque se hizo sobre la anterior y ya no
+  // alinea. Quien conserve el contenido (subir resolución) pasa `retouch` en el parche.
+  if (l.type === 'image' && l.retouch && typeof (patch as { src?: string }).src === 'string' && (patch as { src: string }).src !== l.src && !('retouch' in patch)) {
+    return { ...l, ...patch, retouch: undefined } as Layer;
+  }
   return { ...l, ...patch } as Layer;
 }
 
@@ -1728,6 +1733,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         id: uid(),
         src: newSrc,
         originalSrc: src.src, // para poder "Restaurar" lo borrado de más
+        retouch: undefined, // el recorte sale de la fuente sin retoque
         name,
         adjust: { ...DEFAULT_ADJUST },
         filter: 'none',
@@ -1757,6 +1763,7 @@ export const useEditor = create<EditorState>((set, get) => ({
                 ...l,
                 src: img.src,
                 originalSrc: undefined, // el recorte cambia dimensiones; ya no alinea
+                retouch: undefined, // la imagen nueva ya viene horneada
                 crop: undefined, // la imagen nueva ya viene horneada (con el recorte incluido)
                 naturalWidth: img.naturalWidth,
                 naturalHeight: img.naturalHeight,

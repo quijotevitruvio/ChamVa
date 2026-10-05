@@ -13,6 +13,7 @@ import { applyPayload, decodePayload, dragKind, FX_MIME, fxDropTarget, junctionM
 import { TrackHeader } from './TrackHeader';
 import { projectBeatMarks } from '../../video/audio/beatMarks';
 import * as T from './timelineMath';
+import { SOUND_MIME } from '../../video/sounds/soundLibrary';
 
 export interface TimelineApi {
   zoomBy: (factor: number) => void;
@@ -37,6 +38,8 @@ interface Props {
   apiRef: { current: TimelineApi | null };
   onDropMedia: (mediaId: string, trackId: string | null, t: number) => void;
   onDropFiles: (files: File[], trackId: string | null, t: number) => void;
+  /** un sonido de la biblioteca (pestaña «Sonidos») soltado en la línea de tiempo */
+  onDropSound?: (soundId: string, trackId: string | null, t: number) => void;
   onAddTrack: (kind: VM.TrackKind) => void;
   /** marcas de entrada/salida (s): se dibujan en la regla */
   marks?: { in: number | null; out: number | null };
@@ -79,7 +82,7 @@ function release(el: HTMLElement, id: number) {
   }
 }
 
-export function Timeline({ project, engine, cache, selection, setSelection, pps, setPps, commit, endGroup, snapOn, compact, apiRef, onDropMedia, onDropFiles, onAddTrack, marks, onClipMenu, aiStatus, aiRunning }: Props) {
+export function Timeline({ project, engine, cache, selection, setSelection, pps, setPps, commit, endGroup, snapOn, compact, apiRef, onDropMedia, onDropFiles, onDropSound, onAddTrack, marks, onClipMenu, aiStatus, aiRunning }: Props) {
   const headerW = compact ? T.HEADER_W_COMPACT : T.HEADER_W;
   const scroller = useRef<HTMLDivElement>(null);
   const lineRef = useRef<HTMLDivElement>(null);
@@ -585,7 +588,7 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     const s = snapOn ? VM.snapTime(project, raw, { threshold: T.snapSeconds(pps), playhead: engine.time }) : { time: raw };
     return { trackId: row?.trackId ?? null, t: Math.max(0, s.time) };
   };
-  const hasPayload = (e: ReactDragEvent) => e.dataTransfer.types.includes(MEDIA_MIME) || e.dataTransfer.types.includes('Files');
+  const hasPayload = (e: ReactDragEvent) => e.dataTransfer.types.includes(MEDIA_MIME) || e.dataTransfer.types.includes(SOUND_MIME) || e.dataTransfer.types.includes('Files');
   /** destino de lo que se arrastra desde las pestañas de transiciones / efectos / ajustes */
   const fxTarget = (e: ReactDragEvent, k: FxKind) => fxDropTarget(project, rows, pps, contentX(e.clientX), contentY(e.clientY), k);
   const onDragOver = (e: ReactDragEvent) => {
@@ -627,7 +630,9 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     const tgt = dropTarget(e);
     setDrop(null);
     const id = e.dataTransfer.getData(MEDIA_MIME);
+    const sid = e.dataTransfer.getData(SOUND_MIME);
     if (id) onDropMedia(id, tgt.trackId, tgt.t);
+    else if (sid) onDropSound?.(sid, tgt.trackId, tgt.t);
     else if (e.dataTransfer.files.length) onDropFiles([...e.dataTransfer.files], tgt.trackId, tgt.t);
   };
 

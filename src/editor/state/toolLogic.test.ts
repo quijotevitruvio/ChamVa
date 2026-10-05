@@ -82,7 +82,8 @@ describe('atajos', () => {
   beforeEach(() => _setOverridesForTest({}));
   it('cada herramienta tiene su tecla y no choca con otra acción', () => {
     // W = varita; el lazo va en Mayús+L porque L ya es la línea.
-    const keys = ['V', 'H', 'Z', 'T', 'R', 'O', 'L', 'B', 'E', 'W', 'Shift+L'];
+    // Retoque: S clonar, J curar (Mayús+J mancha), D esquivar (Mayús+D quemar), U desenfocar (Mayús+U enfocar), M dedo.
+    const keys = ['V', 'H', 'Z', 'T', 'R', 'O', 'L', 'B', 'E', 'W', 'Shift+L', 'S', 'J', 'Shift+J', 'D', 'Shift+D', 'U', 'Shift+U', 'M'];
     TOOL_DEFS.forEach((d, i) => {
       expect(getShortcut(d.action)).toBe(d.key);
       expect(keys).toContain(d.key);

@@ -26,6 +26,8 @@ import { BrushOverlay } from './BrushOverlay';
 import { ToolOverlay } from './ToolOverlay';
 import { MaskedLayerNode } from './MaskedLayerNode';
 import { MaskPaintOverlay } from './MaskPaintOverlay';
+import { RetouchOverlay } from './RetouchOverlay';
+import { isRetouchTool } from '../core/retouch';
 import { MarchingAnts, SelectionOverlay } from './SelectionOverlay';
 import { maskActive } from '../core/layerMask';
 import { useTool, useEffectiveTool, isDrawingTool } from '../state/toolStore';
@@ -1010,6 +1012,7 @@ export function PageStage({
 
       {brushOn && !maskLayer && <BrushOverlay doc={doc} scale={scale} stageRef={stageRef} />}
       {brushOn && maskLayer && <MaskPaintOverlay doc={doc} scale={scale} stageRef={stageRef} layer={maskLayer} />}
+      {isRetouchTool(tool) && <RetouchOverlay doc={doc} scale={scale} stageRef={stageRef} tool={tool} />}
       {(tool === 'wand' || tool === 'lasso') && <SelectionOverlay doc={doc} scale={scale} stageRef={stageRef} tool={tool} />}
       {(tool === 'text' || tool === 'shape') && <ToolOverlay doc={doc} scale={scale} stageRef={stageRef} tool={tool} shape={shapeKind} />}
       {showNotes && <StickyNotes scale={scale} origin={origin} />}
