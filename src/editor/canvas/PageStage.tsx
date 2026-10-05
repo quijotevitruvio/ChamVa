@@ -24,6 +24,10 @@ import { ShapeLayerNode } from './ShapeLayerNode';
 import { StrokeLayerNode } from './StrokeLayerNode';
 import { BrushOverlay } from './BrushOverlay';
 import { ToolOverlay } from './ToolOverlay';
+import { MaskedLayerNode } from './MaskedLayerNode';
+import { MaskPaintOverlay } from './MaskPaintOverlay';
+import { MarchingAnts, SelectionOverlay } from './SelectionOverlay';
+import { maskActive } from '../core/layerMask';
 import { useTool, useEffectiveTool, isDrawingTool } from '../state/toolStore';
 import { boxFromPoints, boxesIntersect, cursorFor, type Box, type OverLayer } from '../state/toolLogic';
 import { InlineTextEditor } from './InlineTextEditor';
@@ -93,6 +97,9 @@ export function PageStage({
   const tool = useEffectiveTool();
   const shapeKind = useTool((s) => s.shape);
   const brushOn = isDrawingTool(tool);
+  // Editando la máscara de una capa: el pincel pinta su máscara (blanco/negro) en vez de trazos.
+  const maskEditId = useEditor((s) => s.maskEditId);
+  const maskLayer = maskEditId ? (doc.layers.find((l) => l.id === maskEditId && l.mask) ?? null) : null;
   // Caja de selección (puntero): rectángulo en coordenadas del documento.
   const [marquee, setMarquee] = useState<Box | null>(null);
   const [editorPos, setEditorPos] = useState<{ left: number; top: number } | null>(null);
@@ -418,7 +425,20 @@ export function PageStage({
 
   const registerRef = (id: string, node: Konva.Node | null) => {
     if (node) nodeRefs.current.set(id, node);
-    else nodeRefs.current.delete(id);
+    else if (nodeRefs.current.get(id)) nodeRefs.current.delete(id);
+    // Un nodo que aparece DESPUÉS de seleccionar (imagen que termina de cargar, capa que pasa a
+    // dibujarse con máscara): el Transformer se reengancha al nodo nuevo.
+    if (node && useEditor.getState().selectedIds.includes(id)) {
+      queueMicrotask(() => {
+        const tr = transformerRef.current;
+        const st = useEditor.getState();
+        if (!tr || st.cropMode || st.editingTextId === id || tr.nodes().includes(node)) return;
+        const l = st.doc.layers.find((x) => x.id === id);
+        if (!l || isLayerLocked(st.doc, l) || !st.selectedIds.includes(id) || nodeRefs.current.get(id) !== node) return;
+        tr.nodes([...tr.nodes().filter((n) => n.getStage() && [...nodeRefs.current.values()].includes(n)), node]);
+        tr.getLayer()?.batchDraw();
+      });
+    }
   };
 
   // Conectar el Transformer al nodo seleccionado (oculto durante el recorte
@@ -775,6 +795,9 @@ export function PageStage({
           <MasterBackdrop />
           </Group>
           {doc.layers.map((layer) => {
+            // Con máscara: el mismo dibujo que la exportación (maskRender.ts).
+            if (maskActive(layer.mask))
+              return <MaskedLayerNode key={layer.id} layer={layer} registerRef={registerRef} />;
             if (layer.type === 'image')
               return (
                 <ImageLayerNode
@@ -907,6 +930,7 @@ export function PageStage({
 
           {cropMode && cropRect && <CropOverlay rectRef={cropRectRef} scale={scale} />}
         </Layer>
+        <MarchingAnts scale={scale} />
         {showGrid && (
           <Layer listening={false}>
             <Shape sceneFunc={drawGrid(false)} stroke="rgba(128,128,128,0.35)" strokeWidth={1} strokeScaleEnabled={false} />
@@ -984,7 +1008,9 @@ export function PageStage({
         )}
       </Stage>
 
-      {brushOn && <BrushOverlay doc={doc} scale={scale} stageRef={stageRef} />}
+      {brushOn && !maskLayer && <BrushOverlay doc={doc} scale={scale} stageRef={stageRef} />}
+      {brushOn && maskLayer && <MaskPaintOverlay doc={doc} scale={scale} stageRef={stageRef} layer={maskLayer} />}
+      {(tool === 'wand' || tool === 'lasso') && <SelectionOverlay doc={doc} scale={scale} stageRef={stageRef} tool={tool} />}
       {(tool === 'text' || tool === 'shape') && <ToolOverlay doc={doc} scale={scale} stageRef={stageRef} tool={tool} shape={shapeKind} />}
       {showNotes && <StickyNotes scale={scale} origin={origin} />}
       <BeforeAfterSlider nodeRefs={nodeRefs} />

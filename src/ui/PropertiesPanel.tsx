@@ -32,6 +32,7 @@ import { StrokeGradient } from './StrokeGradient';
 import { SharedStyles } from './SharedStyles';
 import { Constraints } from './Constraints';
 import { LayerBlendButton } from './BlendPicker';
+import { MaskPanel, SelectionPanel } from './MaskPanel';
 
 
 // Sección plegable; recuerda si el usuario la dejó abierta o cerrada.
@@ -140,6 +141,7 @@ export function PropertiesPanel(p: Props) {
   if (!selected) {
     return (
       <aside className={cls}>
+        <SelectionPanel />
         <p className="empty">
           Selecciona un elemento para editarlo, o usa el panel de la izquierda para añadir.
         </p>
@@ -381,6 +383,13 @@ export function PropertiesPanel(p: Props) {
             🔒 {t('Página bloqueada: sus capas no se mueven, giran ni borran.')}{' '}
             <button onClick={() => setPageLocked(doc.id, false)}>{t('Desbloquear página')}</button>
           </p>
+        )}
+
+        <SelectionPanel />
+        {!multi && (
+          <Section id="layer-mask" title="Máscara" defaultOpen={!!selected.mask}>
+            <MaskPanel layer={selected} />
+          </Section>
         )}
 
         {(multi || inGroup) && (

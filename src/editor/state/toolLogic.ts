@@ -1,7 +1,7 @@
 // Lógica pura de las herramientas de cursor (sin React ni Zustand): transiciones,
 // prioridad del cursor, zoom a un recuadro y geometría de las formas arrastradas.
 
-export type ToolId = 'select' | 'hand' | 'zoom' | 'text' | 'shape' | 'brush' | 'eraser';
+export type ToolId = 'select' | 'hand' | 'zoom' | 'text' | 'shape' | 'brush' | 'eraser' | 'wand' | 'lasso';
 export type ShapeTool = 'rect' | 'ellipse' | 'line';
 
 export interface ToolDef {
@@ -25,6 +25,9 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'shape', label: 'Línea', action: 'toolLine', key: 'L', icon: 'shapeLine', shape: 'line' },
   { id: 'brush', label: 'Pincel', action: 'toolBrush', key: 'B', icon: 'brush' },
   { id: 'eraser', label: 'Borrador', action: 'toolEraser', key: 'E', icon: 'eraser' },
+  // Selección de píxeles. «L» ya es la línea: el lazo va en Mayús+L.
+  { id: 'wand', label: 'Varita mágica', action: 'toolWand', key: 'W', icon: 'wand' },
+  { id: 'lasso', label: 'Lazo', action: 'toolLasso', key: 'Shift+L', icon: 'lasso' },
 ];
 
 /** Herramienta efectiva: mantener Espacio activa la mano de forma temporal. */
@@ -76,6 +79,8 @@ export function cursorFor(c: CursorCtx): string {
     case 'shape':
     case 'brush':
     case 'eraser':
+    case 'wand':
+    case 'lasso':
       return 'crosshair';
     default:
       if (c.over === 'locked') return 'not-allowed';

@@ -70,6 +70,7 @@ import {
   type SpanStyle,
 } from '../core/richText';
 import { measureStyledText } from '../core/styledText';
+import type { PixelSelection } from '../core/selection';
 import type { Unit } from '../core/units';
 import { photoCanvas } from '../core/photoCanvas';
 import {
@@ -303,6 +304,10 @@ export interface EditorState {
   textEditNonce: number;
   animPlayNonce: number;
   selRect: { left: number; top: number; width: number; height?: number } | null;
+  // Selección de píxeles (varita, lazo, rango de color): transitoria como selRect, fuera del documento.
+  pixelSel: PixelSelection | null;
+  maskEditId: string | null; // capa cuya MÁSCARA se edita (pincel blanco/negro) en vez de la capa
+  maskView: boolean; // ver la máscara como superposición roja (solo editor)
   zoom: number; // multiplicador de zoom del usuario (1 = ajustar)
   viewScale: number; // escala aplicada real (para mostrar %)
   showRulers: boolean;
@@ -490,6 +495,9 @@ export interface EditorState {
   requestTextEdit: (id: string) => void;
   playAnimations: () => void;
   setSelRect: (r: { left: number; top: number; width: number; height?: number } | null) => void;
+  setPixelSel: (sel: PixelSelection | null) => void;
+  setMaskEdit: (id: string | null) => void;
+  setMaskView: (on: boolean) => void;
   setZoom: (z: number) => void;
   setViewScale: (s: number) => void;
   toggleRulers: () => void;
@@ -708,6 +716,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   textEditNonce: 0,
   animPlayNonce: 0,
   selRect: null,
+  pixelSel: null,
+  maskEditId: null,
+  maskView: false,
   zoom: 1,
   viewScale: 1,
   showRulers: loadView().rulers,
@@ -2028,6 +2039,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => ({ animPlayNonce: s.animPlayNonce + 1 })),
 
   setSelRect: (r) => set({ selRect: r }),
+  setPixelSel: (pixelSel) => set({ pixelSel }),
+  setMaskEdit: (maskEditId) => set(() => (maskEditId ? { maskEditId } : { maskEditId: null, maskView: false })),
+  setMaskView: (maskView) => set({ maskView }),
 
   setZoom: (z) => set({ zoom: Math.max(0.1, Math.min(5, z)) }),
   setViewScale: (s) => set({ viewScale: s }),

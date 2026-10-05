@@ -29,7 +29,9 @@ export type IconName =
   | 'shapeEllipse'
   | 'shapeLine'
   | 'eraser'
-  | 'razor';
+  | 'razor'
+  | 'wand'
+  | 'lasso';
 
 const PATHS: Record<IconName, ReactElement> = {
   upload: (
@@ -169,6 +171,19 @@ const PATHS: Record<IconName, ReactElement> = {
       <circle cx="6" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
       <path d="M20 4L8.1 15.9 M14.5 14.5L20 20 M8.1 8.1L12 12" />
+    </>
+  ),
+  wand: (
+    <>
+      <path d="M4 20L15 9" />
+      <path d="M15 4v2 M15 12v2 M19 9h2 M9 9h2 M17.8 6.2l1.4-1.4 M17.8 11.8l1.4 1.4 M12.2 6.2L10.8 4.8" />
+    </>
+  ),
+  lasso: (
+    <>
+      <path d="M7 17.5C4.6 16.2 3 14.2 3 12c0-4.4 4-8 9-8s9 3.6 9 8-4 8-9 8c-1 0-2-.1-2.9-.4" />
+      <path d="M7 17.5c0 1.4 1 2.5 2.1 2.1 1-.4.9-2-.4-2.5-.6-.2-1.2-.1-1.7.4z" />
+      <path d="M8.5 20.5c-.3 1-1 1.5-2 1.5" />
     </>
   ),
 };

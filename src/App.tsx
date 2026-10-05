@@ -38,6 +38,7 @@ import { isTauri } from './io/nativeSave';
 import { t, useLang } from './i18n';
 import { actionForEvent, getShortcut, useShortcuts } from './editor/core/shortcuts';
 import { useTool } from './editor/state/toolStore';
+import { currentSel, deleteSelectionInLayer, deselectPixels, invertPixels } from './editor/state/pixelOps';
 import { TOOL_DEFS, toolForAction } from './editor/state/toolLogic';
 import { UiPrefs, getFocusMode, setFocusMode, toggleFocusMode } from './ui/UiScale';
 import { TipLayer } from './ui/Tip';
@@ -510,6 +511,11 @@ export default function App() {
         e.preventDefault();
         const tl = toolForAction(act)!;
         useTool.getState().toggle(tl.tool, tl.shape);
+      } else if (act === 'deselectPixels' || act === 'invertPixels') {
+        if (document.querySelector('.vx-root')) return;
+        e.preventDefault();
+        if (act === 'deselectPixels') deselectPixels();
+        else invertPixels();
       } else if (act === 'pageView') {
         e.preventDefault();
         st.togglePageView();
@@ -542,8 +548,14 @@ export default function App() {
       } else if (e.key === 'Escape') {
         if (getFocusMode()) setFocusMode(false);
         else if (st.cropMode) st.cancelCrop();
+        else if (st.maskEditId) st.setMaskEdit(null); // Esc: deja de editar la máscara
+        else if (st.pixelSel && useTool.getState().tool !== 'wand' && useTool.getState().tool !== 'lasso') st.setPixelSel(null);
         else if (useTool.getState().tool !== 'select') useTool.getState().escape(); // Esc: de vuelta al puntero
         else if (st.selectedId) st.selectLayer(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId && currentSel()) {
+        // Con selección de píxeles, Supr oculta lo seleccionado en la capa (máscara, no destructivo).
+        e.preventDefault();
+        void deleteSelectionInLayer();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault();
         // Las capas bloqueadas no se borran con la tecla (protege el fondo).

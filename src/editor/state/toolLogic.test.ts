@@ -81,11 +81,14 @@ describe('transiciones de herramienta', () => {
 describe('atajos', () => {
   beforeEach(() => _setOverridesForTest({}));
   it('cada herramienta tiene su tecla y no choca con otra acción', () => {
-    const keys = ['V', 'H', 'Z', 'T', 'R', 'O', 'L', 'B', 'E'];
+    // W = varita; el lazo va en Mayús+L porque L ya es la línea.
+    const keys = ['V', 'H', 'Z', 'T', 'R', 'O', 'L', 'B', 'E', 'W', 'Shift+L'];
     TOOL_DEFS.forEach((d, i) => {
       expect(getShortcut(d.action)).toBe(d.key);
       expect(keys).toContain(d.key);
-      expect(actionForEvent(key(d.key.toLowerCase()))).toBe(d.action);
+      const shift = d.key.startsWith('Shift+');
+      const k = shift ? d.key.slice(6) : d.key.toLowerCase();
+      expect(actionForEvent(key(k, { shiftKey: shift }))).toBe(d.action);
       expect(i).toBeGreaterThanOrEqual(0);
     });
     const all = ACTIONS.map((a) => getShortcut(a.id)).filter(Boolean);

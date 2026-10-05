@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { AiPreviewNotice } from './AiPanels';
 import * as VM from '../../video/model';
 import { ASPECTS, outputSize, type Aspect } from '../../video/engine/formats';
@@ -20,6 +20,8 @@ interface Props {
   commit: (fn: (p: VM.VideoProject) => VM.VideoProject, group?: string) => void;
   endGroup: () => void;
   empty: boolean;
+  /** Inicio del editor (proyecto vacío): botones de importar, grabar y plantillas */
+  startActions?: ReactNode;
   /** auto-fotograma: mover manijas sobre un clip escribe fotogramas en el cabezal en vez de cambiar el valor base */
   autoKey?: boolean;
 }
@@ -189,7 +191,7 @@ function TransformBox({ engine, clip, frame, fit, commit, endGroup, autoKey }: {
   );
 }
 
-export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit, endGroup, empty, autoKey = false }: Props) {
+export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit, endGroup, empty, startActions, autoKey = false }: Props) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [box, setBox] = useState({ w: 320, h: 180 });
@@ -238,7 +240,12 @@ export function PreviewPanel({ engine, project, selectedId, aspect, fit, commit,
           <canvas ref={canvas} className="vx-canvas" aria-hidden="true" />
           {loc && activeNow && !loc.track.locked && <TransformBox engine={engine} clip={loc.clip} frame={box} fit={fit} commit={commit} endGroup={endGroup} autoKey={autoKey} />}
           <DebugOverlay engine={engine} />
-          {empty && <p className="vx-empty">Importa video, imágenes o audio para empezar.</p>}
+          {empty && (
+            <div className="vx-empty">
+              <p>Importa video, imágenes o audio para empezar, graba, o parte de una plantilla.</p>
+              {startActions && <div className="vx-start">{startActions}</div>}
+            </div>
+          )}
         </div>
       </div>
       <PreviewQuality engine={engine} />

@@ -4,11 +4,13 @@
 import { DEFAULT_ADJUST, type ImageAdjust } from './types';
 import { runOutlineStage, runPixelStage } from './imageProcessing';
 import { resampleRGBA, type ResampleMethod } from './resample';
+import { runSelJob, type SelJob } from './selection';
+import { featherAlpha } from './layerMask';
 
 export interface PixelJobMsg {
   id: number;
-  op: 'pixels' | 'outline' | 'resample';
-  buffer: ArrayBuffer; // RGBA (se transfiere, no se copia)
+  op: 'pixels' | 'outline' | 'resample' | 'sel' | 'maskFeather';
+  buffer: ArrayBuffer; // RGBA (se transfiere, no se copia); 'sel'/'maskFeather': RGBA o plano de 8 bits
   width: number;
   height: number;
   adj?: ImageAdjust; // pixels / outline
@@ -16,6 +18,8 @@ export interface PixelJobMsg {
   dw?: number; // resample: tamaño de destino
   dh?: number;
   method?: ResampleMethod;
+  sel?: SelJob; // sel: trabajo de selección (selection.ts)
+  radius?: number; // maskFeather: radio en píxeles del plano
 }
 
 export type PixelReply =
@@ -44,6 +48,18 @@ export function handlePixelJob(
       const out = resampleRGBA(data.data, msg.width, msg.height, msg.dw ?? msg.width, msg.dh ?? msg.height, msg.method ?? 'bicubic', (f) =>
         report(f, 'Remuestreo'),
       );
+      post({ id: msg.id, done: true, buffer: out.buffer as ArrayBuffer }, [out.buffer as ArrayBuffer]);
+      return;
+    }
+    if (msg.op === 'sel' || msg.op === 'maskFeather') {
+      // Selección y máscaras: la misma función pura que en el hilo principal (resultado idéntico).
+      report(0, msg.op === 'sel' ? 'Selección' : 'Máscara');
+      const src = new Uint8Array(msg.buffer);
+      const out =
+        msg.op === 'sel' && msg.sel
+          ? runSelJob(msg.sel, src, msg.width, msg.height)
+          : featherAlpha(src, msg.width, msg.height, msg.radius ?? 0);
+      report(1, 'Listo');
       post({ id: msg.id, done: true, buffer: out.buffer as ArrayBuffer }, [out.buffer as ArrayBuffer]);
       return;
     }

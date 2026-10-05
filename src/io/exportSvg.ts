@@ -20,6 +20,8 @@ import { fieldsForDoc, type FieldValues } from '../editor/core/textMacros';
 import { textSvgAdvanced } from './exportSvgTypography';
 import { pagesForFields } from './docFields';
 import { textFxSvg } from './exportSvgTextFx';
+import { maskActive } from '../editor/core/layerMask';
+import { maskPngDataUrl } from '../editor/core/maskRender';
 
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -198,6 +200,23 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
     const bm = blendCss(layer.blendMode);
     const firstPart = parts.length;
     const op = layer.opacity !== 1 ? ` opacity="${layer.opacity}"` : '';
+    // Máscara de capa: <mask> con la MISMA máscara final que el lienzo (PNG blanco con alfa), en el
+    // marco local de la capa. Si no se puede calcular, la capa no se exporta (como en el lienzo).
+    let mOpen = '';
+    let mClose = '';
+    let mDef = '';
+    if (layer.mask && maskActive(layer.mask)) {
+      const mk = await maskPngDataUrl(layer.mask);
+      if (!mk) continue;
+      const mid = `lm-${layer.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      const r = layer.mask.rect;
+      const out = mk.outside > 0
+        ? `<path d="M-100000,-100000H100000V100000H-100000Z M${r.x},${r.y}v${r.h}h${r.w}v${-r.h}Z" fill-rule="evenodd" fill="#ffffff" fill-opacity="${(mk.outside / 255).toFixed(4)}"/>`
+        : '';
+      mDef = `<defs><mask id="${mid}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="-100000" y="-100000" width="200000" height="200000" style="mask-type:luminance">${out}<image href="${mk.url}" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" preserveAspectRatio="none"/></mask></defs>`;
+      mOpen = `<g mask="url(#${mid})">`;
+      mClose = '</g>';
+    }
     if (layer.type === 'image') {
       const img = await loadImg(layer.src);
       await preloadFxImages(layer.adjust);
@@ -230,17 +249,19 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
         baked = c.toDataURL('image/png');
       }
       parts.push(
-        `<g transform="${transform(layer)}"${op}>${fxSvg}<g${shadowStyle(layer)}><image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/></g></g>`,
+        `<g transform="${transform(layer)}"${op}>${mDef}${fxSvg}<g${shadowStyle(layer)}>${mOpen}<image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/>${mClose}</g></g>`,
       );
     } else if (layer.type === 'stroke') {
-      parts.push(`<g transform="${transform(layer)}"${op}>${strokeToSvg(layer)}</g>`);
+      parts.push(`<g transform="${transform(layer)}"${op}>${mDef}${mOpen}${strokeToSvg(layer)}${mClose}</g>`);
     } else if (layer.type === 'shape') {
       parts.push(
-        `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}>${shapeSvg(layer)}</g>`,
+        mOpen
+          ? `<g transform="${transform(layer)}"${op}>${mDef}<g${shadowStyle(layer)}>${mOpen}${shapeSvg(layer)}${mClose}</g></g>`
+          : `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}>${shapeSvg(layer)}</g>`,
       );
     } else if (layer.type === 'text') {
       const fxText = await textFxSvg(layer, textFields); // efectos de texto (textFx.ts)
-      parts.push(`<g transform="${transform(layer)}"${op}>${fxText ?? textSvg(layer, measure, textFields)}</g>`);
+      parts.push(`<g transform="${transform(layer)}"${op}>${mDef}${mOpen}${fxText ?? textSvg(layer, measure, textFields)}${mClose}</g>`);
     }
     // Modo de fusión: grupo envolvente que se mezcla con lo de debajo (mix-blend-mode).
     if (bm !== 'normal' && parts.length > firstPart) {

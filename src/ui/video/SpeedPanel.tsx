@@ -11,6 +11,7 @@ import { Field } from './Field';
 import type { PreviewEngine } from './previewEngine';
 import { fmtSpeed, fromPx, nudgeSpeed, sliderToSpeed, speedToSlider, toPx, type SpeedBox } from './speedCurveMath';
 import { toast } from '../toast';
+import { PerfectLoopDialog } from './PerfectLoopDialog';
 
 interface Props {
   project: VM.VideoProject;
@@ -141,6 +142,7 @@ export function SpeedSection({ project, clip: c, engine, t, commit, locked }: Pr
   const idp = useId();
   const [showCurve, setShowCurve] = useState(!!c.curve);
   const [freezeDur, setFreezeDur] = useState(2);
+  const [loopOpen, setLoopOpen] = useState(false);
   const media = c.mediaId ? project.media[c.mediaId] : undefined;
   const video = c.kind === 'video';
   const dur = VM.clipDuration(c);
@@ -309,6 +311,9 @@ export function SpeedSection({ project, clip: c, engine, t, commit, locked }: Pr
             />{' '}
             Repetir el tramo
           </label>
+          <button type="button" className="mini" disabled={locked || !media?.blob} onClick={() => setLoopOpen(true)} title="Busca solo el mejor punto de unión (el fotograma final que más se parece al inicial; en audio, el cruce por cero) y recorta ahí">
+            🔁 Bucle perfecto…
+          </button>
           {c.loop && (
             <>
               <div className="vx-field">
@@ -336,6 +341,7 @@ export function SpeedSection({ project, clip: c, engine, t, commit, locked }: Pr
           )}
         </div>
       )}
+      {loopOpen && media && <PerfectLoopDialog clip={c} media={media} commit={commit} onClose={() => setLoopOpen(false)} />}
       <p className="vx-note vx-dur">Duración del clip: {fmtDur(dur)}{media ? ` · archivo ${fmtDur(media.duration)}` : ''}</p>
     </details>
   );

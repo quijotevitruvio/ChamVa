@@ -8,6 +8,8 @@ import type { ChartSpec, TableSpec } from './charts';
 // Los modos de fusión viven en blend.ts (lienzo, exportación y video los comparten).
 import type { BlendMode } from './blend';
 export type { BlendMode };
+import type { LayerMask } from './layerMask';
+export type { LayerMask };
 
 export interface LayerBase {
   id: string;
@@ -29,6 +31,8 @@ export interface LayerBase {
   folderId?: string; // carpeta de capas (solo organización: no cambia el orden de dibujo)
   styleId?: string; // estilo de objeto compartido vinculado (Doc.styles)
   constraints?: LayerConstraints; // cómo se recoloca al cambiar el tamaño del lienzo
+  // Máscara de capa no destructiva (layerMask.ts), en el marco local de la capa. Sin campo = sin máscara.
+  mask?: LayerMask;
 }
 
 // Restricciones al redimensionar el lienzo (ver constraints.ts).

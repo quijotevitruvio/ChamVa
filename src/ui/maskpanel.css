@@ -1,0 +1,90 @@
+/* Máscaras de capa y selección de píxeles (panel de propiedades y panel Capas). */
+.mask-panel,
+.sel-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sel-panel {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+}
+.sel-panel h4 {
+  margin: 0;
+  font-size: 13px;
+}
+.mp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.mp-grid button,
+.mp-modify button,
+.mp-range button {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.mp-grid button[aria-pressed='true'],
+.mp-brush button[aria-pressed='true'] {
+  outline: 2px solid currentColor;
+}
+.mp-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.mp-state {
+  display: flex;
+  flex-direction: column;
+}
+.mp-slider {
+  display: grid;
+  grid-template-columns: 7.5em 1fr 3em;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.mp-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mp-check {
+  font-size: 12px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.mp-modify,
+.mp-range,
+.mp-fill {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mp-modify input[type='number'] {
+  width: 4.5em;
+}
+.mp-range .mp-slider {
+  flex: 1;
+  grid-template-columns: 3.5em 1fr 2.5em;
+}
+.mask-thumb {
+  border: 1px solid rgba(128, 128, 128, 0.6);
+  border-radius: 3px;
+  cursor: pointer;
+  flex: none;
+  image-rendering: auto;
+}
+.mask-thumb.on {
+  outline: 2px solid #ffb300;
+  outline-offset: 1px;
+}
+.mask-thumb.off {
+  opacity: 0.4;
+  background: repeating-linear-gradient(45deg, transparent 0 3px, rgba(255, 0, 0, 0.6) 3px 4px);
+}
+.sel-overlay canvas,
+.mask-paint canvas {
+  pointer-events: none;
+}

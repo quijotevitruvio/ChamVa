@@ -75,7 +75,9 @@ export async function dehydrateDocs(pages: Doc[]): Promise<Doc[]> {
   const out: Doc[] = [];
   for (const p of pages) {
     const layers = [];
-    for (const l of p.layers) {
+    for (const l0 of p.layers) {
+      // Máscara ráster: sus datos van al almacén como una imagen más (el documento solo lleva la referencia).
+      const l = l0.mask?.data ? { ...l0, mask: { ...l0.mask, data: await putAsset(l0.mask.data) } } : l0;
       if (l.type === 'image') {
         layers.push({
           ...l,
@@ -93,7 +95,8 @@ export async function rehydrateDocs(pages: Doc[]): Promise<Doc[]> {
   const out: Doc[] = [];
   for (const p of pages) {
     const layers = [];
-    for (const l of p.layers) {
+    for (const l0 of p.layers) {
+      const l = l0.mask?.data && isAssetRef(l0.mask.data) ? { ...l0, mask: { ...l0.mask, data: await getAsset(l0.mask.data) } } : l0;
       if (l.type === 'image') {
         layers.push({
           ...l,

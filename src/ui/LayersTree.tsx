@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
+import { MaskThumb } from './MaskPanel';
 import { useEditor } from '../editor/state/store';
 import type { Doc, Layer } from '../editor/core/types';
 import {
@@ -331,6 +332,7 @@ export function LayersTree() {
                   </span>
                   <span className="ico">{ico(l)}</span>
                   <span className="name">{layerLabel(l)}</span>
+                  {l.mask && <MaskThumb layer={l} />}
                   {eyeLock(!l.visible, l.locked, () => updateLayer(l.id, { visible: !l.visible }), () => updateLayer(l.id, { locked: !l.locked }))}
                 </li>
               );

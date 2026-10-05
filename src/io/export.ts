@@ -18,6 +18,7 @@ import { isTauri, saveNative } from './nativeSave';
 import { toast } from '../ui/toast';
 import { withRegisteredMaster } from '../editor/core/master';
 import { embedDpiInBlob, fileDpi } from './imageDpi';
+import { contentBounds, drawImageBody, drawMaskedLayer, drawShapeBody, drawStrokeBody, drawTextBody, layerHasMask, prepareMask } from '../editor/core/maskRender';
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif';
 
@@ -86,6 +87,43 @@ export async function renderDocToCanvas(
       animTime === undefined
         ? { dx: 0, dy: 0, scale: 1, opacity: 1 }
         : layerAnimAt(layer, animTime, animTotal);
+    // Capa con máscara: el MISMO dibujo que el lienzo (maskRender.ts). Sin máscara, como siempre.
+    if (layer.mask && layerHasMask(layer)) {
+      await prepareMask(layer.mask);
+      let source: CanvasImageSource | null = null;
+      if (layer.type === 'image') {
+        const img = await loadImg(layer.src);
+        await preloadFxImages(layer.adjust);
+        source = needsProcessing(layer)
+          ? await processImageAsync(img, layer, Infinity, { priority: 1, label: 'Exportando imagen' })
+          : img;
+      } else if (layer.type === 'text') await preloadTextFxImages(layer);
+      ctx.save();
+      ctx.globalAlpha = layer.opacity * a.opacity;
+      ctx.globalCompositeOperation = blendOp(layer.blendMode);
+      ctx.translate(layer.x + a.dx * doc.width, layer.y + a.dy * doc.height);
+      ctx.rotate((layer.rotation * Math.PI) / 180);
+      ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
+      if (layer.type === 'image' && source && hasGroundFx(layer)) {
+        drawGroundFx(ctx, source, layer.naturalWidth, layer.naturalHeight, layer.maskShape, layer);
+      }
+      const L = layer;
+      drawMaskedLayer(ctx, {
+        mask: layer.mask,
+        bounds: contentBounds(layer, textFields),
+        maxSide: 16384,
+        shadow: L.type === 'image' || L.type === 'shape' ? L : undefined,
+        flipSign: { x: Math.sign(layer.scaleX) || 1, y: Math.sign(layer.scaleY) || 1 },
+        body: (c) => {
+          if (L.type === 'image' && source) drawImageBody(c, source, L.naturalWidth, L.naturalHeight, L.maskShape);
+          else if (L.type === 'shape') drawShapeBody(c, L, scale);
+          else if (L.type === 'text') drawTextBody(c, L, textFields);
+          else if (L.type === 'stroke') drawStrokeBody(c, L);
+        },
+      });
+      ctx.restore();
+      continue;
+    }
     if (layer.type === 'image') {
       const img = await loadImg(layer.src);
       await preloadFxImages(layer.adjust); // doble exposición: imagen lista antes de hornear

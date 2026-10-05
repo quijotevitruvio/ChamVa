@@ -23,7 +23,14 @@ import { Toolbar } from './video/Toolbar';
 import { PreviewEngine } from './video/previewEngine';
 import * as E from './video/editing';
 import * as T from './video/timelineMath';
-import { probeDuration, useVideoProject } from './video/useVideoProject';
+import { useVideoProject } from './video/useVideoProject';
+import { RecordDialog } from './video/RecordDialog';
+import { placeRecordings, type RecordedItem } from './video/recordPlace';
+import type { RecordSettings } from '../video/record/session';
+import { TemplatePicker } from './video/TemplatePicker';
+import { applyTemplate } from '../video/templates/apply';
+import { makePlaceholderBlobs } from '../video/templates/placeholders';
+import { buildTemplate, type VideoTemplate } from '../video/templates/templates';
 import { useExporter } from './video/useExporter';
 import { MixerPanel } from './video/MixerPanel';
 import { useLoudnessAnalysis } from './video/loudness';
@@ -73,7 +80,8 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   // V6: auto-fotograma (editar un valor crea un fotograma en el cabezal) y portapapeles de fotogramas
   const [autoKey, setAutoKey] = useState(false);
   const [keyClip, setKeyClip] = useState<KeyClipboard>([]);
-  const [recording, setRecording] = useState(false);
+  const [recOpen, setRecOpen] = useState(false); // diálogo «Grabar»
+  const [tplOpen, setTplOpen] = useState(false); // selector «Plantillas»
   const [mixerOpen, setMixerOpen] = useState(false); // V7: mezclador desplegable
   const [marks, setMarks] = useState<AS.Marks>({ in: null, out: null });
   const [auto, setAuto] = useState<AS.AutoScope | null>(null);
@@ -90,7 +98,6 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   });
   const apiRef = useRef<TimelineApi | null>(null);
   const clipboard = useRef<E.ClipboardItem[]>([]);
-  const micRec = useRef<MediaRecorder | null>(null);
 
   useLayoutEffect(() => engine.setProject(project), [engine, project]);
   useLayoutEffect(() => {
@@ -238,41 +245,33 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
     if (r.clipIds.length) setSelection(r.clipIds);
   };
 
-  const startRec = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      const chunks: BlobPart[] = [];
-      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-      rec.onstop = async () => {
-        stream.getTracks().forEach((tr) => tr.stop());
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const duration = await probeDuration(blob, 'audio');
-        const n = Object.values(vp.histRef.current.present.media).filter((m) => m.kind === 'audio').length + 1;
-        const id = VM.uid();
-        let clipId = '';
-        commit((p0) => {
-          const p = VM.addMedia(p0, { id, kind: 'audio', name: `Grabación ${n}`, duration, blob });
-          const r = E.placeMedia(p, { id, kind: 'audio', duration }, { name: `Grabación ${n}`, at: engine.time });
-          clipId = r.clipId;
-          return r.p;
-        });
-        setSelection([clipId]);
-        setRecording(false);
-      };
-      micRec.current = rec;
-      rec.start();
-      setRecording(true);
-    } catch (e) {
-      toast('No se pudo acceder al micrófono: ' + (e as Error).message, 'error');
-    }
+  /** Lo grabado entra como medio del proyecto y se coloca en el cabezal en una pista nueva: un solo paso de deshacer. */
+  const finishRecording = (items: RecordedItem[], s: RecordSettings) => {
+    let ids: string[] = [];
+    commit((p) => {
+      const r = placeRecordings(p, items, s.mode, engine.time, s.bubble);
+      ids = r.clipIds;
+      return r.p;
+    });
+    setSelection(ids.slice(0, 1));
+    if (compact) setBinOpen(false);
+    toast(items.length > 1 ? 'Grabación añadida: pantalla y cámara en pistas separadas.' : 'Grabación añadida a la línea de tiempo.', 'success');
   };
-  const toggleRec = () => {
-    if (recording) {
-      micRec.current?.stop();
-      micRec.current = null;
-    } else void startRec();
+
+  /** Plantilla: proyecto nuevo (se recupera con Ctrl+Z) o insertada en el cabezal; en los dos casos un solo paso de deshacer. */
+  const useTemplate = async (t: VideoTemplate, how: 'project' | 'insert') => {
+    const blobs = await makePlaceholderBlobs(t);
+    const tp = buildTemplate(t, blobs);
+    const at = engine.time;
+    const wasEmpty = !vp.histRef.current.present.tracks.some((tk) => tk.clips.length);
+    engine.pause();
+    commit((p) => applyTemplate(p, t, tp, how, at));
+    setSelection([]);
+    if (how === 'project' || wasEmpty) {
+      exporter.setAspect(t.aspect);
+      engine.seek(0);
+    }
+    toast(how === 'project' ? `Plantilla «${t.name}» aplicada. Ctrl+Z vuelve al proyecto anterior.` : `Plantilla «${t.name}» insertada en el cabezal. Ctrl+Z la quita.`, 'success');
   };
 
   const newProject = () => {
@@ -322,6 +321,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       const target = e.target as HTMLElement | null;
       if (isTyping(target)) return;
       if (auto) return; // con el diálogo abierto, el teclado es suyo
+      if (document.querySelector('.vx-as-overlay')) return; // grabar, plantillas, bucle perfecto: diálogos propios
       // flechas sobre una pestaña del panel: cambian de pestaña (las atiende MediaBin), no mueven el cabezal
       if (target?.getAttribute('role') === 'tab' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End')) return;
       // rombo de fotograma clave enfocado: Supr y flechas son suyos (quitar / mover el fotograma), no del clip
@@ -474,7 +474,6 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
           <MediaBin
             project={project}
             cache={cache}
-            recording={recording}
             onImport={onImport}
             onAdd={(id) => addMediaAt(id, undefined, engine.time)}
             onRemove={(id) =>
@@ -486,7 +485,8 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
               })
             }
             onAddText={addText}
-            onToggleRecord={toggleRec}
+            onOpenRecord={() => setRecOpen(true)}
+            onOpenTemplates={() => setTplOpen(true)}
             tab={binTab}
             onTab={setBinTab}
             textPanel={<TextPanel canApply={canApplyStyle} onAdd={addTitle} onApply={applyTitle} onAddPair={addPair} onAddPlain={addText} />}
@@ -496,7 +496,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
             subtitlePanel={<SubtitlePanel project={project} engine={engine} selection={selection} setSelection={select} commit={commit} onAutoSubs={() => openAuto()} />}
           />
         )}
-        <PreviewPanel engine={engine} project={project} selectedId={selection.length === 1 ? selection[0] : null} aspect={exporter.aspect} fit={exporter.fit} commit={commit} endGroup={endGroup} empty={!hasClips} autoKey={autoKey} />
+        <PreviewPanel engine={engine} project={project} selectedId={selection.length === 1 ? selection[0] : null} aspect={exporter.aspect} fit={exporter.fit} commit={commit} endGroup={endGroup} empty={!hasClips} autoKey={autoKey} startActions={<><button type="button" onClick={() => setTplOpen(true)}>▦ Plantillas</button><button type="button" onClick={() => setRecOpen(true)}>⏺ Grabar</button></>} />
       <div className="vx-tl-section">
         <div className="vx-tl-bar">
           <Transport engine={engine} duration={duration} snapOn={snapOn} onToggleSnap={() => setSnapOn((v) => !v)} />
@@ -594,6 +594,8 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
       <div className="vx-side">
         <Inspector project={project} selection={selection} commit={commit} onSplit={split} onDuplicate={dup} onDelete={del} onOpenSubtitles={() => { setBinTab('subs'); setBinOpen(true); }} engine={engine} autoKey={autoKey} setAutoKey={setAutoKey} keyClip={keyClip} setKeyClip={setKeyClip} onSelect={select} aspect={exporter.aspect} setAspect={exporter.setAspect} fit={exporter.fit} marks={marks} />
       </div>
+      {recOpen && <RecordDialog onClose={() => setRecOpen(false)} onFinish={finishRecording} />}
+      {tplOpen && <TemplatePicker hasContent={hasClips} onApply={useTemplate} onClose={() => setTplOpen(false)} />}
       <AiConsentDialog />
       <AiStatusBar project={project} />
       {exportAsk && (

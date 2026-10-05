@@ -35,6 +35,10 @@ export const ACTIONS: ShortcutAction[] = [
   { id: 'toolLine', label: 'Herramienta: línea', desc: 'Arrastra para dibujarla (Mayús = ángulos de 15°)', group: 'Herramientas', def: 'L' },
   { id: 'toolBrush', label: 'Herramienta: pincel', desc: 'Pulsa otra vez para volver al puntero', group: 'Herramientas', def: 'B' },
   { id: 'toolEraser', label: 'Herramienta: borrador', desc: 'Pulsa otra vez para volver al puntero', group: 'Herramientas', def: 'E' },
+  { id: 'toolWand', label: 'Herramienta: varita mágica', desc: 'Clic: selecciona el color parecido (Mayús suma, Alt resta, Mayús+Alt interseca)', group: 'Herramientas', def: 'W' },
+  { id: 'toolLasso', label: 'Herramienta: lazo', desc: 'Arrastra a mano alzada o, en modo poligonal, clic por clic (doble clic cierra)', group: 'Herramientas', def: 'Shift+L' },
+  { id: 'deselectPixels', label: 'Quitar la selección de píxeles', group: 'Selección', def: 'Ctrl+Shift+A' },
+  { id: 'invertPixels', label: 'Invertir la selección de píxeles', group: 'Selección', def: 'Ctrl+Shift+I' },
   // Fusión (Alt+Shift+tecla, como Photoshop): actúa sobre la capa o capas seleccionadas.
   { id: 'blendNext', label: 'Fusión: modo siguiente', desc: 'Recorre los modos de fusión de la selección con vista previa inmediata', group: 'Fusión', def: 'Alt+Shift+↓' },
   { id: 'blendPrev', label: 'Fusión: modo anterior', desc: 'Recorre los modos de fusión hacia atrás', group: 'Fusión', def: 'Alt+Shift+↑' },

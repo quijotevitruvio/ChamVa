@@ -7,12 +7,14 @@ import { MEDIA_MIME } from './Timeline';
 interface Props {
   project: VM.VideoProject;
   cache: MediaCache;
-  recording: boolean;
   onImport: (files: File[]) => void;
   onAdd: (mediaId: string) => void;
   onRemove: (mediaId: string) => void;
   onAddText: () => void;
-  onToggleRecord: () => void;
+  /** abre el diálogo «Grabar» (pantalla, cámara, pantalla + cámara, micrófono) */
+  onOpenRecord: () => void;
+  /** abre el selector de plantillas de video */
+  onOpenTemplates: () => void;
   /** pestaña activa y su contenido (V4) */
   tab: BinTab;
   onTab: (t: BinTab) => void;
@@ -37,7 +39,7 @@ const TABS: { id: BinTab; label: string }[] = [
 const ICON = { video: '🎬', audio: '🎵', image: '🖼' } as const;
 
 /** Panel de medios: importar, ver lo importado y arrastrarlo a la línea de tiempo. */
-export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove, onAddText, onToggleRecord, tab, onTab, textPanel, subtitlePanel, transPanel, fxPanel, adjustPanel }: Props) {
+export function MediaBin({ project, cache, onImport, onAdd, onRemove, onAddText, onOpenRecord, onOpenTemplates, tab, onTab, textPanel, subtitlePanel, transPanel, fxPanel, adjustPanel }: Props) {
   useSyncExternalStore(cache.subscribe, cache.getVersion);
   const file = useRef<HTMLInputElement>(null);
   const used = VM.usedMediaIds(project);
@@ -70,7 +72,8 @@ export function MediaBin({ project, cache, recording, onImport, onAdd, onRemove,
       <div className="vx-bin-head">
         <button type="button" className="primary" onClick={() => file.current?.click()}>＋ Importar</button>
         <button type="button" onClick={onAddText}>🅣 Texto</button>
-        <button type="button" className={recording ? 'on' : ''} aria-pressed={recording} onClick={onToggleRecord}>{recording ? '⏹ Detener' : '🎤 Grabar'}</button>
+        <button type="button" onClick={onOpenRecord} title="Grabar pantalla, cámara o micrófono">⏺ Grabar</button>
+        <button type="button" onClick={onOpenTemplates} title="Empezar desde una plantilla de video">▦ Plantillas</button>
         <input
           ref={file}
           type="file"

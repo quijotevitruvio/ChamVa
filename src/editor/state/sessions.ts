@@ -79,6 +79,9 @@ export const STATE_CLASS = {
   editingTextId: 'transient', // el editor en línea se confirma (blur) ANTES de aparcar
   textSel: 'transient',
   selRect: 'transient',
+  pixelSel: 'transient', // selección de píxeles (varita/lazo): no cruza a otra pestaña
+  maskEditId: 'transient',
+  maskView: 'transient',
 } as const satisfies Record<DataKey, StateClass>; // falta o sobra una clave -> error de tsc
 
 type Classified = typeof STATE_CLASS;
@@ -124,6 +127,9 @@ export const TRANSIENT_RESET = {
   editingTextId: null,
   textSel: null,
   selRect: null,
+  pixelSel: null,
+  maskEditId: null,
+  maskView: false,
 } satisfies { [K in keyof Classified as Classified[K] extends 'transient' ? K : never]: EditorState[K] };
 
 /** Estado de guardado de una pestaña aparcada (lo último que se escribió al aparcarla). */
