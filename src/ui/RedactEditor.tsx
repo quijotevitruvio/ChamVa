@@ -12,12 +12,16 @@ import { bakedCanvas, commitCanvas, toCanvasPoint } from './imagegeoUtil';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './imagegeo.css';
+import { BackButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 const MAX_UNDO = 8;
 
 // Censurar zona: se dibuja un rectángulo o elipse y se pixela, desenfoca o tapa con una barra.
 // La vista previa es en vivo; al aplicar se hornea en la imagen (irreversible).
 export function RedactEditor({ layer, onClose }: { layer: ImageLayer; onClose: () => void }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useDismiss(overlayRef, { onClose: onClose });
   const baseRef = useRef<HTMLCanvasElement | null>(null); // estado ya confirmado
   const viewRef = useRef<HTMLCanvasElement>(null);
   const undoRef = useRef<ImageData[]>([]);
@@ -163,8 +167,9 @@ export function RedactEditor({ layer, onClose }: { layer: ImageLayer; onClose: (
   const changed = canUndo || (!!pending && pending.w >= 2 && pending.h >= 2);
 
   return createPortal(
-    <div className="mask-overlay">
+    <div className="mask-overlay" ref={overlayRef}>
       <div className="mask-toolbar">
+        <BackButton onClick={onClose} />
         <span className="mask-title">{t('Censurar zona')}</span>
         <div className="seg">
           <button className={mode === 'pixelate' ? 'on' : ''} onClick={() => setMode('pixelate')}>

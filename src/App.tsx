@@ -35,6 +35,8 @@ import { checkForUpdate, type UpdateInfo } from './updater';
 import { isTauri } from './io/nativeSave';
 import { t, useLang } from './i18n';
 import { actionForEvent, getShortcut, useShortcuts } from './editor/core/shortcuts';
+import { useTool } from './editor/state/toolStore';
+import { TOOL_DEFS, toolForAction } from './editor/state/toolLogic';
 import { UiPrefs, getFocusMode, setFocusMode, toggleFocusMode } from './ui/UiScale';
 import { TipLayer } from './ui/Tip';
 import {
@@ -468,6 +470,12 @@ export default function App() {
         e.preventDefault();
         const to = neighborTab(st.tabs, st.activeTabId, act === 'nextTab' ? 1 : -1);
         if (to) st.switchTab(to);
+      } else if (act && toolForAction(act)) {
+        // Herramientas del lienzo (V, H, Z, T, R, O, L, B, E). El editor de video tiene las suyas.
+        if (document.querySelector('.vx-root')) return;
+        e.preventDefault();
+        const tl = toolForAction(act)!;
+        useTool.getState().toggle(tl.tool, tl.shape);
       } else if (act === 'pageView') {
         e.preventDefault();
         st.togglePageView();
@@ -505,6 +513,7 @@ export default function App() {
       } else if (e.key === 'Escape') {
         if (getFocusMode()) setFocusMode(false);
         else if (st.cropMode) st.cancelCrop();
+        else if (useTool.getState().tool !== 'select') useTool.getState().escape(); // Esc: de vuelta al puntero
         else if (st.selectedId) st.selectLayer(null);
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault();
@@ -1295,6 +1304,12 @@ export default function App() {
       c('Ver', 'theme-system', 'Tema del sistema', () => setTheme('system'), { keywords: 'apariencia automatico' }),
       c('Herramientas', 'video', 'Abrir el editor de video', () => setShowVideo(true), { keywords: 'audio clip' }),
       c('Herramientas', 'preview-anim', 'Previsualizar animaciones', playAnimations),
+      ...TOOL_DEFS.map((d) =>
+        c('Herramientas', `tool-${d.action}`, `Herramienta: ${d.label.toLowerCase()}`, () => useTool.getState().toggle(d.id, d.shape), {
+          shortcut: getShortcut(d.action),
+          keywords: 'cursor puntero seleccionar mano mover zoom lupa texto forma rectangulo elipse linea pincel borrador',
+        }),
+      ),
       c('Ayuda', 'shortcuts', 'Atajos de teclado', () => setShowShortcuts(true), { shortcut: getShortcut('shortcuts') }),
       c('Ayuda', 'settings', 'Ajustes y licencia', () => setShowSettings(true), { keywords: 'idioma tema actualizaciones donantes' }),
       c('Ayuda', 'tour', 'Ver el recorrido de bienvenida', () => setShowTour(true), { keywords: 'tutorial guia ayuda' }),

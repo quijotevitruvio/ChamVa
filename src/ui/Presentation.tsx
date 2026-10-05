@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Doc } from '../editor/core/types';
 import { renderDocToCanvas } from '../io/export';
 import './layoutaids.css';
+import { BackButton, CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 export function Presentation({
   pages,
@@ -12,6 +14,8 @@ export function Presentation({
   start: number;
   onClose: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useDismiss(rootRef, { onClose });
   const [i, setI] = useState(start);
   const imgRef = useRef<HTMLImageElement>(null);
   const [showNotes, setShowNotes] = useState(false); // notas del orador (tecla N)
@@ -46,7 +50,9 @@ export function Presentation({
   }, [pages.length, onClose]);
 
   return (
-    <div className="present-overlay">
+    <div className="present-overlay" ref={rootRef} role="dialog" aria-modal="true" aria-label="Presentación">
+      <BackButton className="float-tl" onClick={onClose} />
+      <CloseButton className="float" onClick={onClose} label="Salir de la presentación" />
       <img ref={imgRef} className="present-img" alt={`Página ${i + 1}`} />
       {showNotes && (
         <div className="present-notes">{notes || 'Esta página no tiene notas del orador.'}</div>

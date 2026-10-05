@@ -24,6 +24,15 @@ export const ACTIONS: ShortcutAction[] = [
   { id: 'closeTab', label: 'Cerrar pestaña', desc: 'Cierra la pestaña actual. En el navegador Ctrl+W lo reserva el navegador: usa Alt+W', group: 'Pestañas', def: 'Ctrl+W', extra: ['Alt+W'] },
   { id: 'nextTab', label: 'Pestaña siguiente', desc: 'En el navegador Ctrl+Tab lo reserva el navegador: usa Alt+AvPág', group: 'Pestañas', def: 'Ctrl+Tab', extra: ['Alt+PageDown'] },
   { id: 'prevTab', label: 'Pestaña anterior', desc: 'En el navegador Ctrl+Mayús+Tab lo reserva el navegador: usa Alt+RePág', group: 'Pestañas', def: 'Ctrl+Shift+Tab', extra: ['Alt+PageUp'] },
+  { id: 'toolSelect', label: 'Herramienta: puntero', desc: 'Seleccionar y mover; arrastra en vacío para una caja de selección', group: 'Herramientas', def: 'V' },
+  { id: 'toolHand', label: 'Herramienta: mano', desc: 'Arrastra para desplazar el lienzo (mantén Espacio para usarla un momento)', group: 'Herramientas', def: 'H' },
+  { id: 'toolZoom', label: 'Herramienta: zoom', desc: 'Clic acerca, Alt+clic aleja, arrastra un recuadro para ampliar esa zona', group: 'Herramientas', def: 'Z' },
+  { id: 'toolText', label: 'Herramienta: texto', desc: 'Clic en la página para poner texto', group: 'Herramientas', def: 'T' },
+  { id: 'toolRect', label: 'Herramienta: rectángulo', desc: 'Arrastra para dibujarlo (Mayús = proporcional)', group: 'Herramientas', def: 'R' },
+  { id: 'toolEllipse', label: 'Herramienta: elipse', desc: 'Arrastra para dibujarla (Mayús = círculo)', group: 'Herramientas', def: 'O' },
+  { id: 'toolLine', label: 'Herramienta: línea', desc: 'Arrastra para dibujarla (Mayús = ángulos de 15°)', group: 'Herramientas', def: 'L' },
+  { id: 'toolBrush', label: 'Herramienta: pincel', desc: 'Pulsa otra vez para volver al puntero', group: 'Herramientas', def: 'B' },
+  { id: 'toolEraser', label: 'Herramienta: borrador', desc: 'Pulsa otra vez para volver al puntero', group: 'Herramientas', def: 'E' },
   { id: 'undo', label: 'Deshacer', group: 'Edición', def: 'Ctrl+Z' },
   { id: 'redo', label: 'Rehacer', group: 'Edición', def: 'Ctrl+Y', extra: ['Ctrl+Shift+Z'] },
   { id: 'copy', label: 'Copiar capa', group: 'Edición', def: 'Ctrl+C' },
@@ -38,7 +47,9 @@ export const FIXED_KEYS: [string, string][] = [
   ['Esc', 'Deseleccionar / cancelar / salir del modo concentración'],
   ['Supr', 'Borrar capa (no bloqueadas)'],
   ['Flechas', 'Mover 1 px · con Shift 10 px'],
-  ['Espacio + arrastrar', 'Mover el lienzo'],
+  ['Espacio + arrastrar', 'Mover el lienzo (mano temporal)'],
+  ['Esc (con una herramienta)', 'Volver al puntero'],
+  ['Mayús al crear texto/forma', 'Mantener la herramienta para crear varios'],
 ];
 const FIXED_NAMES = new Set(['Esc', 'Supr', 'Retroceso', '←', '→', '↑', '↓', 'Espacio']);
 

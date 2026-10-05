@@ -3,6 +3,7 @@ import type { Doc } from '../editor/core/types';
 import { exportDoc } from '../io/export';
 import { rgbToHex, readableOn } from '../editor/core/colorTools';
 import './colortools.css';
+import { useDismiss } from './useDismiss';
 
 const MAX_W = 760;
 const MAX_H = 520;
@@ -19,6 +20,8 @@ export function ScreenPicker({
   onPick: (hex: string) => void;
   onClose: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose, esc: false });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lupaRef = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
@@ -99,6 +102,7 @@ export function ScreenPicker({
   return (
     <div className="sp-overlay" onMouseDown={onClose}>
       <div
+        ref={cardRef}
         className="sp-modal"
         role="dialog"
         aria-label="Elige un color de tu diseño"

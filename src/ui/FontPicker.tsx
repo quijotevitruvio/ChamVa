@@ -12,6 +12,7 @@ import {
 import { toast } from './toast';
 import { t } from '../i18n';
 import './texttools.css';
+import { useDismiss } from './useDismiss';
 
 // ---- favoritas y recientes (localStorage; sin él simplemente no se recuerdan) ----
 const LS_FAV = 'chamva.fontFav';
@@ -66,6 +67,8 @@ function FontPickerModal({
   onPick: (family: string) => void;
   onClose: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose, esc: false });
   const { brandFonts, customFonts, all } = useAvailableFonts();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -155,7 +158,7 @@ function FontPickerModal({
 
   return createPortal(
     <div className="tt-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="tt-modal tt-font" role="dialog" aria-label={t('Buscar fuente')} onKeyDown={onKey}>
+      <div className="tt-modal tt-font" ref={cardRef} role="dialog" aria-modal="true" aria-label={t('Buscar fuente')} onKeyDown={onKey}>
         <div className="tt-head">
           <h3>{t('Fuentes')}</h3>
           <button className="tt-x" onClick={onClose} title={t('Cerrar')}>

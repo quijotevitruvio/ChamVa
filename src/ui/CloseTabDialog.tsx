@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { t } from '../i18n';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 import './library.css';
 
 interface Props {
@@ -11,21 +13,13 @@ interface Props {
 /** El diseño no se pudo guardar en el equipo: cerrar de todos modos o cancelar. */
 export function CloseTabDialog({ name, onForce, onCancel }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onCancel]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onCancel, initialFocus: 'button' });
 
   return (
     <div className="donate-overlay" onClick={onCancel}>
       <div
+        ref={cardRef}
         className="settings-card"
         role="alertdialog"
         aria-modal="true"
@@ -34,6 +28,7 @@ export function CloseTabDialog({ name, onForce, onCancel }: Props) {
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 440 }}
       >
+        <CloseButton className="float" onClick={onCancel} />
         <h3 id="close-tab-title">{t('No se pudo guardar')}</h3>
         <p id="close-tab-desc">
           {t('«{n}» no se pudo guardar en este equipo. Si lo cierras ahora, se pierden sus últimos cambios.').replace('{n}', name)}

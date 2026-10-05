@@ -9,6 +9,7 @@ import { usesTypography, typographyKey } from '../core/typography';
 import { defaultFields } from '../core/textMacros';
 import { hasPathText, hasTextFx } from '../core/textFx';
 import { useTextFxImagesVersion } from './useTextFxImages';
+import { useEffectiveTool } from '../state/toolStore';
 import { useEditor } from '../state/store';
 import { isLayerLocked } from '../core/pageOps';
 
@@ -21,6 +22,7 @@ interface Props {
 const measureCtx = document.createElement('canvas').getContext('2d')!;
 
 export function TextLayerNode({ layer, registerRef }: Props) {
+  const selecting = useEffectiveTool() === 'select'; // con la mano u otra herramienta, las capas no se arrastran
   const clickSelect = useEditor((s) => s.clickSelect);
   const updateLayer = useEditor((s) => s.updateLayer);
   const requestTextEdit = useEditor((s) => s.requestTextEdit);
@@ -64,7 +66,7 @@ export function TextLayerNode({ layer, registerRef }: Props) {
     rotation: layer.rotation,
     // Mientras se edita encima del lienzo, el editor HTML ocupa su lugar.
     opacity: editing ? 0 : layer.opacity,
-    draggable: !locked && !editing,
+    draggable: selecting && !locked && !editing,
     globalCompositeOperation:
       layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>

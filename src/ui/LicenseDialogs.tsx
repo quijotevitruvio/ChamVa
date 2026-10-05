@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { AUTHOR, APP_VERSION, GOAL, LICENSE_PLANS, SUPPORT } from '../branding';
 import { DONORS, DONOR_TYPE_LABEL } from '../donors';
 import {
@@ -20,6 +20,7 @@ import { BackupSection } from './BackupSection';
 import { toast } from './toast';
 import { getTheme, setTheme, type Theme } from '../theme';
 import { externalClick, openExternal } from '../io/openExternal';
+import { useDismiss } from './useDismiss';
 
 const copyNequi = async () => {
   try {
@@ -154,6 +155,8 @@ export function SettingsDialog({
   backups,
   onRestoreBackup,
 }: SettingsProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   useLang();
   const [showKeys, setShowKeys] = useState(false);
   const [theme, setThemeState] = useState<Theme>(getTheme());
@@ -190,7 +193,7 @@ export function SettingsDialog({
 
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>
@@ -368,9 +371,11 @@ export function DonateDialog({
   onRequestLicense: (plan: LicenseType) => void;
   title?: string;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="donate-card wide" onClick={(e) => e.stopPropagation()}>
+      <div className="donate-card wide" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>
@@ -399,6 +404,8 @@ export function RequestLicenseDialog({
   onClose: () => void;
   initialPlan?: LicenseType;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   const [plan, setPlan] = useState<LicenseType>(initialPlan);
   const [free, setFree] = useState(false);
   const [name, setName] = useState('');
@@ -446,7 +453,7 @@ export function RequestLicenseDialog({
 
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>

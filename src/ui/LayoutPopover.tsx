@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
 import './layoutaids.css';
+import { useDismiss } from './useDismiss';
 
 // Campo numérico que confirma al salir del campo o con Enter (un solo paso de deshacer).
 function NumField({
@@ -51,6 +52,7 @@ export function LayoutPopover({ onClose, anchor }: { onClose: () => void; anchor
   const showLayout = useEditor((s) => s.showLayout);
   const toggleLayout = useEditor((s) => s.toggleLayout);
   const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, { onClose, esc: false, modal: false });
 
   useEffect(() => {
     const down = (e: MouseEvent) => {

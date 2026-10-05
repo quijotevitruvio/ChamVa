@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   type SavedDesign,
   addFolder,
@@ -25,6 +25,7 @@ import {
 import { projectSummary } from '../editor/core/projectsList';
 import { t } from '../i18n';
 import './library.css';
+import { useDismiss } from './useDismiss';
 
 interface Props {
   designs: SavedDesign[];
@@ -361,13 +362,15 @@ function DesignDetail({
   onClose: () => void;
   onSave: (folder: string, tags: string) => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   const [folder, setFolder] = useState(design.folder ?? '');
   const [fresh, setFresh] = useState('');
   const [tagText, setTagText] = useState((design.tags ?? []).join(', '));
   const target = cleanFolderName(fresh) || folder;
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card lib-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card lib-dialog" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>

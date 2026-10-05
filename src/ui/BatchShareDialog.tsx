@@ -15,6 +15,7 @@ import { canShareFiles, shareOrDownload } from '../io/shareFile';
 import { toast } from './toast';
 import { exportablePages, exportableCount, ALL_HIDDEN_MSG } from '../editor/core/pageOps';
 import './batchshare.css';
+import { useDismiss } from './useDismiss';
 
 type Tab = 'lote' | 'compartir' | 'informe' | 'anim' | 'archivo';
 const TABS: [Tab, string][] = [
@@ -33,10 +34,12 @@ function currentPages() {
 const baseName = (n: string) => (n || 'chamva').replace(/[^\w-]+/g, '_');
 
 export function BatchShareDialog({ onClose }: { onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   const [tab, setTab] = useState<Tab>('lote');
   return createPortal(
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card bs-card" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card bs-card" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose} aria-label="Cerrar">
           ✕
         </button>

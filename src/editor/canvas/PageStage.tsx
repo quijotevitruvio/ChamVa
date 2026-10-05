@@ -21,7 +21,9 @@ import { TextLayerNode } from './TextLayerNode';
 import { ShapeLayerNode } from './ShapeLayerNode';
 import { StrokeLayerNode } from './StrokeLayerNode';
 import { BrushOverlay } from './BrushOverlay';
-import { useBrush } from '../state/brushStore';
+import { ToolOverlay } from './ToolOverlay';
+import { useTool, useEffectiveTool, isDrawingTool } from '../state/toolStore';
+import { boxFromPoints, boxesIntersect, cursorFor, type Box, type OverLayer } from '../state/toolLogic';
 import { InlineTextEditor } from './InlineTextEditor';
 import { StickyNotes } from './StickyNotes';
 import { MasterBackdrop } from './MasterBackdrop';
@@ -88,7 +90,11 @@ export function PageStage({
   const beginBatch = useEditor((s) => s.beginBatch);
   const endBatch = useEditor((s) => s.endBatch);
 
-  const brushOn = useBrush((s) => s.active);
+  const tool = useEffectiveTool();
+  const shapeKind = useTool((s) => s.shape);
+  const brushOn = isDrawingTool(tool);
+  // Caja de selección (puntero): rectángulo en coordenadas del documento.
+  const [marquee, setMarquee] = useState<Box | null>(null);
   const [editorPos, setEditorPos] = useState<{ left: number; top: number } | null>(null);
 
   const containerRef = bridge.areaRef;
@@ -543,6 +549,77 @@ export function PageStage({
     const el = stageRef.current?.container();
     if (el) el.style.cursor = c;
   };
+  // Puntero: cursor según lo que haya bajo el ratón (mover / bloqueada / nada). Las manijas del
+  // Transformer ponen el suyo (redimensionar / girar): no se pisa.
+  const overRef = useRef<OverLayer | null>(null);
+  const onStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (tool !== 'select') return;
+    const t = e.target;
+    const stage = stageRef.current;
+    let over: OverLayer = 'none';
+    if (t !== stage) {
+      if (t.getParent()?.className === 'Transformer') return;
+      const id = findLayerId(t);
+      if (!id) return;
+      const st = useEditor.getState();
+      const l = st.doc.layers.find((x) => x.id === id);
+      over = l && isLayerLocked(st.doc, l) ? 'locked' : 'free';
+    }
+    if (overRef.current === over) return;
+    overRef.current = over;
+    setStageCursor(over === 'none' ? '' : cursorFor({ tool: 'select', over }));
+  };
+
+  // Caja de selección: arrastrar en vacío con el puntero. Suma con Shift; un clic sin arrastre deselecciona.
+  const startMarquee = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stage = stageRef.current;
+    if (!stage || e.evt.button !== 0) return;
+    const rect = stage.container().getBoundingClientRect();
+    const pt = (ev: { clientX: number; clientY: number }): [number, number] => [(ev.clientX - rect.left) / scale, (ev.clientY - rect.top) / scale];
+    const a = pt(e.evt);
+    const additive = e.evt.shiftKey;
+    const base = additive ? useEditor.getState().selectedIds : [];
+    let moved = false;
+    const hits = (box: Box): string[] => {
+      const st = useEditor.getState();
+      const ids = new Set<string>();
+      for (const l of st.doc.layers) {
+        if (!l.visible || isLayerLocked(st.doc, l)) continue;
+        const node = nodeRefs.current.get(l.id);
+        if (!node) continue;
+        const r = node.getClientRect({ relativeTo: stage });
+        if (boxesIntersect(box, { x: r.x, y: r.y, w: r.width, h: r.height })) {
+          // un grupo se selecciona entero
+          if (l.groupId) st.doc.layers.filter((x) => x.groupId === l.groupId).forEach((x) => ids.add(x.id));
+          else ids.add(l.id);
+        }
+      }
+      return [...ids];
+    };
+    const onMove = (ev: PointerEvent | MouseEvent) => {
+      const b = pt(ev);
+      if (!moved && Math.hypot(b[0] - a[0], b[1] - a[1]) * scale < 4) return;
+      moved = true;
+      const box = boxFromPoints(a, b);
+      setMarquee(box);
+      const ids = [...new Set([...base, ...hits(box)])];
+      useEditor.setState({ selectedIds: ids, selectedId: ids.length ? ids[ids.length - 1] : null, textSel: null });
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setMarquee(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   // Guías del usuario: crear desde las reglas, mover o borrar arrastrando.
   const [draft, setDraft] = useState<{
     axis: 'x' | 'y';
@@ -621,9 +698,16 @@ export function PageStage({
         height={doc.height * scale}
         scaleX={scale}
         scaleY={scale}
+        onMouseMove={onStageMouseMove}
+        onMouseLeave={() => {
+          overRef.current = null;
+          if (tool === 'select') setStageCursor('');
+        }}
         onMouseDown={(e) => {
-          // Click en vacío = deseleccionar.
-          if (e.target === e.target.getStage()) selectLayer(null);
+          // Click en vacío = deseleccionar (con Shift se conserva) y empieza la caja de selección.
+          if (e.target !== e.target.getStage() || tool !== 'select') return;
+          if (!e.evt.shiftKey) selectLayer(null);
+          startMarquee(e);
         }}
         onTap={(e) => {
           // Tocar fuera de las capas deselecciona.
@@ -745,6 +829,7 @@ export function PageStage({
                 endBatch();
               }, 0);
             }}
+            rotateAnchorCursor="grab"
             borderStroke="#111111"
             borderStrokeWidth={1}
             anchorFill="#ffffff"
@@ -760,6 +845,19 @@ export function PageStage({
             }
           />
 
+          {marquee && (
+            <Rect
+              x={marquee.x}
+              y={marquee.y}
+              width={marquee.w}
+              height={marquee.h}
+              fill="rgba(255,179,0,0.12)"
+              stroke="#FFB300"
+              strokeWidth={1 / scale}
+              dash={[4 / scale, 3 / scale]}
+              listening={false}
+            />
+          )}
           {guides.vx.map((x, i) => (
             <Line
               key={`v${i}`}
@@ -939,6 +1037,7 @@ export function PageStage({
       </Stage>
 
       {brushOn && <BrushOverlay doc={doc} scale={scale} stageRef={stageRef} />}
+      {(tool === 'text' || tool === 'shape') && <ToolOverlay doc={doc} scale={scale} stageRef={stageRef} tool={tool} shape={shapeKind} />}
       {showNotes && <StickyNotes scale={scale} origin={origin} />}
       <BeforeAfterSlider nodeRefs={nodeRefs} />
 

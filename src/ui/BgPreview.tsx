@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { EdgeMode } from '../ai/bgcore';
 import { t } from '../i18n';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 // Vista previa del recorte: antes/después sobre tablero, cambiar el modo de
 // bordes y reprocesar, o pasar al pincel para retocar a mano.
@@ -25,13 +27,16 @@ export function BgPreview({
   onRefine: () => void;
   onCancel: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onCancel, busy });
   const [showOriginal, setShowOriginal] = useState(false);
   const [dark, setDark] = useState(false);
   return (
-    <div className="donate-overlay" onClick={onCancel}>
-      <div className="bgp-card" onClick={(e) => e.stopPropagation()}>
+    <div className="donate-overlay" onClick={() => !busy && onCancel()}>
+      <div className="bgp-card" ref={cardRef} aria-label={t('Resultado del recorte')} onClick={(e) => e.stopPropagation()}>
         <div className="bgp-head">
           <h3>✂ {t('Resultado del recorte')}</h3>
+          <CloseButton onClick={onCancel} />
           <div className="row">
             <button
               className={!showOriginal ? 'active' : ''}

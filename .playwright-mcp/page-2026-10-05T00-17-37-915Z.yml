@@ -1,0 +1,151 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - button "ChamVa, ir a Inicio" [ref=e5] [cursor=pointer]: ChamVa
+    - tablist "Diseños abiertos" [ref=e6]:
+      - tab "Diseño sin título Cerrar Diseño sin título" [selected] [ref=e7] [cursor=pointer]:
+        - generic [ref=e8]: Diseño sin título
+        - button "Cerrar Diseño sin título" [ref=e9]: ✕
+    - button "Nueva pestaña" [ref=e10] [cursor=pointer]: +
+  - banner [ref=e12]:
+    - textbox "Nombre del diseño" [ref=e13]: Diseño sin título
+    - button "☰ Archivo" [ref=e15] [cursor=pointer]
+    - button "Redimensionar" [ref=e17] [cursor=pointer]: ⤢ Redimensionar
+    - generic [ref=e18]:
+      - button "↩ Deshacer" [disabled] [ref=e19]
+      - button "↪ Rehacer" [disabled] [ref=e20]
+      - button "Historial de cambios" [ref=e22] [cursor=pointer]: ⏱
+    - button "⌕ Buscar" [ref=e23] [cursor=pointer]
+    - button "✂ Quitar fondo" [ref=e24] [cursor=pointer]
+    - button "⋯ Más" [ref=e26] [cursor=pointer]
+    - button "Compartir…" [ref=e27] [cursor=pointer]: ⇪
+    - button "Descargar" [ref=e29] [cursor=pointer]
+    - button "⚙ Ajustes" [ref=e33] [cursor=pointer]
+  - generic [ref=e34]:
+    - navigation [ref=e35]:
+      - button "Proyectos" [ref=e36] [cursor=pointer]
+      - button "Subir" [ref=e43] [cursor=pointer]
+      - button "Texto" [ref=e49] [cursor=pointer]
+      - button "Elementos" [ref=e54] [cursor=pointer]
+      - button "Pinceles" [ref=e61] [cursor=pointer]
+      - button "Fondo" [ref=e67] [cursor=pointer]
+      - button "Plantillas" [ref=e76] [cursor=pointer]
+      - button "Capas" [ref=e83] [cursor=pointer]
+      - button "Marca" [ref=e90] [cursor=pointer]
+    - generic [ref=e95]:
+      - generic [ref=e96]: Fondo transparente
+      - toolbar "Herramientas del lienzo" [ref=e104]:
+        - generic [ref=e105]:
+          - button "Puntero (V)" [pressed] [ref=e106] [cursor=pointer]
+          - button "Mano (H)" [ref=e109] [cursor=pointer]
+          - button "Zoom (Z)" [ref=e115] [cursor=pointer]
+        - generic [ref=e120]:
+          - button "Texto (T)" [ref=e122] [cursor=pointer]
+          - button "Rectángulo (R)" [ref=e125] [cursor=pointer]
+          - button "Elipse (O)" [ref=e128] [cursor=pointer]
+          - button "Línea (L)" [ref=e131] [cursor=pointer]
+        - generic [ref=e134]:
+          - button "Pincel (B)" [ref=e136] [cursor=pointer]
+          - button "Borrador (E)" [ref=e140] [cursor=pointer]
+    - complementary [ref=e144]:
+      - paragraph [ref=e145]: Selecciona un elemento para editarlo, o usa el panel de la izquierda para añadir.
+  - contentinfo [ref=e146]:
+    - button "1" [ref=e147] [cursor=pointer]
+    - button "+ Agregar página" [ref=e149] [cursor=pointer]
+    - button "⧉ Duplicar página" [ref=e150] [cursor=pointer]
+    - button "▦ Clasificar" [ref=e151] [cursor=pointer]
+    - button "◫ Maestra" [ref=e153] [cursor=pointer]
+    - status [ref=e154]: Todo local
+    - generic [ref=e156]:
+      - button "Reglas" [ref=e157] [cursor=pointer]
+      - button "Cuadrícula" [ref=e158] [cursor=pointer]
+      - button "Vista ▾" [ref=e160] [cursor=pointer]
+    - generic [ref=e161]:
+      - button "−" [ref=e162] [cursor=pointer]
+      - button "51%" [ref=e163] [cursor=pointer]
+      - button "＋" [ref=e164] [cursor=pointer]
+      - button "?" [ref=e165] [cursor=pointer]
+  - generic [ref=e166]:
+    - generic [ref=e167]: ChamVa
+    - 'button "Editar una foto Sin elegir medidas: el lienzo mide lo mismo que la foto" [ref=e169] [cursor=pointer]':
+      - generic [ref=e175]: Editar una foto
+      - generic [ref=e176]: "Sin elegir medidas: el lienzo mide lo mismo que la foto"
+    - paragraph [ref=e177]: ¿Qué vas a crear hoy?
+    - generic [ref=e178]:
+      - button "Redes sociales" [ref=e179] [cursor=pointer]
+      - button "Impresión" [ref=e180] [cursor=pointer]
+      - button "Trabajo" [ref=e181] [cursor=pointer]
+    - generic [ref=e182]:
+      - button "📷 Post de Instagram 1080 × 1080" [ref=e183] [cursor=pointer]:
+        - generic [ref=e184]: 📷
+        - generic [ref=e185]: Post de Instagram
+        - generic [ref=e186]: 1080 × 1080
+      - button "📱 Historia / Reel 1080 × 1920" [ref=e187] [cursor=pointer]:
+        - generic [ref=e188]: 📱
+        - generic [ref=e189]: Historia / Reel
+        - generic [ref=e190]: 1080 × 1920
+      - button "🖼 Post vertical 1080 × 1350" [ref=e191] [cursor=pointer]:
+        - generic [ref=e192]: 🖼
+        - generic [ref=e193]: Post vertical
+        - generic [ref=e194]: 1080 × 1350
+      - button "👍 Post de Facebook 1200 × 630" [ref=e195] [cursor=pointer]:
+        - generic [ref=e196]: 👍
+        - generic [ref=e197]: Post de Facebook
+        - generic [ref=e198]: 1200 × 630
+      - button "🏞 Portada de Facebook 1640 × 624" [ref=e199] [cursor=pointer]:
+        - generic [ref=e200]: 🏞
+        - generic [ref=e201]: Portada de Facebook
+        - generic [ref=e202]: 1640 × 624
+      - button "▶ Miniatura de YouTube 1280 × 720" [ref=e203] [cursor=pointer]:
+        - generic [ref=e204]: ▶
+        - generic [ref=e205]: Miniatura de YouTube
+        - generic [ref=e206]: 1280 × 720
+      - button "💼 Post de LinkedIn 1200 × 627" [ref=e207] [cursor=pointer]:
+        - generic [ref=e208]: 💼
+        - generic [ref=e209]: Post de LinkedIn
+        - generic [ref=e210]: 1200 × 627
+      - button "💬 Estado de WhatsApp 1080 × 1920" [ref=e211] [cursor=pointer]:
+        - generic [ref=e212]: 💬
+        - generic [ref=e213]: Estado de WhatsApp
+        - generic [ref=e214]: 1080 × 1920
+      - generic [ref=e215]:
+        - generic [ref=e216]: Tamaño personalizado
+        - generic [ref=e217]:
+          - generic [ref=e218]:
+            - generic [ref=e219]:
+              - generic [ref=e220]: Ancho
+              - textbox "Ancho" [ref=e221]: "1080"
+            - button "Mantener la proporción" [ref=e222] [cursor=pointer]: 🔓
+            - generic [ref=e223]:
+              - generic [ref=e224]: Alto
+              - textbox "Alto" [ref=e225]: "1080"
+            - generic [ref=e226]:
+              - generic [ref=e227]: Unidad
+              - combobox "Unidad" [ref=e228]:
+                - option "px" [selected]
+                - option "mm"
+                - option "cm"
+                - option "in"
+                - option "pt"
+                - option "pc"
+          - generic [ref=e230]:
+            - generic [ref=e231]: Resolución
+            - combobox "Resolución" [ref=e232]:
+              - option "72 dpi"
+              - option "96 dpi" [selected]
+              - option "150 dpi"
+              - option "300 dpi"
+              - option "600 dpi"
+              - option "Personalizado…"
+          - paragraph [ref=e233]: = 1080 × 1080 px · 28,58 × 28,58 cm a 96 dpi
+        - button "Crear" [ref=e234] [cursor=pointer]
+    - generic [ref=e235]:
+      - button "Seguir con el último diseño" [ref=e236] [cursor=pointer]
+      - button "Editar video" [ref=e243] [cursor=pointer]
+    - generic [ref=e250]:
+      - link "⭐ Dale una estrella en GitHub" [ref=e251] [cursor=pointer]:
+        - /url: https://github.com/quijotevitruvio/ChamVa
+      - link "☕ Invítame un café" [ref=e252] [cursor=pointer]:
+        - /url: https://github.com/sponsors/quijotevitruvio
+    - generic [ref=e253]:
+      - button "⚙ Ajustes y licencia" [ref=e254] [cursor=pointer]
+      - generic [ref=e255]: v0.7.0

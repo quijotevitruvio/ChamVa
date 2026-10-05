@@ -399,14 +399,17 @@ export interface EditorState {
     chart?: ImageLayer['chart'];
     table?: ImageLayer['table'];
   }) => void;
-  addTextLayer: (preset?: {
-    text: string;
-    fontSize: number;
-    bold: boolean;
-  }) => void;
+  addTextLayer: (
+    preset?: {
+      text: string;
+      fontSize: number;
+      bold: boolean;
+    },
+    at?: { x: number; y: number }, // punto del documento donde cae el texto (herramienta Texto)
+  ) => void;
   addTextPreset: (presetId: string) => Promise<void>; // estilo de texto listo (un paso de deshacer)
   addFontPair: (pairId: string) => Promise<void>; // título + cuerpo (un paso de deshacer)
-  addShapeLayer: (kind: ShapeKind) => void;
+  addShapeLayer: (kind: ShapeKind, at?: { x: number; y: number; width: number; height: number; rotation?: number }) => void; // `at` = caja arrastrada (herramienta Forma)
   // Pinceles: una pincelada = una capa (brush.ts). `select` false = no cambia la selección.
   addStrokeLayer: (spec: StrokeSpec) => string | null;
   removeLayers: (ids: string[]) => void; // varias capas = un solo paso de deshacer
@@ -1404,7 +1407,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       };
     }),
 
-  addTextLayer: (preset) =>
+  addTextLayer: (preset, at) =>
     set((s) => {
       const fontSize = preset?.fontSize ?? 48;
       const layer: TextLayer = {
@@ -1427,8 +1430,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         shadowBlur: 6,
         shadowX: 2,
         shadowY: 2,
-        x: s.doc.width * 0.15,
-        y: s.doc.height / 2 - fontSize / 2,
+        x: at ? at.x : s.doc.width * 0.15,
+        y: at ? at.y - fontSize / 2 : s.doc.height / 2 - fontSize / 2,
         scaleX: 1,
         scaleY: 1,
         rotation: 0,
@@ -1516,11 +1519,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       };
     }),
 
-  addShapeLayer: (kind) =>
+  addShapeLayer: (kind, at) =>
     set((s) => {
       const stroke = kind === 'line' || kind === 'arrow';
-      const w = Math.round(s.doc.width * (stroke ? 0.4 : 0.3));
-      const h = stroke ? Math.round(s.doc.height * 0.06) : w;
+      const w = at ? Math.round(at.width) : Math.round(s.doc.width * (stroke ? 0.4 : 0.3));
+      const h = at ? Math.round(at.height) : stroke ? Math.round(s.doc.height * 0.06) : w;
       const layer: ShapeLayer = {
         id: uid(),
         type: 'shape',
@@ -1543,11 +1546,11 @@ export const useEditor = create<EditorState>((set, get) => ({
         stroke: '#ffffff',
         strokeWidth: stroke ? 6 : 0,
         cornerRadius: kind === 'rect' ? 0 : 0,
-        x: (s.doc.width - w) / 2,
-        y: (s.doc.height - h) / 2,
+        x: at ? at.x : (s.doc.width - w) / 2,
+        y: at ? at.y : (s.doc.height - h) / 2,
         scaleX: 1,
         scaleY: 1,
-        rotation: 0,
+        rotation: at?.rotation ?? 0,
         opacity: 1,
         blendMode: 'normal',
         visible: true,

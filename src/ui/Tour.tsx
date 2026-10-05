@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 import './overlays.css';
 
 const KEY = 'chamva.tourDone';
@@ -66,8 +68,11 @@ export function Tour({ onDone }: { onDone: () => void }) {
     onDone();
   };
   const step = STEPS[i];
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: finish, modal: false });
   return (
-    <div className="tour" role="dialog" aria-label="Recorrido de bienvenida" aria-live="polite">
+    <div className="tour" ref={cardRef} role="dialog" aria-label="Recorrido de bienvenida" aria-live="polite">
+      <CloseButton className="float" onClick={finish} label="Saltar el recorrido" />
       <div className="tour-step">
         Paso {i + 1} de {STEPS.length}
       </div>

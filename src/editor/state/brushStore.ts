@@ -2,19 +2,19 @@
 import { create } from 'zustand';
 import { BRUSHES, SIZE_MAX, SIZE_MIN, clamp } from '../core/brush';
 import type { BrushStyle } from '../core/types';
+import { useTool } from './toolStore';
 
 export type BrushTool = 'brush' | 'eraser';
 
 export interface BrushState {
-  active: boolean; // true = dibujar/borrar sobre el lienzo
-  tool: BrushTool;
   style: BrushStyle;
   size: number;
   opacity: number; // 0.05..1
   smoothing: number; // 0..1 estabilizador
   color: string;
   recent: string[]; // últimos colores usados con el pincel (el más reciente primero)
-  setActive: (on: boolean) => void;
+  // La herramienta activa vive en toolStore (una sola fuente de verdad); estos atajos la cambian.
+  setActive: (on: boolean) => void; // false = volver al puntero
   setTool: (t: BrushTool) => void;
   setStyle: (s: BrushStyle) => void; // al elegir un pincel se cargan su grosor y opacidad típicos
   setSize: (n: number) => void;
@@ -53,19 +53,21 @@ function save(s: BrushState) {
 const saved = load();
 
 export const useBrush = create<BrushState>((set, get) => ({
-  active: false,
-  tool: 'brush',
   style: saved.style ?? 'pen',
   size: saved.size ?? 4,
   opacity: saved.opacity ?? 1,
   smoothing: saved.smoothing ?? 0.35,
   color: saved.color ?? '#111111',
   recent: saved.recent ?? [],
-  setActive: (on) => set({ active: on }),
-  setTool: (tool) => set({ tool, active: true }),
+  setActive: (on) => {
+    const cur = useTool.getState().tool;
+    useTool.getState().setTool(on ? (cur === 'eraser' ? 'eraser' : 'brush') : 'select');
+  },
+  setTool: (tool) => useTool.getState().setTool(tool),
   setStyle: (style) => {
     const b = BRUSHES.find((x) => x.id === style)!;
-    set({ style, size: b.size, opacity: b.opacity, tool: 'brush', active: true });
+    set({ style, size: b.size, opacity: b.opacity });
+    useTool.getState().setTool('brush');
     save(get());
   },
   setSize: (n) => {

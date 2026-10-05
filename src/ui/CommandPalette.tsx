@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { rankCommands } from './commandSearch';
 import './overlays.css';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 export interface Command {
   id: string;
@@ -51,6 +53,8 @@ export function CommandPalette({
 }
 
 function PaletteInner({ onClose, commands }: { onClose: () => void; commands: Command[] }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose });
   const uid = useId();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -117,6 +121,7 @@ function PaletteInner({ onClose, commands }: { onClose: () => void; commands: Co
   return (
     <div className="cmdk-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
+        ref={cardRef}
         className="cmdk"
         role="dialog"
         aria-modal="true"
@@ -124,6 +129,7 @@ function PaletteInner({ onClose, commands }: { onClose: () => void; commands: Co
         onKeyDown={onKeyDown}
         onKeyUp={(e) => e.stopPropagation()}
       >
+        <CloseButton className="float" onClick={onClose} />
         <input
           ref={inputRef}
           className="cmdk-input"

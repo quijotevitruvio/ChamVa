@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useEditor } from '../editor/state/store';
 import type { Snapshot } from '../io/snapshots';
 import { snapshotPages } from '../io/snapshots';
@@ -7,6 +7,7 @@ import { toast } from './toast';
 import { t } from '../i18n';
 import './library.css';
 import './backup.css';
+import { useDismiss } from './useDismiss';
 
 interface Props {
   onClose: () => void;
@@ -15,6 +16,8 @@ interface Props {
 // Versiones automáticas del diseño actual (cada ~10 min mientras se edita):
 // restaurar (Ctrl+Z lo deshace) o borrar. Las versiones con nombre van aparte.
 export function AutoVersionsDialog({ onClose }: Props) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   const restorePages = useEditor((s) => s.restorePages);
   const designId = useEditor((s) => s.designId);
   const [list, setList] = useState<Snapshot[]>([]);
@@ -38,7 +41,7 @@ export function AutoVersionsDialog({ onClose }: Props) {
 
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card lib-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card lib-dialog" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>

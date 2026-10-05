@@ -6,6 +6,7 @@ import { MissingFontWatcher } from './FontPicker';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './texttools.css';
+import { useDismiss } from './useDismiss';
 
 export const FIND_EVENT = 'chamva:find';
 // Abre el diálogo (lo usan Ctrl+F y el botón del panel de texto).
@@ -20,6 +21,8 @@ interface Hit {
 }
 
 function FindReplaceDialog({ onClose }: { onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose, modal: false });
   const pages = useEditor((s) => s.pages);
   const doc = useEditor((s) => s.doc);
   const pageIndex = useEditor((s) => s.pageIndex);
@@ -123,7 +126,7 @@ function FindReplaceDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="tt-find" role="dialog" aria-label={t('Buscar y reemplazar')} onKeyDown={onKey}>
+    <div className="tt-find" ref={cardRef} role="dialog" aria-label={t('Buscar y reemplazar')} onKeyDown={onKey}>
       <div className="tt-head">
         <h3>{t('Buscar y reemplazar')}</h3>
         <button className="tt-x" onClick={onClose} title={t('Cerrar')}>

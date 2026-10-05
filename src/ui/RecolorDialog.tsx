@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 import { useEditor } from '../editor/state/store';
 import type { Doc } from '../editor/core/types';
 import { applyColorMap, collectColors, invertDoc, mapByLuminosity } from '../editor/core/recolor';
@@ -12,6 +14,8 @@ import './gradients2.css';
 type Stage = 'none' | 'invert' | 'brand';
 
 export function RecolorDialog({ onClose }: { onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose });
   const original = useRef<Doc>(useEditor.getState().doc).current;
   const brandColors = useEditor((s) => s.brandColors);
   const recolorDoc = useEditor((s) => s.recolorDoc);
@@ -63,8 +67,11 @@ export function RecolorDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="rc-overlay" onClick={onClose}>
-      <div className="rc-card" role="dialog" aria-label="Recolorear diseño" onClick={(e) => e.stopPropagation()}>
-        <h3>Recolorear diseño</h3>
+      <div className="rc-card" ref={cardRef} role="dialog" aria-label="Recolorear diseño" onClick={(e) => e.stopPropagation()}>
+        <div className="rc-head">
+          <h3>Recolorear diseño</h3>
+          <CloseButton onClick={onClose} />
+        </div>
         <p>
           Estos son los colores del diseño (fondo, formas, textos, degradados y sombras). Cambia uno y se sustituye en
           todas partes a la vez. Las fotos no se tocan.

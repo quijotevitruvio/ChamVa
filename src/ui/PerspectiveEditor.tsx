@@ -13,12 +13,16 @@ import { bakedCanvas, commitCanvas, limitCanvas, toCanvasPoint } from './imagege
 import { toast } from './toast';
 import { t } from '../i18n';
 import './imagegeo.css';
+import { BackButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 const PREVIEW_MAX = 420;
 
 // Corregir perspectiva: se arrastran 4 esquinas sobre la imagen (documento, fachada…) y se
 // endereza a un rectángulo. Destructivo: genera una imagen nueva.
 export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClose: () => void }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useDismiss(overlayRef, { onClose: onClose });
   const srcRef = useRef<HTMLCanvasElement | null>(null);
   const viewRef = useRef<HTMLCanvasElement>(null);
   const prevRef = useRef<HTMLCanvasElement>(null);
@@ -175,8 +179,9 @@ export function PerspectiveEditor({ layer, onClose }: { layer: ImageLayer; onClo
   };
 
   return createPortal(
-    <div className="mask-overlay">
+    <div className="mask-overlay" ref={overlayRef}>
       <div className="mask-toolbar">
+        <BackButton onClick={onClose} />
         <span className="mask-title">{t('Corregir perspectiva')}</span>
         <button onClick={reset} disabled={!dims}>
           {t('Esquinas a los bordes')}

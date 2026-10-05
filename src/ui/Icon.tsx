@@ -21,7 +21,15 @@ export type IconName =
   | 'trash'
   | 'lock'
   | 'unlock'
-  | 'plus';
+  | 'plus'
+  | 'pointer'
+  | 'hand'
+  | 'zoom'
+  | 'shapeRect'
+  | 'shapeEllipse'
+  | 'shapeLine'
+  | 'eraser'
+  | 'razor';
 
 const PATHS: Record<IconName, ReactElement> = {
   upload: (
@@ -131,6 +139,38 @@ const PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   plus: <path d="M12 5v14 M5 12h14" />,
+  pointer: <path d="M4 3l7 17 2.5-7.5L21 10z" />,
+  hand: (
+    <>
+      <path d="M18 11V6a2 2 0 0 0-4 0v1" />
+      <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+      <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-5.9-2.4L3.4 16a2 2 0 0 1 3-2.7L8 15" />
+    </>
+  ),
+  zoom: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" />
+      <path d="M11 8v6 M8 11h6" />
+    </>
+  ),
+  shapeRect: <rect x="4" y="5" width="16" height="14" rx="1.5" />,
+  shapeEllipse: <ellipse cx="12" cy="12" rx="9" ry="7" />,
+  shapeLine: <path d="M5 19L19 5" />,
+  eraser: (
+    <>
+      <path d="M20 20H9l-5.3-5.3a1.5 1.5 0 0 1 0-2.1l8.9-8.9a1.5 1.5 0 0 1 2.1 0l5.3 5.3a1.5 1.5 0 0 1 0 2.1L12 20" />
+      <path d="M8 8l8 8" />
+    </>
+  ),
+  razor: (
+    <>
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M20 4L8.1 15.9 M14.5 14.5L20 20 M8.1 8.1L12 12" />
+    </>
+  ),
 };
 
 export function Icon({

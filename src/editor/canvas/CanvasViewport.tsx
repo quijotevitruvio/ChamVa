@@ -9,6 +9,10 @@ import { useMinimapOn } from '../../ui/tabletMode';
 import '../../ui/touch.css';
 import type { Doc } from '../core/types';
 import { stackScale } from './stackLayout';
+import { useTool, useEffectiveTool } from '../state/toolStore';
+import { isClickGesture, zoomAfterClick, zoomToBox } from '../state/toolLogic';
+import { ToolBar } from '../../ui/ToolBar';
+import '../../ui/tools.css';
 
 // Editores de texto con foco: los atajos del lienzo no deben actuar.
 export function isTypingTarget(t: EventTarget | null): boolean {
@@ -52,8 +56,15 @@ export function CanvasViewport({
   const [scale, setScale] = useState(1);
   const stackKey = stack ? stack.map((p) => `${p.width}x${p.height}`).join(',') : '';
 
-  // Paneo del lienzo: con la barra espaciadora o el botón central del ratón.
-  const [spaceDown, setSpaceDown] = useState(false);
+  // Paneo del lienzo: herramienta Mano (o Espacio mantenido = mano temporal) o botón central del ratón.
+  // La herramienta efectiva sale de toolStore (una sola fuente de verdad).
+  const tool = useEffectiveTool();
+  const setSpaceHeld = useTool((s) => s.setSpaceHeld);
+  const [panning, setPanning] = useState(false);
+  const [altDown, setAltDown] = useState(false);
+  const [band, setBand] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const zoomDrag = useRef<{ x: number; y: number } | null>(null);
+  const touchIds = useRef(new Set<number>());
   const panDrag = useRef<{ x: number; y: number; sl: number; st: number } | null>(
     null,
   );
@@ -65,17 +76,26 @@ export function CanvasViewport({
       if (isTypingTarget(e.target)) return;
       if (e.code === 'Space') {
         e.preventDefault();
-        setSpaceDown(true);
+        setSpaceHeld(true);
       }
+      if (e.key === 'Alt') setAltDown(true);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setSpaceDown(false);
+      if (e.code === 'Space') setSpaceHeld(false);
+      if (e.key === 'Alt') setAltDown(false);
+    };
+    const blur = () => {
+      setSpaceHeld(false);
+      setAltDown(false);
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
     return () => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+      setSpaceHeld(false);
     };
   }, []);
   useTouchGestures(containerRef, bridge.nodeRefs, () => bridge.updateSelRectRef.current?.());
@@ -122,6 +142,29 @@ export function CanvasViewport({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!stack]);
 
+  // Cambia el zoom dejando el punto de pantalla (clientX, clientY) en (targetX, targetY).
+  // Se mide la página tras el nuevo ajuste (dos cuadros) y se corrige el scroll.
+  const zoomKeepPoint = (newZoom: number, clientX: number, clientY: number, targetX: number, targetY: number) => {
+    const page = stageRef.current?.container();
+    const el = containerRef.current;
+    if (!page || !el) {
+      setZoom(newZoom);
+      return;
+    }
+    const pr = page.getBoundingClientRect();
+    const fx = (clientX - pr.left) / Math.max(1, pr.width);
+    const fy = (clientY - pr.top) / Math.max(1, pr.height);
+    setZoom(newZoom);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const p2 = stageRef.current?.container().getBoundingClientRect();
+        if (!p2) return;
+        el.scrollLeft += p2.left + fx * p2.width - targetX;
+        el.scrollTop += p2.top + fy * p2.height - targetY;
+      }),
+    );
+  };
+
   return (
     <div className={`canvas-wrap${showRulers ? ' with-rulers' : ''}`}>
       {showRulers && (
@@ -136,7 +179,8 @@ export function CanvasViewport({
         </span>
       )}
     <div
-      className={`canvas-area ${spaceDown ? 'panning' : ''}${stack ? ' stacked' : ''}`}
+      className={`canvas-area${tool !== 'select' ? ` tool-${tool}` : ''}${panning ? ' is-panning' : ''}${tool === 'zoom' && altDown ? ' zoom-out' : ''}${stack ? ' stacked' : ''}`}
+      data-tool={tool}
       ref={containerRef}
       onDrop={(e) => bridge.dropRef.current?.(e)}
       onWheel={(e) => {
@@ -162,10 +206,23 @@ export function CanvasViewport({
         }
       }}
       onPointerDownCapture={(e) => {
-        // Paneo: espacio + arrastrar, o botón central del ratón.
-        if (!spaceDown && e.button !== 1) return;
+        if (e.pointerType === 'touch') touchIds.current.add(e.pointerId);
         const el = containerRef.current;
         if (!el) return;
+        // Zoom: clic acerca (Alt aleja); arrastrar un recuadro amplía esa zona.
+        if (tool === 'zoom' && e.button === 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          zoomDrag.current = { x: e.clientX, y: e.clientY };
+          try {
+            el.setPointerCapture(e.pointerId);
+          } catch {
+            /* puntero sintético */
+          }
+          return;
+        }
+        // Paneo: herramienta Mano (o Espacio) con el botón principal, o botón central.
+        if (e.button !== 1 && !(tool === 'hand' && e.button === 0)) return;
         e.preventDefault();
         e.stopPropagation();
         panDrag.current = {
@@ -174,26 +231,80 @@ export function CanvasViewport({
           sl: el.scrollLeft,
           st: el.scrollTop,
         };
-        el.setPointerCapture(e.pointerId);
+        setPanning(true);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* puntero sintético */
+        }
       }}
       onPointerMoveCapture={(e) => {
-        const p = panDrag.current;
         const el = containerRef.current;
+        const z = zoomDrag.current;
+        if (z && el) {
+          e.preventDefault();
+          e.stopPropagation();
+          const w = e.clientX - z.x;
+          const h = e.clientY - z.y;
+          if (!isClickGesture(w, h)) setBand({ x: Math.min(z.x, e.clientX), y: Math.min(z.y, e.clientY), w: Math.abs(w), h: Math.abs(h) });
+          return;
+        }
+        const p = panDrag.current;
         if (!p || !el) return;
+        if (touchIds.current.size > 1) return; // dos dedos: lo llevan los gestos táctiles
         e.preventDefault();
         e.stopPropagation();
         el.scrollLeft = p.sl - (e.clientX - p.x);
         el.scrollTop = p.st - (e.clientY - p.y);
       }}
       onPointerUpCapture={(e) => {
+        touchIds.current.delete(e.pointerId);
+        const el = containerRef.current;
+        const z = zoomDrag.current;
+        if (z && el) {
+          zoomDrag.current = null;
+          setBand(null);
+          try {
+            el.releasePointerCapture(e.pointerId);
+          } catch {
+            /* ya liberado */
+          }
+          const w = e.clientX - z.x;
+          const h = e.clientY - z.y;
+          const r = el.getBoundingClientRect();
+          if (isClickGesture(w, h)) {
+            const nz = zoomAfterClick(zoom, e.altKey);
+            if (nz !== zoom) zoomKeepPoint(nz, e.clientX, e.clientY, e.clientX, e.clientY);
+          } else {
+            const box = { x: Math.min(z.x, e.clientX) - r.left, y: Math.min(z.y, e.clientY) - r.top, w: Math.abs(w), h: Math.abs(h) };
+            const res = zoomToBox(zoom, box, { w: el.clientWidth, h: el.clientHeight, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop });
+            zoomKeepPoint(res.zoom, r.left + box.x + box.w / 2, r.top + box.y + box.h / 2, r.left + el.clientWidth / 2, r.top + el.clientHeight / 2);
+          }
+          e.stopPropagation();
+          return;
+        }
         if (panDrag.current) {
           panDrag.current = null;
-          containerRef.current?.releasePointerCapture(e.pointerId);
+          setPanning(false);
+          try {
+            el?.releasePointerCapture(e.pointerId);
+          } catch {
+            /* ya liberado */
+          }
         }
+      }}
+      onPointerCancelCapture={(e) => {
+        touchIds.current.delete(e.pointerId);
+        zoomDrag.current = null;
+        panDrag.current = null;
+        setBand(null);
+        setPanning(false);
       }}
     >
       {children(scale)}
     </div>
+      <ToolBar />
+      {band && <div className="zoom-band" style={{ left: band.x, top: band.y, width: band.w, height: band.h }} aria-hidden />}
       {minimapOn && !stack && <Minimap areaRef={containerRef} doc={doc} scale={scale} />}
     </div>
   );

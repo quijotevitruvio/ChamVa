@@ -3,6 +3,7 @@
 // `video/editing`, `video/timelineMath` y `video/transformMath`, y cada zona de la
 // pantalla es un componente de `src/ui/video/`. Toda edición pasa por el modelo
 // (`src/video/model`) y por su historial de deshacer.
+import { useDismiss } from './useDismiss';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as VM from '../video/model';
 import { toast } from './toast';
@@ -52,6 +53,7 @@ const isTyping = (el: HTMLElement | null) => {
 };
 
 export function VideoEditor({ onClose }: { onClose: () => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const vp = useVideoProject();
   const { project, commit, endGroup, cache } = vp;
   const engine = useMemo(() => new PreviewEngine({ cache }), [cache]);
@@ -70,6 +72,11 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   const [marks, setMarks] = useState<AS.Marks>({ in: null, out: null });
   const [auto, setAuto] = useState<AS.AutoScope | null>(null);
   const [clipMenu, setClipMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  // Esc cierra el editor (el proyecto se guarda solo), salvo con un menú abierto o escribiendo en un campo.
+  useDismiss(rootRef, {
+    onClose,
+    escSkip: (e) => !!clipMenu || !!(e.target as HTMLElement | null)?.closest?.('input,textarea,select,[contenteditable="true"]'),
+  });
   const apiRef = useRef<TimelineApi | null>(null);
   const clipboard = useRef<E.ClipboardItem[]>([]);
   const micRec = useRef<MediaRecorder | null>(null);
@@ -391,7 +398,7 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className={`vx-root${compact ? ' compact' : ''}${selection.length ? ' has-sel' : ''}${binTab === 'subs' && (!compact || binOpen) ? ' bin-wide' : ''}`} onPointerUp={endGroup} onDragOver={stopFileDefault} onDrop={stopFileDefault}>
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-label="Editor de video" className={`vx-root${compact ? ' compact' : ''}${selection.length ? ' has-sel' : ''}${binTab === 'subs' && (!compact || binOpen) ? ' bin-wide' : ''}`} onPointerUp={endGroup} onDragOver={stopFileDefault} onDrop={stopFileDefault}>
       <div className="vx-top">
       <Toolbar
         onClose={onClose}

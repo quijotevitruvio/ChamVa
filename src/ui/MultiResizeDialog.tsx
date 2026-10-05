@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { useEditor } from '../editor/state/store';
 import { PURPOSES } from '../editor/core/purposes';
 import { uniqueTargets, type TargetSize } from '../editor/core/libraryMeta';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './library.css';
+import { useDismiss } from './useDismiss';
 
 interface Props {
   onClose: () => void;
@@ -16,6 +17,8 @@ const GROUPS = ['Redes sociales', 'Impresión', 'Trabajo'] as const;
 // página nueva por cada formato marcado (mismas proporciones, recolocando las
 // capas). Un solo Ctrl+Z revierte todo.
 export function MultiResizeDialog({ onClose }: Props) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   const doc = useEditor((s) => s.doc);
   const addResizedPages = useEditor((s) => s.addResizedPages);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -48,7 +51,7 @@ export function MultiResizeDialog({ onClose }: Props) {
 
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card lib-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card lib-dialog" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>

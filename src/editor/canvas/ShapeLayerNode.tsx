@@ -5,6 +5,7 @@ import { fillDither } from '../core/grain';
 import type Konva from 'konva';
 import type { ShapeLayer } from '../core/types';
 import { isStrokeOnly, shapePath } from '../core/shapes';
+import { useEffectiveTool } from '../state/toolStore';
 import { useEditor } from '../state/store';
 import { isLayerLocked } from '../core/pageOps';
 
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function ShapeLayerNode({ layer, registerRef }: Props) {
+  const selecting = useEffectiveTool() === 'select'; // con la mano u otra herramienta, las capas no se arrastran
   const clickSelect = useEditor((s) => s.clickSelect);
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
@@ -50,7 +52,7 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
       shadowBlur={layer.shadowBlur}
       shadowOffsetX={layer.shadowX}
       shadowOffsetY={layer.shadowY}
-      draggable={!isLayerLocked({ locked: pageLocked }, layer)}
+      draggable={selecting && !isLayerLocked({ locked: pageLocked }, layer)}
       globalCompositeOperation={
         layer.blendMode === 'normal' ? undefined : (layer.blendMode as any)
       }

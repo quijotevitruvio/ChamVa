@@ -1,5 +1,7 @@
+import { useRef } from 'react';
 import { t, useLang } from '../i18n';
 import { ACTIONS, useShortcuts } from '../editor/core/shortcuts';
+import { useDismiss } from './useDismiss';
 
 const GROUPS: { title: string; items: [string, string][] }[] = [
   {
@@ -33,6 +35,8 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
 ];
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   useLang();
   const keys = useShortcuts();
   // Atajos personalizables: se muestran los efectivos, en su grupo.
@@ -42,7 +46,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   }));
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>

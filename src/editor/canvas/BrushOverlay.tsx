@@ -4,6 +4,7 @@ import type { Doc, StrokeLayer } from '../core/types';
 import { BRUSHES, buildStrokeGeometry, drawStroke, simulatedPressure, stabilize, strokeHit } from '../core/brush';
 import { useEditor } from '../state/store';
 import { useBrush } from '../state/brushStore';
+import { useTool } from '../state/toolStore';
 import { isLayerLocked } from '../core/pageOps';
 import '../../ui/brush.css';
 
@@ -33,7 +34,7 @@ export function BrushOverlay({
   scale: number;
   stageRef: React.RefObject<Konva.Stage | null>;
 }) {
-  const tool = useBrush((s) => s.tool);
+  const tool = useTool((s) => s.tool);
   const hostRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
@@ -116,7 +117,7 @@ export function BrushOverlay({
       lastT: e.timeStamp,
       p: real ? e.pressure : 0.6,
       seed: Math.floor(Math.random() * 2 ** 31),
-      erasing: useBrush.getState().tool === 'eraser',
+      erasing: useTool.getState().tool === 'eraser',
       batched: false,
     };
     run.current = r;

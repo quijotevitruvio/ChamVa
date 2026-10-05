@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useEditor } from '../editor/state/store';
 import {
   MAX_SNAPSHOTS,
@@ -12,6 +12,7 @@ import { renderDocToCanvas } from '../io/export';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './library.css';
+import { useDismiss } from './useDismiss';
 
 interface Props {
   onClose: () => void;
@@ -20,6 +21,8 @@ interface Props {
 // Versiones con nombre del proyecto actual (todas las páginas): guardar,
 // restaurar (Ctrl+Z lo deshace) y borrar. Máximo 20 por diseño.
 export function SnapshotsDialog({ onClose }: Props) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onClose });
   const restorePages = useEditor((s) => s.restorePages);
   // El diseño se identifica por su designId estable, igual que la galería.
   const designId = useEditor((s) => s.designId);
@@ -68,7 +71,7 @@ export function SnapshotsDialog({ onClose }: Props) {
 
   return (
     <div className="donate-overlay" onClick={onClose}>
-      <div className="settings-card lib-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-card lib-dialog" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="donate-close" onClick={onClose}>
           ✕
         </button>

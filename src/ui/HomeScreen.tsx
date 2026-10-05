@@ -1,5 +1,5 @@
 import { SupportCorner } from './SupportCorner';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import './homephoto.css';
 import './projects.css';
 import { APP_VERSION } from '../branding';
@@ -9,6 +9,8 @@ import { Icon } from './Icon';
 import { DesignFolders } from './DesignFolders';
 import { t } from '../i18n';
 import { SizeFields } from './SizeFields';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 import { DEFAULT_DPI, type Unit } from '../editor/core/units';
 import type { SizeValue } from './sizeFieldsLogic';
 
@@ -49,22 +51,20 @@ export function HomeScreen({
   const photoInput = useRef<HTMLInputElement>(null);
   const [group, setGroup] = useState<(typeof GROUPS)[number]>('Redes sociales');
   const tabMode = mode === 'tab';
-  useEffect(() => {
-    if (!tabMode || !onCancelTab) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCancelTab();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [tabMode, onCancelTab]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Solo en modo pestaña hay a dónde volver: Esc, ✕ y foco atrapado.
+  useDismiss(rootRef, { onClose: () => onCancelTab?.(), active: tabMode && !!onCancelTab });
   const [sv, setSv] = useState<SizeValue>({ width: 1080, height: 1080, unit: 'px', dpi: DEFAULT_DPI });
 
   return (
-    <div className="home-overlay">
+    <div className="home-overlay" ref={rootRef}>
       {tabMode && (
         <div className="home-tabbar" role="status">
           <span>{t('Nueva pestaña: lo que elijas se abre aparte y no cambia el diseño actual.')}</span>
           <button className="link-btn" onClick={onCancelTab}>
             ← {t('Volver al diseño')}
           </button>
+          <CloseButton onClick={() => onCancelTab?.()} />
         </div>
       )}
       <div className="home-brand">

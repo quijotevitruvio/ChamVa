@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useEditor } from '../editor/state/store';
 import { buildHistory } from '../editor/state/historyLogic';
 import './overlays.css';
+import { useDismiss } from './useDismiss';
 
 const MAX_VISIBLE = 50;
 
 export function HistoryPopover({ onClose }: { onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose, esc: false, modal: false });
   const past = useEditor((s) => s.past);
   const doc = useEditor((s) => s.doc);
   const future = useEditor((s) => s.future);
@@ -31,7 +34,7 @@ export function HistoryPopover({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div className="hist" role="dialog" aria-label="Historial de cambios">
+    <div className="hist" ref={cardRef} role="dialog" aria-label="Historial de cambios">
       <div className="hist-head">
         <span>Historial</span>
         <button className="hist-close" onClick={onClose} aria-label="Cerrar historial">

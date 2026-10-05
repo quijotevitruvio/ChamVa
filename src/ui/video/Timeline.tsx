@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import * as VM from '../../video/model';
-import { moveClips } from './editing';
+import { moveClips, splitAt } from './editing';
+import { VideoToolBar, useVideoTool } from './VideoTools';
+import { isClickGesture, razorTime, videoToolForKey } from '../../editor/state/toolLogic';
 import type { MediaCache } from './mediaCache';
 import type { PreviewEngine } from './previewEngine';
 import { ClipView } from './ClipView';
@@ -98,6 +100,12 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
   const touches = useRef(new Map<string, { x: number; y: number }>());
   const pinch = useRef<{ d0: number; pps0: number; anchorT: number } | null>(null);
   const pendingScroll = useRef<number | null>(null);
+  // Herramientas de la línea de tiempo: puntero, cuchilla, mano, zoom.
+  const vtool = useVideoTool((s) => s.tool);
+  const panRef = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+  const zoomRef = useRef<{ x: number; cx: number; alt: boolean } | null>(null);
+  const [panning, setPanning] = useState(false);
+  const [altDown, setAltDown] = useState(false);
 
   // datos derivados de los medios: la vista se repinta cuando llega una miniatura u onda
   useSyncExternalStore(cache.subscribe, cache.getVersion);
@@ -363,6 +371,32 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     const y = contentY(e.clientY);
     lastPtr.current = { x: e.clientX, y: e.clientY, alt: e.altKey, shift: e.shiftKey };
 
+    // Mano: arrastrar desplaza la línea de tiempo (en ambos ejes); no toca ningún clip.
+    if (vtool === 'hand' && !target.closest('[data-ph]')) {
+      panRef.current = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop };
+      setPanning(true);
+      capture(el, e.pointerId);
+      return;
+    }
+    // Zoom: clic acerca (Alt aleja); arrastrar un tramo lo amplía hasta llenar la vista.
+    if (vtool === 'zoom') {
+      zoomRef.current = { x, cx: e.clientX, alt: e.altKey };
+      capture(el, e.pointerId);
+      return;
+    }
+    // Cuchilla: un clic en un clip lo corta en ese instante (con imán al cabezal). Un solo paso de deshacer.
+    if (vtool === 'razor' && !target.closest('[data-ruler], [data-ph]')) {
+      const rh = T.hitTest(project, T.rowLayout(project), pps, x, y);
+      const rl = rh ? VM.findClip(project, rh.clipId) : null;
+      if (!rh || !rl || rl.track.locked) return;
+      const tt = razorTime(x / pps, engine.time, pps, { start: rl.clip.start, duration: T.drawEnd(rl.clip, dur) - rl.clip.start });
+      if (tt === null) return;
+      commit((p) => splitAt(p, [rh.clipId], tt).p);
+      endGroup();
+      setGuide(null);
+      return;
+    }
+
     if (target.closest('[data-ruler], [data-ph]')) {
       dragRef.current = { kind: 'scrub' };
       capture(el, e.pointerId);
@@ -426,6 +460,24 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
         return;
       }
     }
+    const pan = panRef.current;
+    if (pan && scroller.current) {
+      scroller.current.scrollLeft = pan.sl - (e.clientX - pan.x);
+      scroller.current.scrollTop = pan.st - (e.clientY - pan.y);
+      return;
+    }
+    const zr = zoomRef.current;
+    if (zr) {
+      if (!isClickGesture(e.clientX - zr.cx, 0)) setBox({ x0: zr.x, y0: 0, x1: contentX(e.clientX), y1: T.rowsHeight(rows) });
+      return;
+    }
+    // Cuchilla sin arrastre: guía bajo el puntero (con imán al cabezal) para ver dónde cortará.
+    if (vtool === 'razor' && !dragRef.current && !(e.target as HTMLElement).closest('.vx-th, .vx-tl-corner')) {
+      const gx = contentX(e.clientX) / pps;
+      const snapG = Math.abs(gx - engine.time) * pps <= 8 ? engine.time : gx;
+      setGuide(gx >= 0 ? snapG : null);
+      return;
+    }
     if (!dragRef.current) return;
     lastPtr.current = { x: e.clientX, y: e.clientY, alt: e.altKey, shift: e.shiftKey };
     schedule();
@@ -440,6 +492,29 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     const d = dragRef.current;
     const el = scroller.current;
     if (el) release(el, e.pointerId);
+    if (panRef.current) {
+      panRef.current = null;
+      setPanning(false);
+      return;
+    }
+    const zr = zoomRef.current;
+    if (zr && el) {
+      zoomRef.current = null;
+      setBox(null);
+      const dx = e.clientX - zr.cx;
+      if (e.type !== 'pointerup') return;
+      if (isClickGesture(dx, 0)) {
+        const px = Math.max(0, zr.cx - el.getBoundingClientRect().left - headerW);
+        applyZoom(e.altKey || zr.alt ? 1 / 1.5 : 1.5, px);
+      } else {
+        const t0 = Math.min(zr.x, contentX(e.clientX)) / pps;
+        const t1 = Math.max(zr.x, contentX(e.clientX)) / pps;
+        const next = T.clampPps((el.clientWidth - headerW) / Math.max(0.05, t1 - t0));
+        pendingScroll.current = Math.max(0, t0 * next);
+        setPps(next);
+      }
+      return;
+    }
     if (!d) return;
     lastPtr.current = { x: e.clientX, y: e.clientY, alt: e.altKey, shift: e.shiftKey };
     if (e.type === 'pointerup') processMoveNow();
@@ -454,6 +529,37 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
     }
     finishDrag();
   };
+
+  // Teclas de herramienta (V puntero, C cuchilla, H mano, Z zoom); no chocan con S / T / L / F / I / O / J / K.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setAltDown(e.type === 'keydown');
+      if (e.type !== 'keydown') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      const dlg = el?.closest?.('[role="dialog"]');
+      if (dlg && !dlg.classList.contains('vx-root')) return; // un diálogo propio tiene el teclado
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'Escape' && useVideoTool.getState().tool !== 'select') {
+        useVideoTool.getState().setTool('select');
+        return;
+      }
+      const tl = videoToolForKey(e.key);
+      if (!tl) return;
+      e.preventDefault();
+      useVideoTool.getState().setTool(tl);
+      setGuide(null);
+    };
+    const blur = () => setAltDown(false);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
 
   // Escape cancela el arrastre
   useEffect(() => {
@@ -543,9 +649,11 @@ export function Timeline({ project, engine, cache, selection, setSelection, pps,
 
   return (
     <div className="vx-tl-wrap">
+      <VideoToolBar />
       <div
         ref={scroller}
-        className={`vx-tl-scroll${compact ? ' compact' : ''}`}
+        className={`vx-tl-scroll${compact ? ' compact' : ''}${panning ? ' is-panning' : ''}${vtool === 'zoom' && altDown ? ' zoom-out' : ''}`}
+        data-vtool={vtool}
         style={{ ['--hw' as string]: `${headerW}px`, ['--rh' as string]: `${T.RULER_H}px` }}
         onScroll={onScroll}
         onPointerDown={onPointerDown}

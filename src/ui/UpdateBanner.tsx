@@ -1,5 +1,6 @@
 import type { UpdateInfo } from '../updater';
 import { t } from '../i18n';
+import { CloseButton } from './Modal';
 
 export function UpdateBanner({
   update,
@@ -24,6 +25,7 @@ export function UpdateBanner({
             ⬇ {t('Actualizar ahora')}
           </button>
           <button onClick={onDismiss}>{t('Más tarde')}</button>
+          <CloseButton onClick={onDismiss} label={t('Más tarde')} />
         </>
       ) : (
         <>

@@ -8,6 +8,8 @@ import { setPageMaster, setPageTitle, setPageHidden, setPageLocked } from './pag
 import { t } from '../i18n';
 import './organize.css';
 import './pagefields.css';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 const uid = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -41,6 +43,8 @@ function SorterThumb({ doc, master }: { doc: Doc; master?: Doc }) {
 // Arrastra para reordenar; selecciona varias (casilla o Ctrl/Mayús+clic) para
 // duplicar, borrar o moverlas al principio/final. Doble clic abre la página.
 export function PageSorter({ onClose }: { onClose: () => void }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose });
   const doc = useEditor((s) => s.doc);
   const storePages = useEditor((s) => s.pages);
   const pageIndex = useEditor((s) => s.pageIndex);
@@ -98,7 +102,7 @@ export function PageSorter({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="ps-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="ps-dialog" role="dialog" aria-label={t('Clasificador de páginas')}>
+      <div className="ps-dialog" ref={cardRef} role="dialog" aria-modal="true" aria-label={t('Clasificador de páginas')}>
         <div className="ps-head">
           <h3>
             {t('Clasificador de páginas')} · {pages.length}
@@ -135,6 +139,7 @@ export function PageSorter({ onClose }: { onClose: () => void }) {
           <button className="primary" onClick={onClose}>
             {t('Listo')}
           </button>
+          <CloseButton onClick={onClose} />
         </div>
         <div className="ps-grid">
           {pages.map((p, i) => (

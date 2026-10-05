@@ -7,6 +7,7 @@ import {
   type FilterDef,
 } from '../editor/core/filters';
 import { useEditor } from '../editor/state/store';
+import { useDismiss } from './useDismiss';
 
 const THUMB = 88;
 
@@ -59,6 +60,8 @@ export function FiltersPanel({
   layer: ImageLayer;
   onClose: () => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose, modal: false });
   const updateLayer = useEditor((s) => s.updateLayer);
   const [base, setBase] = useState<HTMLImageElement | null>(null);
 
@@ -69,7 +72,7 @@ export function FiltersPanel({
   }, [layer.src]);
 
   return (
-    <div className="filters-panel">
+    <div className="filters-panel" ref={cardRef} role="dialog" aria-label="Filtros">
       <div className="cp-head">
         <h3>Filtros</h3>
         <button className="cp-x" onClick={onClose}>

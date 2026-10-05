@@ -4,6 +4,7 @@ import { Image as KonvaImage, Shape as KonvaShape } from 'react-konva';
 import type Konva from 'konva';
 import type { ImageLayer } from '../core/types';
 import { useImage } from './useImage';
+import { useEffectiveTool } from '../state/toolStore';
 import { useEditor } from '../state/store';
 import { needsProcessing, processImage } from '../core/imageProcessing';
 import { shapePath } from '../core/shapes';
@@ -20,6 +21,7 @@ interface Props {
 
 export function ImageLayerNode({ layer, registerRef }: Props) {
   const image = useImage(layer.src);
+  const selecting = useEffectiveTool() === 'select'; // con la mano u otra herramienta, las capas no se arrastran
   const clickSelect = useEditor((s) => s.clickSelect);
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
@@ -61,7 +63,7 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     shadowBlur: layer.shadowBlur,
     shadowOffsetX: layer.shadowX,
     shadowOffsetY: layer.shadowY,
-    draggable: !isLayerLocked({ locked: pageLocked }, layer),
+    draggable: selecting && !isLayerLocked({ locked: pageLocked }, layer),
     globalCompositeOperation:
       layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>

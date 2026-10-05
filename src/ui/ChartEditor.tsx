@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CHART_PALETTE,
   defaultChart,
@@ -10,6 +10,8 @@ import {
   renderTable,
 } from '../editor/core/charts';
 import type { ChartKind, ChartSpec, TableSpec } from '../editor/core/charts';
+import { BackButton, CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 const KINDS: { kind: ChartKind; label: string }[] = [
   { kind: 'bar', label: 'Barras' },
@@ -30,6 +32,8 @@ export function ChartEditor(props: {
   onCancel: () => void;
 }) {
   const { mode, initial, onApply, onCancel } = props;
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose: onCancel });
   const editing = mode === 'chart' ? !!initial.chart : !!initial.table;
   const [chart, setChart] = useState<ChartSpec>(() => initial.chart ?? defaultChart());
   const [table, setTable] = useState<TableSpec>(() => initial.table ?? defaultTable());
@@ -203,8 +207,10 @@ export function ChartEditor(props: {
   );
 
   return (
-    <div className="donate-overlay" onClick={onCancel}>
-      <div className="chart-card" onClick={(e) => e.stopPropagation()}>
+    <div className="donate-overlay">
+      <div className="chart-card" ref={cardRef} onClick={(e) => e.stopPropagation()}>
+        <CloseButton className="float" onClick={onCancel} />
+        <BackButton onClick={onCancel} />
         <h3 className="chart-title">{mode === 'chart' ? 'Gráfica' : 'Tabla'}</h3>
         <div className="chart-body">
           <div className="chart-controls props">

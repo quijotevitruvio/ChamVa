@@ -5,6 +5,8 @@ import { toast } from './toast';
 import { t } from '../i18n';
 import { isPalm, penIsRecent, pressureFactor } from '../editor/canvas/gestures';
 import { setPenPressure, usePenPressure } from './tabletMode';
+import { BackButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 type Mode = 'erase' | 'restore' | 'magic';
 
@@ -28,6 +30,8 @@ export function MaskEditor({
   onApply: (dataUrl: string) => void;
   onCancel: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useDismiss(rootRef, { onClose: onCancel });
   const workRef = useRef<HTMLCanvasElement>(null); // imagen editable
   const overlayRef = useRef<HTMLCanvasElement>(null); // máscara roja (modo mágico)
   const stageRef = useRef<HTMLDivElement>(null);
@@ -266,8 +270,9 @@ export function MaskEditor({
       : undefined;
 
   return (
-    <div className="mask-overlay">
+    <div className="mask-overlay" ref={rootRef}>
       <div className="mask-toolbar">
+        <BackButton onClick={onCancel} />
         <span className="mask-title">🪄 Borrador / Pincel</span>
         <button
           className={mode === 'restore' ? 'active' : ''}

@@ -5,7 +5,7 @@ import type { StrokeLayer } from '../core/types';
 import { drawStroke, strokePrims } from '../core/brush';
 import { useEditor } from '../state/store';
 import { isLayerLocked } from '../core/pageOps';
-import { useBrush } from '../state/brushStore';
+import { useEffectiveTool } from '../state/toolStore';
 
 interface Props {
   layer: StrokeLayer;
@@ -18,7 +18,7 @@ export function StrokeLayerNode({ layer, registerRef }: Props) {
   const selectLayer = useEditor((s) => s.selectLayer);
   const updateLayer = useEditor((s) => s.updateLayer);
   const pageLocked = useEditor((s) => !!s.doc.locked);
-  const drawing = useBrush((s) => s.active); // con el pincel activo, las capas no se agarran
+  const drawing = useEffectiveTool() !== 'select'; // con otra herramienta (pincel, mano…), las capas no se agarran
   // La geometría solo se recalcula si cambian los puntos o el estilo (no al mover/escalar).
   const prims = useMemo(
     () => strokePrims(layer),

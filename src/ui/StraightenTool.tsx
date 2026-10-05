@@ -6,6 +6,8 @@ import { bakedCanvas, commitCanvas, toCanvasPoint } from './imagegeoUtil';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './imagegeo.css';
+import { BackButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 // Gira `src` por `angle` grados; con `crop` recorta al mayor rectángulo interior.
 function rotateCanvas(src: HTMLCanvasElement, angle: number, crop: boolean): HTMLCanvasElement {
@@ -25,6 +27,8 @@ function rotateCanvas(src: HTMLCanvasElement, angle: number, crop: boolean): HTM
 
 // Enderezar horizonte: 2 clics sobre una línea que debería ser horizontal (o el ángulo a mano).
 export function StraightenTool({ layer, onClose }: { layer: ImageLayer; onClose: () => void }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useDismiss(overlayRef, { onClose: onClose });
   const srcRef = useRef<HTMLCanvasElement | null>(null);
   const viewRef = useRef<HTMLCanvasElement>(null);
   const prevRef = useRef<HTMLCanvasElement>(null);
@@ -103,8 +107,9 @@ export function StraightenTool({ layer, onClose }: { layer: ImageLayer; onClose:
   };
 
   return createPortal(
-    <div className="mask-overlay">
+    <div className="mask-overlay" ref={overlayRef}>
       <div className="mask-toolbar">
+        <BackButton onClick={onClose} />
         <span className="mask-title">{t('Enderezar horizonte')}</span>
         <div className="geo-tools">
           <span>{t('Ángulo')}</span>

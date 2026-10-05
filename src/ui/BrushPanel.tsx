@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { BRUSHES, SIZE_MAX, SIZE_MIN, drawStroke, samplePoints } from '../editor/core/brush';
 import type { BrushStyle } from '../editor/core/types';
 import { useBrush } from '../editor/state/brushStore';
+import { useTool } from '../editor/state/toolStore';
 import { useEditor } from '../editor/state/store';
 import { toHex6 } from '../editor/core/gradients';
 import { t } from '../i18n';
@@ -49,7 +50,7 @@ function Slider({ label, value, min, max, step = 1, unit = '', onChange }: { lab
   );
 }
 
-// Atajos: B = pincel, E = borrador, [ ] = tamaño, Esc = dejar de dibujar. Se monta una sola vez (riel).
+// Atajos: [ ] = tamaño (B / E / Esc están en el registro de atajos y toolStore). Se monta una sola vez (riel).
 export function BrushShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -58,20 +59,11 @@ export function BrushShortcuts() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const b = useBrush.getState();
       const k = e.key;
-      if (k === 'b' || k === 'B') {
-        e.preventDefault();
-        if (b.active && b.tool === 'brush') b.setActive(false);
-        else b.setTool('brush');
-      } else if (k === 'e' || k === 'E') {
-        e.preventDefault();
-        if (b.active && b.tool === 'eraser') b.setActive(false);
-        else b.setTool('eraser');
-      } else if (k === '[' || k === ']') {
+      // B / E / Esc los gestiona el registro de atajos y toolStore (herramienta única).
+      if (k === '[' || k === ']') {
         e.preventDefault();
         const step = b.size < 10 ? 1 : b.size < 40 ? 2 : 5;
         b.setSize(b.size + (k === ']' ? step : -step));
-      } else if (k === 'Escape' && b.active) {
-        b.setActive(false);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -81,7 +73,10 @@ export function BrushShortcuts() {
 }
 
 export function BrushPanel() {
-  const b = useBrush();
+  const store = useBrush();
+  const curTool = useTool((s) => s.tool);
+  // El estado «activo» y «herramienta» viven en toolStore; aquí se leen como antes.
+  const b = { ...store, active: curTool === 'brush' || curTool === 'eraser', tool: (curTool === 'eraser' ? 'eraser' : 'brush') as 'brush' | 'eraser' };
   const preview = useRef<HTMLCanvasElement>(null);
   const recentDoc = useEditor((s) => s.doc.recentColors);
   const recentApp = useEditor((s) => s.recentColors);

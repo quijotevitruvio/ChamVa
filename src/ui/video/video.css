@@ -168,7 +168,21 @@
 .vx-zoom { display: flex; gap: 4px; }
 .vx-addtrack { display: flex; gap: 6px; margin-left: auto; }
 
-.vx-tl-wrap { flex: 1; min-height: 0; display: flex; position: relative; }
+.vx-tl-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.vx-tl-wrap > .vx-tl-scroll { min-height: 0; }
+
+/* Herramientas de la línea de tiempo: barra mínima y cursores por herramienta */
+.vx-tl-tools { display: flex; gap: 2px; padding: 3px 6px; background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+.vx-tl-tools button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; font-size: 12px; min-height: 26px; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.vx-tl-tools button:hover { background: var(--panel-2); }
+.vx-tl-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vx-tl-tools button[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.vx-tl-scroll[data-vtool='razor'], .vx-tl-scroll[data-vtool='razor'] * { cursor: crosshair !important; }
+.vx-tl-scroll[data-vtool='hand'], .vx-tl-scroll[data-vtool='hand'] * { cursor: grab !important; touch-action: none; }
+.vx-tl-scroll[data-vtool='hand'].is-panning, .vx-tl-scroll[data-vtool='hand'].is-panning * { cursor: grabbing !important; }
+.vx-tl-scroll[data-vtool='zoom'], .vx-tl-scroll[data-vtool='zoom'] * { cursor: zoom-in !important; }
+.vx-tl-scroll[data-vtool='zoom'].zoom-out, .vx-tl-scroll[data-vtool='zoom'].zoom-out * { cursor: zoom-out !important; }
+
 .vx-tl-scroll {
   flex: 1;
   min-width: 0;

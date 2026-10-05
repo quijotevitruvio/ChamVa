@@ -7,10 +7,14 @@ import { bakedCanvas } from './imagegeoUtil';
 import { toast } from './toast';
 import { t } from '../i18n';
 import './imagegeo.css';
+import { BackButton } from './Modal';
+import { useDismiss } from './useDismiss';
 
 // Mockups en perspectiva: coloca la imagen seleccionada en un marco (teléfono, portátil,
 // monitor, tarjeta) dibujado por código y crea una capa nueva con el resultado.
 export function MockupDialog({ layer, onClose }: { layer: ImageLayer; onClose: () => void }) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useDismiss(overlayRef, { onClose: onClose });
   const addImageLayer = useEditor((s) => s.addImageLayer);
   const srcRef = useRef<HTMLCanvasElement | null>(null);
   const prevRef = useRef<HTMLCanvasElement>(null);
@@ -84,8 +88,9 @@ export function MockupDialog({ layer, onClose }: { layer: ImageLayer; onClose: (
   };
 
   return createPortal(
-    <div className="mask-overlay">
+    <div className="mask-overlay" ref={overlayRef}>
       <div className="mask-toolbar">
+        <BackButton onClick={onClose} />
         <span className="mask-title">{t('Mockup')}</span>
         <div className="seg mock-frames">
           {MOCKUP_FRAMES.map((f) => (

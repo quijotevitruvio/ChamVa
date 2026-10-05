@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDismiss } from './useDismiss';
 import { t } from '../i18n';
 import { useEditor } from '../editor/state/store';
 import { exportablePages } from '../editor/core/pageOps';
@@ -67,13 +68,8 @@ export function ExportMoreDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('bleed');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useDismiss(cardRef, { onClose });
 
   // Ejecuta una exportación mostrando el estado y avisando de errores.
   const run = async (job: () => Promise<{ blob: Blob; name: string; msg?: string }>) => {
@@ -92,7 +88,7 @@ export function ExportMoreDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="xm-overlay" onClick={onClose}>
-      <div className="xm-card" onClick={(e) => e.stopPropagation()}>
+      <div className="xm-card" ref={cardRef} onClick={(e) => e.stopPropagation()}>
         <button className="xm-close" onClick={onClose} aria-label={t('Cerrar')}>
           ✕
         </button>

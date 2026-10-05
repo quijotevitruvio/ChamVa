@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BackButton } from './Modal';
+import { useDismiss } from './useDismiss';
 import { createPortal } from 'react-dom';
 import { useEditor } from '../editor/state/store';
 import type { TextLayer } from '../editor/core/types';
@@ -16,6 +18,8 @@ const measureCtx = document.createElement('canvas').getContext('2d')!;
 // los 4 puntos de control de una curva Bézier (dos extremos y dos asas) y se ve el
 // texto sobre la curva en vivo. Al aceptar se guardan los puntos en la capa.
 export function PathTextEditor({ layer, onClose }: { layer: TextLayer; onClose: () => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useDismiss(rootRef, { onClose });
   const updateLayer = useEditor((s) => s.updateLayer);
   const fs = layer.fontSize;
 
@@ -93,8 +97,9 @@ export function PathTextEditor({ layer, onClose }: { layer: TextLayer; onClose: 
   const total = useMemo(() => buildArcTable(pts).length, [pts]);
 
   return createPortal(
-    <div className="tx-overlay" role="dialog" aria-label="Editor de trazado del texto">
+    <div className="tx-overlay" ref={rootRef} role="dialog" aria-modal="true" aria-label="Editor de trazado del texto">
       <div className="tx-bar">
+        <BackButton onClick={onClose} />
         <span className="tx-title">Trazado del texto</span>
         <button onClick={() => setPts(defaultPathPoints(measureCurved(measureCtx, { ...layer, curve: 0, pathText: undefined }).width, fs))}>Restablecer</button>
         <label className="tx-offset">
