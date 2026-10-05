@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ExportFormat } from '../io/export';
 import { t } from '../i18n';
+import { useUnsupportedFormats } from '../io/rasterSupport';
 import { ExportPreview } from './ExportPreview';
 import { ExportSettings } from './ExportSettings';
 import { useEditor } from '../editor/state/store';
@@ -41,6 +42,7 @@ export function DownloadMenu({
   onCopy,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const bad = useUnsupportedFormats();
   useExtra(); // re-renderiza al cambiar los ajustes extra
   const selCount = useEditor((s) => s.selectedIds.length);
   const raster = format === 'png' || format === 'jpeg' || format === 'webp' || format === 'avif';
@@ -51,8 +53,8 @@ export function DownloadMenu({
         <select value={format} onChange={(e) => setFormat(e.target.value as Fmt)}>
           <option value="png">PNG (transparente)</option>
           <option value="jpeg">JPG</option>
-          <option value="webp">WebP</option>
-          <option value="avif">AVIF</option>
+          <option value="webp" disabled={bad.has('webp')}>WebP{bad.has('webp') ? ' (no disponible en este equipo)' : ''}</option>
+          <option value="avif" disabled={bad.has('avif')}>AVIF{bad.has('avif') ? ' (no disponible en este equipo)' : ''}</option>
           <option value="svg">SVG (vector)</option>
           <option value="ico">ICO (icono)</option>
           <option value="pdf">PDF</option>

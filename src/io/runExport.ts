@@ -13,6 +13,7 @@ import { addJpegMeta, addPngMeta, hasMeta } from './pngMeta';
 import { applyWatermark, watermarkActive, watermarkSvg } from './watermark';
 import { blobToBytes, zipToBlob, type ZipEntry } from './zip';
 import { toast } from '../ui/toast';
+import { resolveBlobFormat } from './rasterSupport';
 import { BLEND_LABEL, svgInexactBlends } from '../editor/core/blend';
 
 export type ExportScope = 'page' | 'all' | 'selection';
@@ -85,6 +86,8 @@ export interface RasterResult {
   height: number;
   quality: number; // calidad realmente usada
   fits: boolean; // false si no cabe en el peso objetivo ni con la calidad mínima
+  format: ExportFormat; // formato REAL del blob (puede diferir del pedido si el equipo no lo soporta)
+  degradedNote: string | null; // aviso en español si hubo degradación
 }
 
 // Renderiza `doc` a un archivo de imagen aplicando marca de agua, peso objetivo y metadatos.
@@ -128,12 +131,15 @@ export async function renderRasterBlob(
     blob = await canvasToBlob(canvas, mime, format === 'png' ? undefined : quality);
   }
 
-  if (extra.metaOn && hasMeta(extra.meta) && (format === 'png' || format === 'jpeg')) {
+  // El navegador puede haber caído a PNG (AVIF/WebP no soportados): se usa el formato real.
+  const res = resolveBlobFormat(blob.type, format);
+  const real = res.format;
+  if (extra.metaOn && hasMeta(extra.meta) && (real === 'png' || real === 'jpeg')) {
     const bytes = await blobToBytes(blob);
-    const out = format === 'png' ? addPngMeta(bytes, extra.meta) : addJpegMeta(bytes, extra.meta);
-    blob = new Blob([out as BlobPart], { type: mime });
+    const out = real === 'png' ? addPngMeta(bytes, extra.meta) : addJpegMeta(bytes, extra.meta);
+    blob = new Blob([out as BlobPart], { type: MIME[real] });
   }
-  return { blob, width: canvas.width, height: canvas.height, quality: q, fits };
+  return { blob, width: canvas.width, height: canvas.height, quality: q, fits, format: real, degradedNote: res.message };
 }
 
 async function renderSvgBlob(doc: Doc, extra: ExtraSettings): Promise<Blob> {
@@ -201,6 +207,7 @@ export async function runImageExport(opts: {
     const used = new Set<string>();
     const files: { name: string; blob: Blob }[] = [];
     const notes: string[] = [];
+    let degradedNote: string | null = null;
     let n = 0;
     for (const t of targets) {
       for (const s of specs) {
@@ -212,6 +219,18 @@ export async function runImageExport(opts: {
         // En raster el ancho de un tamaño personalizado es exacto aunque cambie el redondeo.
         const w = Math.max(1, Math.round(t.doc.width * s.scale));
         const h = Math.max(1, Math.round(t.doc.height * s.scale));
+        let blob: Blob;
+        let fileExt = ext;
+        let fits = true;
+        if (isSvg) blob = await renderSvgBlob(t.doc, extra);
+        else {
+          const r = await renderRasterBlob(t.doc, format as ExportFormat, s.scale, quality, extra, () => cancelFlag);
+          blob = r.blob;
+          fits = r.fits;
+          // Extensión y MIME REALES: nunca un PNG con extensión .avif.
+          fileExt = EXT[r.format];
+          if (r.degradedNote) degradedNote = r.degradedNote;
+        }
         const vars: NameVars = {
           nombre: safeBase(t.doc),
           fecha: date,
@@ -221,17 +240,11 @@ export async function runImageExport(opts: {
           ancho: isSvg ? t.doc.width : w,
           alto: isSvg ? t.doc.height : h,
           escala: s.label,
-          formato: ext,
+          formato: fileExt,
         };
         const base = buildFileName(extra.template, vars, { multiPages, multiScales });
-        let blob: Blob;
-        if (isSvg) blob = await renderSvgBlob(t.doc, extra);
-        else {
-          const r = await renderRasterBlob(t.doc, format as ExportFormat, s.scale, quality, extra, () => cancelFlag);
-          blob = r.blob;
-          if (!r.fits) notes.push(`${base}.${ext}: ${Math.round(r.blob.size / 1024)} KB`);
-        }
-        files.push({ name: uniqueName(`${base}.${ext}`, used), blob });
+        if (!fits) notes.push(`${base}.${fileExt}: ${Math.round(blob.size / 1024)} KB`);
+        files.push({ name: uniqueName(`${base}.${fileExt}`, used), blob });
       }
     }
     if (cancelFlag) {
@@ -247,6 +260,7 @@ export async function runImageExport(opts: {
       const zipBase = safeBase(targets[0].doc) + (multiPages ? '_paginas' : '_tamanos');
       await downloadBlob(zipToBlob(entries), `${sanitizeFileName(zipBase)}.zip`);
     }
+    if (degradedNote) toast(degradedNote, 'info');
     if (notes.length) {
       toast(
         `No cabe en ${extra.maxKB} KB ni con la calidad mínima (${notes.join(', ')}). Reduce la escala o sube el límite.`,

@@ -16,6 +16,7 @@ import { exportDoc, downloadBlob, renderDocToCanvas } from './io/export';
 import { exportPagesToGif } from './io/exportGif';
 import { exportPagesToPdf } from './io/exportPdf';
 import { runImageExport, cancelExport } from './io/runExport';
+import { classifyImportError, importFailureMessage, type ImportFailure } from './io/importErrors';
 import { runInQueue } from './io/exportQueue';
 import { exportAnimatedGif } from './io/exportAnim';
 import { exportDocAnimationVideo } from './video/exportActions';
@@ -931,6 +932,8 @@ export default function App() {
 
   const importFiles = async (files: FileList | File[] | null, addToCanvas: boolean) => {
     if (!files) return;
+    const failures: ImportFailure[] = [];
+    let ok = 0;
     for (const file of Array.from(files)) {
       try {
         const img = await loadImageFile(file);
@@ -940,10 +943,14 @@ export default function App() {
             : `up-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
         addUpload({ id, ...img });
         if (addToCanvas) addImageLayer(img);
+        ok++;
       } catch (err) {
         console.error(err);
+        failures.push({ name: file.name || 'sin nombre', reason: classifyImportError(file, err) });
       }
     }
+    const msg = importFailureMessage(ok, failures);
+    if (msg) toast(msg, 'error');
   };
 
   // «Editar una foto» desde el inicio: diseño nuevo con el lienzo del tamaño de la foto.

@@ -13,6 +13,7 @@ import { exportPagesToApngOrWebp, type AnimFormat } from '../io/exportAnimPages'
 import { buildResourceReport, fmtBytes, reportToText } from '../io/resourceReport';
 import { canShareFiles, shareOrDownload } from '../io/shareFile';
 import { toast } from './toast';
+import { useUnsupportedFormats } from '../io/rasterSupport';
 import { exportablePages, exportableCount, ALL_HIDDEN_MSG } from '../editor/core/pageOps';
 import './batchshare.css';
 import { useDismiss } from './useDismiss';
@@ -67,6 +68,7 @@ export function BatchShareDialog({ onClose }: { onClose: () => void }) {
 
 // ---------------- Lote ----------------
 function BatchTab() {
+  const bad = useUnsupportedFormats();
   const [files, setFiles] = useState<File[]>([]);
   const [format, setFormat] = useState<BatchFormat>('webp');
   const [quality, setQuality] = useState(0.85);
@@ -147,10 +149,10 @@ function BatchTab() {
       <label className="bs-row">
         Formato
         <select value={format} onChange={(e) => setFormat(e.target.value as BatchFormat)}>
-          <option value="webp">WebP</option>
+          <option value="webp" disabled={bad.has('webp')}>WebP{bad.has('webp') ? ' (no disponible)' : ''}</option>
           <option value="jpeg">JPG</option>
           <option value="png">PNG</option>
-          <option value="avif">AVIF</option>
+          <option value="avif" disabled={bad.has('avif')}>AVIF{bad.has('avif') ? ' (no disponible)' : ''}</option>
         </select>
       </label>
       {format !== 'png' && (
