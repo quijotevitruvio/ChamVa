@@ -1,13 +1,14 @@
 # FFmpeg en el instalador de Windows: build propio, publicación y mantenimiento
 
-> **Estado (v0.9.0 publicada sin FFmpeg).** El build BtbN `win64-lgpl-shared` se descartó por
-> licencias mixtas (FFTW GPL-2.0+ vía chromaprint, zvbi GPL-2.0-only, opencore-amr Apache-2.0,
-> libaribb24 LGPL-3.0; ver «Auditoría de licencias del binario» en `docs/seguridad-ffmpeg.md`). Sus
-> SHA-256 están en `revoked` de `src-tauri/ffmpeg-manifest.json` y **no se ejecutan nunca**.
-> Para v0.9.1 hay un **build propio** compilado desde la fuente por
-> `.github/workflows/ffmpeg-build.yml`. El manifiesto es una PLANTILLA en estado
-> `"pending-build"`: la app y `scripts/fetch-ffmpeg.mjs` lo tratan como bloqueado hasta que se
-> rellene con los hashes reales del artefacto y alguien lo ponga en `"ok"` tras revisarlo.
+> **Estado (2026-10-05, para v0.9.1): pasos 1–5 hechos.** El build propio
+> `win64-chamva-lgpl-shared` (LGPL-2.1-or-later) se compiló (ejecución 37344856528), se auditó y se
+> publicó en el Release `ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1` (prerelease, no «latest»;
+> zip SHA-256 `8df875058a37afa611deebbcb7ba6b31fe1f4afcc3a6d115fae35bd4462fbfa0`, verificado
+> contra el asset descargado). `src-tauri/ffmpeg-manifest.json` está en `"status": "ok"` con los
+> hashes reales, y `release.yml` empaqueta FFmpeg en Windows. v0.9.0 salió sin FFmpeg: el build
+> BtbN `win64-lgpl-shared` se descartó por licencias mixtas (FFTW GPL-2.0+ vía chromaprint, zvbi
+> GPL-2.0-only, opencore-amr Apache-2.0, libaribb24 LGPL-3.0; ver `docs/seguridad-ffmpeg.md`) y
+> sus SHA-256 siguen en `revoked`: **no se ejecutan nunca**.
 
 Solo **Windows x64**. macOS, Linux y Android se publican sin FFmpeg y la app funciona igual
 (la importación de video usa el navegador). Seguridad y licencia: `docs/seguridad-ffmpeg.md`.
@@ -104,8 +105,8 @@ gh release view "$TAG" --repo quijotevitruvio/ChamVa --json isPrerelease,isLates
 
 ### 4. Rellenar el manifiesto
 
-`ffmpeg-manifest.candidate.json` ya trae la URL del Release, el SHA-256 del zip y el de cada
-archivo, con `"status": "pending-review"` (sigue bloqueado). Cópialo sobre
+(Hecho para `-chamva1`.) `ffmpeg-manifest.candidate.json` ya trae la URL del Release, el SHA-256
+del zip y el de cada archivo, con `"status": "pending-review"` (sigue bloqueado). Cópialo sobre
 `src-tauri/ffmpeg-manifest.json`, compara con `manifest-snippet.json` y con tu auditoría local, y
 **solo entonces** cambia `"status"` a `"ok"` y quita `blockedReason`. Conserva `revoked` (el build
 BtbN no debe ejecutarse nunca). Comprueba:
@@ -122,7 +123,7 @@ hashes por archivo, SHA-256 distinto de la plantilla (`000…`) y ningún hash d
 
 ### 5. Reactivar FFmpeg en `release.yml`
 
-Parte de `docs/release-ffmpeg.workflow.yml.txt` (referencia, no es un workflow): copia a
+(Hecho para `-chamva1`.) Parte de `docs/release-ffmpeg.workflow.yml.txt` (referencia, no es un workflow): copia a
 `.github/workflows/release.yml` la fila de Windows de la matriz (`args: '--config
 src-tauri/tauri.ffmpeg.conf.json'`), los pasos «Caché del zip de FFmpeg» y «FFmpeg LGPL verificado»
 y el párrafo del `releaseBody` con el enlace al Release de fuentes (pon el `TAG` real). El paso de
@@ -133,8 +134,9 @@ auditoría falla (Linux y macOS siguen: `fail-fast: false`).
 
 `tauri.ffmpeg.conf.json` (solo con `--config`, solo en `windows-latest`) añade a NSIS y MSI:
 
-- `binaries/ffmpeg/` → `<programa>/ffmpeg/`: `ffmpeg.exe`, `ffprobe.exe`, las 7 DLL, `LICENSE.txt`
-  (LGPL v2.1), `AVISO-FFMPEG.txt` (oferta de la fuente con la URL del Release) y `BUILD-INFO.json`.
+- `binaries/ffmpeg/` → `<programa>/ffmpeg/`: `ffmpeg.exe`, `ffprobe.exe`, las 7 DLL compartidas
+  (reemplazables), `LICENSE.txt` (LGPL v2.1), `AVISO-FFMPEG.txt` (oferta de la fuente con la URL
+  del Release) y `BUILD-INFO.json`.
   Nada más: la app rechaza archivos de más en esa carpeta.
 - `binaries/ffmpeg-licenses/` → `<programa>/ffmpeg-licenses/`: la licencia de cada biblioteca
   enlazada (BSD/MIT exigen acompañar el binario con su aviso).

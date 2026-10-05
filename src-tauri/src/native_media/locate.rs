@@ -20,7 +20,9 @@
 //! Bloqueo: si el manifiesto (o la entrada de la plataforma) tiene `status`
 //! distinto de `"ok"`, ningún candidato 1–3 se acepta, y un binario cuyo SHA-256
 //! figure en una entrada bloqueada no se ejecuta NUNCA, ni siquiera en desarrollo.
-//! v0.9.0: el build BtbN fijado está bloqueado → «nativo no disponible».
+//! v0.9.0 no traía FFmpeg (build BtbN bloqueado). Desde v0.9.1 el manifiesto fija el build
+//! propio LGPL-2.1-or-later (solo Windows x64); en las demás plataformas no hay entrada →
+//! «no disponible en esta plataforma».
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -41,8 +43,26 @@ pub const EXE: &str = "";
 /// Manifiesto único del build fijado (lo comparte `scripts/fetch-ffmpeg.mjs`).
 const MANIFEST_JSON: &str = include_str!("../../ffmpeg-manifest.json");
 
-/// Mensaje al usuario cuando esta versión no trae un FFmpeg utilizable.
+/// Mensaje al usuario cuando el manifiesto está bloqueado (ningún FFmpeg utilizable).
 pub const NOT_INCLUDED: &str = "La conversión con FFmpeg nativo no está incluida en esta versión; llegará en una próxima actualización";
+/// Mensaje al usuario cuando el manifiesto no fija un build para esta plataforma
+/// (macOS, Linux, ARM…): ChamVa no trae FFmpeg aquí y no lo promete.
+pub const NOT_AVAILABLE_PLATFORM: &str = "La conversión con FFmpeg nativo no está disponible en esta plataforma";
+
+/// Se encontró un binario retirado (p. ej. el BtbN de v0.9.0): no se ejecuta.
+pub const REVOKED_BINARY: &str = "Se encontró un FFmpeg retirado por licencias (no es el build verificado de ChamVa): no se ejecuta";
+
+/// Motivo de «no disponible» que no depende de lo que haya en disco (`None` si esta
+/// plataforma tiene un build utilizable en el manifiesto).
+pub fn manifest_unavailable(m: &Manifest, triple: &str) -> Option<&'static str> {
+    if m.is_blocked() || m.targets.get(triple).is_some_and(|t| status_blocks(&t.status)) {
+        Some(NOT_INCLUDED)
+    } else if m.target(triple).is_none() {
+        Some(NOT_AVAILABLE_PLATFORM)
+    } else {
+        None
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -216,7 +236,8 @@ pub struct NativeStatus {
     pub user_install_supported: bool,
     /// Release propio con el binario exacto y su fuente (vacío si el build está bloqueado)
     pub source_release_url: String,
-    /// false si esta versión de ChamVa no incluye un FFmpeg utilizable (build bloqueado)
+    /// false si esta versión de ChamVa no incluye un FFmpeg utilizable en esta plataforma
+    /// (build bloqueado, o sin entrada en el manifiesto: macOS, Linux…)
     pub included: bool,
     /// resultado de «verificar y omitir / reparar» de la copia propia
     pub install: Option<super::install::Report>,
@@ -227,11 +248,12 @@ pub struct NativeStatus {
 impl NativeStatus {
     pub fn unavailable(reason: impl Into<String>, user_dir: Option<String>) -> Self {
         let m = manifest();
-        // build bloqueado: ni URL, ni hash, ni carpeta para instalarlo a mano
-        if m.is_blocked() {
+        // build bloqueado o sin build para esta plataforma: ni URL, ni hash, ni carpeta para
+        // instalarlo a mano
+        if let Some(why) = manifest_unavailable(m, TRIPLE) {
             return NativeStatus {
                 available: false,
-                reason: Some(NOT_INCLUDED.into()),
+                reason: Some(why.into()),
                 origin: None,
                 version: None,
                 license: None,
@@ -365,7 +387,7 @@ fn is_blocked_binary(m: &Manifest, ffmpeg: &Path, ffprobe: &Path) -> bool {
 /// `locate` con un manifiesto y una plataforma explícitos (pruebas).
 pub fn locate_in(m: &Manifest, triple: &str, cands: &[(PathBuf, Origin, Check)]) -> Result<Located, String> {
     let blocked_build = m.is_blocked() || m.targets.get(triple).is_some_and(|t| status_blocks(&t.status));
-    let mut last = if blocked_build { NOT_INCLUDED.to_string() } else { "FFmpeg no está instalado en esta copia de ChamVa".to_string() };
+    let mut last = manifest_unavailable(m, triple).unwrap_or("FFmpeg no está instalado en esta copia de ChamVa").to_string();
     for (dir, origin, check) in cands {
         let ffmpeg = dir.join(format!("ffmpeg{EXE}"));
         let ffprobe = dir.join(format!("ffprobe{EXE}"));
@@ -378,7 +400,7 @@ pub fn locate_in(m: &Manifest, triple: &str, cands: &[(PathBuf, Origin, Check)])
         }
         // un binario bloqueado nunca se ejecuta, venga de donde venga
         if is_blocked_binary(m, &ffmpeg, &ffprobe) {
-            last = NOT_INCLUDED.to_string();
+            last = if blocked_build { NOT_INCLUDED } else { REVOKED_BINARY }.to_string();
             continue;
         }
         match check {
@@ -427,7 +449,9 @@ pub fn license_text(dir: &Path) -> Option<String> {
 
 /// ¿El texto de `-L` y `-buildconf` corresponde a un build LGPL sin partes GPL/no libres?
 pub fn license_ok(l_text: &str, buildconf: &str) -> Result<String, String> {
-    let l = l_text.to_ascii_lowercase();
+    // `-L` parte las frases en varias líneas («GNU Lesser General Public\nLicense»): se
+    // normalizan los espacios antes de buscar
+    let l = l_text.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
     if !l.contains("gnu lesser general public license") {
         return Err("el binario no se declara LGPL".into());
     }
@@ -612,6 +636,60 @@ mod tests {
         assert_eq!(m.blocked_hashes(), vec!["b".repeat(64).as_str()]);
     }
 
+    /// `-L` real del build propio (LGPL 2.1, frases partidas en varias líneas).
+    #[test]
+    fn wrapped_lgpl21_text_is_accepted() {
+        let l = "ffmpeg is free software; you can redistribute it and/or\nmodify it under the terms of the GNU Lesser General Public\nLicense as published by the Free Software Foundation; either\nversion 2.1 of the License, or (at your option) any later version.\n";
+        assert_eq!(license_ok(l, "--disable-gpl --disable-nonfree --disable-version3").unwrap(), "LGPL-2.1-or-later");
+        assert!(license_ok(&l.replace("Lesser ", ""), "").is_err(), "GPL partida en líneas tampoco cuela");
+    }
+
+    /// Manifiesto «ok» con hashes por archivo: la copia exacta → disponible; un archivo
+    /// con otro hash → rechazado; un hash de `revoked` → rechazado aunque el manifiesto
+    /// esté en «ok» y lo liste como bueno.
+    #[test]
+    fn ok_manifest_exact_hash_only_and_revoked_never() {
+        let d = std::env::temp_dir().join(format!("chamva-okmanifest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let (ff, fp, dll) = (b"ffmpeg-propio".to_vec(), b"ffprobe-propio".to_vec(), b"avcodec-propio".to_vec());
+        std::fs::write(d.join(format!("ffmpeg{EXE}")), &ff).unwrap();
+        std::fs::write(d.join(format!("ffprobe{EXE}")), &fp).unwrap();
+        std::fs::write(d.join("avcodec-63.dll"), &dll).unwrap();
+        std::fs::write(d.join("LICENSE.txt"), "GNU LESSER GENERAL PUBLIC LICENSE").unwrap();
+        let h = |b: &[u8]| hex(&Sha256::digest(b));
+        let mk = |dll_hash: &str, revoked: &str| -> Manifest {
+            let json = format!(
+                r#"{{"status":"ok","version":"n9.0.2","release":"r","sourceRelease":"s","ffmpegSource":"s","buildScripts":"b","targets":{{"{TRIPLE}":{{"url":"u","sha256":"{}","verified":true,"files":{{"ffmpeg{EXE}":"{}","ffprobe{EXE}":"{}","avcodec-63.dll":"{dll_hash}"}}}}}},"revoked":[{{"build":"x","reason":"y","sha256":[{revoked}]}}]}}"#,
+                "a".repeat(64),
+                h(&ff),
+                h(&fp)
+            );
+            serde_json::from_str(&json).unwrap()
+        };
+        let user = [(d.clone(), Origin::User, Check::FullHash)];
+        let bundled = [(d.clone(), Origin::Bundled, Check::FullHash)];
+        // 1) «ok» + hashes correctos → disponible (copia manual y recursos del instalador)
+        let good = mk(&h(&dll), "");
+        assert_eq!(manifest_unavailable(&good, TRIPLE), None);
+        assert!(locate_in(&good, TRIPLE, &user).is_ok());
+        assert!(locate_in(&good, TRIPLE, &bundled).is_ok());
+        // 2) un hash distinto (DLL sustituida) → rechazado, con el nombre del archivo
+        let other = mk(&h(b"otra-dll"), "");
+        let e = locate_in(&other, TRIPLE, &user).unwrap_err();
+        assert!(e.contains("avcodec-63.dll"), "{e}");
+        assert!(locate_in(&other, TRIPLE, &bundled).is_err());
+        // 3) ffmpeg.exe con hash revocado → rechazado aunque «ok» lo fije como bueno
+        let rev = mk(&h(&dll), &format!("\"{}\"", h(&ff)));
+        assert!(!rev.is_blocked());
+        let e = locate_in(&rev, TRIPLE, &[(d.clone(), Origin::User, Check::FullHash), (d.clone(), Origin::Dev, Check::None)]).unwrap_err();
+        assert_eq!(e, REVOKED_BINARY);
+        // otra plataforma sin entrada: «no disponible en esta plataforma», no «llegará»
+        assert_eq!(manifest_unavailable(&good, "aarch64-apple-darwin"), Some(NOT_AVAILABLE_PLATFORM));
+        assert_eq!(locate_in(&good, "aarch64-apple-darwin", &[]).unwrap_err(), NOT_AVAILABLE_PLATFORM);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// Binario con un hash bloqueado plantado en la carpeta de datos (con o sin sello
     /// falso) o en la ruta de desarrollo: NO se usa por ninguna vía.
     #[test]
@@ -642,7 +720,7 @@ mod tests {
         let open = mk("");
         let ok = locate_in(&open, TRIPLE, &[(d.clone(), Origin::User, Check::FullHash)]);
         assert!(ok.is_ok(), "{ok:?}");
-        // y el manifiesto real de v0.9.0 tampoco la acepta
+        // y el manifiesto real (build propio, otros SHA-256) tampoco la acepta
         assert!(locate(&all[..2]).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -658,7 +736,7 @@ mod tests {
             return; // otro binario de desarrollo (p. ej. un build propio)
         }
         let e = locate(&candidates(None, Some(dev.clone()))).unwrap_err();
-        assert!(e.contains("no está incluida en esta versión"), "{e}");
+        assert!(e == NOT_INCLUDED || e == REVOKED_BINARY, "{e}");
     }
 
     #[test]

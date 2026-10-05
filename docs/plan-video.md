@@ -347,8 +347,10 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
   chromaprint, zvbi GPL-2.0-only, opencore-amr Apache-2.0, libaribb24 LGPL-3.0) y se descartó:
   manifiesto `"status": "blocked-license"`, la app no lo usa ni lo instala, y **v0.9.0 sale sin
   FFmpeg** (CI como en v0.8.1; importación como en v0.8.1, con aviso «conviértelo a MP4 H.264»).
-  **v0.9.1:** build propio con `--disable-chromaprint --disable-libzvbi`, auditoría repetida y
-  Release de fuentes; CI de referencia en `docs/release-ffmpeg.workflow.yml.txt`.
+  **v0.9.1 (hecho 2026-10-05):** build propio LGPL-2.1-or-later (`ffmpeg-build.yml`, solo
+  bibliotecas de la lista blanca, sin chromaprint ni zvbi), auditado y publicado con su fuente en
+  el Release `ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1`; manifiesto en `"ok"` y `release.yml`
+  lo empaqueta en Windows (NSIS 35,1 MB / MSI 41,7 MB). macOS/Linux siguen sin FFmpeg.
 
 ### Después
 

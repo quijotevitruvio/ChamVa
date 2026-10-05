@@ -36,4 +36,4 @@ tienen sus propias licencias, y el usuario elige cuál usar:
   Es opcional y está marcado como tal en la interfaz; no se usa por defecto.
 
 Bibliotecas destacadas: Tauri (MIT/Apache-2.0), React (MIT), Konva (MIT),
-Transformers.js (Apache-2.0), OpenCV.js (Apache-2.0), ffmpeg.wasm (LGPL/MIT).
+Transformers.js (Apache-2.0), OpenCV.js (Apache-2.0).

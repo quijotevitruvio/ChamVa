@@ -2,8 +2,9 @@
 //!
 //! Un instalador construido con `tauri.ffmpeg.conf.json` deja el build fijado en
 //! `<recursos>/ffmpeg/` (carpeta del programa: solo lectura en instalaciones
-//! por máquina). v0.9.0 NO trae ninguno: el build BtbN fijado está bloqueado en
-//! el manifiesto por licencias mixtas, `Spec::from_manifest()` da `None` y aquí
+//! por máquina): desde v0.9.1, el build propio LGPL-2.1-or-later de Windows x64
+//! (el BtbN de v0.9.0 sigue en `revoked` y no se ejecuta nunca). Si el manifiesto
+//! está bloqueado o no fija esta plataforma, `Spec::from_manifest()` da `None` y aquí
 //! no se copia ni se ejecuta nada (ver docs/seguridad-ffmpeg.md). La app trabaja con SU copia en `<datos locales>/ffmpeg/`
 //! (siempre escribible por el usuario, sin permisos de administrador):
 //!
@@ -283,8 +284,10 @@ pub fn install_from(src: &Path, dest: &Path, spec: &Spec, license_check: &dyn Fn
 /// `resources` es `<recursos de la app>/ffmpeg` (puede no existir).
 pub fn resolve(spec: Option<&Spec>, resources: Option<&Path>, dest: &Path, license_check: &dyn Fn(&Path) -> Result<(), String>) -> Report {
     let Some(spec) = spec else {
-        // sin build utilizable (o bloqueado por el manifiesto): no se copia ni se ejecuta nada
-        return Report::new(Action::Unavailable, Some(super::locate::NOT_INCLUDED.into()));
+        // sin build utilizable (bloqueado por el manifiesto o sin entrada para esta
+        // plataforma): no se copia ni se ejecuta nada
+        let why = super::locate::manifest_unavailable(super::locate::manifest(), super::locate::TRIPLE).unwrap_or(super::locate::NOT_AVAILABLE_PLATFORM);
+        return Report::new(Action::Unavailable, Some(why.into()));
     };
     clean_leftovers(dest);
     let why = match check_stamp(dest, spec) {
@@ -510,7 +513,7 @@ mod tests {
             let dest = root.join("data").join("ffmpeg");
             let r = resolve(s.as_ref(), Some(&res), &dest, &probe);
             assert_eq!(r.action, Action::Unavailable);
-            assert!(r.detail.unwrap().contains("no está incluida en esta versión"));
+            assert!(r.detail.is_some());
             assert!(!called.get(), "jamás se ejecuta el binario");
             assert!(!dest.exists(), "no se copia nada");
         }

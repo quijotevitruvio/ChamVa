@@ -3,9 +3,14 @@
 //! `cargo test` sigue pasando en máquinas y CI sin el binario.
 //!
 //! Estas pruebas ejercitan el código nativo (argumentos, procesos, progreso) con
-//! un binario LOCAL que no se distribuye. No pasan por `locate`: la app rechaza el
-//! build BtbN fijado (bloqueado por licencias en el manifiesto de v0.9.0), y eso
-//! lo comprueban `locate::tests::real_blocked_dev_binary_is_not_used` y compañía.
+//! el binario de `binaries/ffmpeg` (el build propio LGPL fijado en el manifiesto,
+//! o el BtbN retirado si quedó de antes: ese lo rechaza `locate`, y lo comprueban
+//! `locate::tests::real_blocked_dev_binary_is_not_used` y compañía).
+//!
+//! El build propio no trae codificador HEVC por software (sin x265/kvazaar): los
+//! clips HEVC se generan con el del sistema/GPU (`hevc_nvenc`, `hevc_mf`,
+//! `hevc_amf`, `hevc_qsv`) o se toman de `CHAMVA_HEVC_CLIP`; si no hay ninguno,
+//! la parte HEVC se omite con un aviso.
 
 use super::args::{self, ProxyPlan, VideoEncoder};
 use super::locate::{self, Check, Origin, EXE};
@@ -48,6 +53,26 @@ fn gen(ff: &Path, cwd: &Path, out: &Path, extra: &[&str]) {
     assert!(r.ok, "no se pudo generar {}: {}", out.display(), String::from_utf8_lossy(&r.stderr));
 }
 
+/// Clip HEVC + AAC sintético con el primer codificador HEVC que funcione aquí
+/// (`false` si no hay ninguno ni `CHAMVA_HEVC_CLIP`).
+fn gen_hevc(ff: &Path, cwd: &Path, out: &Path, size: &str) -> bool {
+    for enc in ["hevc_nvenc", "hevc_mf", "hevc_amf", "hevc_qsv", "libkvazaar"] {
+        let mut a: Vec<std::ffi::OsString> = ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i"].iter().map(Into::into).collect();
+        a.push(format!("testsrc2=size={size}:rate=30").into());
+        a.extend(["-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-pix_fmt", "yuv420p", "-c:v", enc, "-tag:v", "hvc1", "-c:a", "aac", "-shortest"].iter().map(Into::into));
+        a.push(out.as_os_str().to_owned());
+        if run_capture(command(ff, &a, cwd), Duration::from_secs(120), 1 << 20, 1 << 20).is_ok_and(|r| r.ok) && out.is_file() {
+            eprintln!("(clip HEVC generado con {enc})");
+            return true;
+        }
+    }
+    if let Ok(c) = std::env::var("CHAMVA_HEVC_CLIP") {
+        return std::fs::copy(c, out).is_ok();
+    }
+    eprintln!("(sin codificador HEVC ni CHAMVA_HEVC_CLIP: se omite la parte HEVC)");
+    false
+}
+
 fn probe_ok(ffprobe: &Path, cwd: &Path, src: &Path) -> Result<probe::ProbeInfo, String> {
     let r = run_capture(command(ffprobe, &args::probe_args(src), cwd), Duration::from_secs(30), 4 << 20, 64 << 10).unwrap();
     if !r.ok {
@@ -87,7 +112,9 @@ fn real_hostile_names_probe_and_convert() {
     let loc = dev_located(&dir);
     let w = work("hostile");
     let base = w.join("base.mp4");
-    gen(&loc.ffmpeg, &w, &base, &["-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-c:v", "libkvazaar", "-tag:v", "hvc1", "-c:a", "aac", "-shortest"]);
+    if !gen_hevc(&loc.ffmpeg, &w, &base, "320x240") {
+        return;
+    }
     let names = ["-i evil.mp4", "a;b & c.mp4", "$(calc) `x`.mov", "con 'comillas' y espacios.mkv", "concat:x.mp4", "-y.mp4", "pipe:1.mp4"];
     for n in names {
         let p = w.join(n);
@@ -290,14 +317,21 @@ fn real_installed_copy_probe_and_proxy() {
     let w = work("installed");
     let st = locate::detect(&loc, &w, None);
     assert!(st.available, "{:?}", st.reason);
-    assert_eq!(st.license.as_deref(), Some("LGPL-3.0-or-later"));
+    // el build propio (ffmpeg-build.yml) es LGPL-2.1-or-later
+    assert_eq!(st.license.as_deref(), Some("LGPL-2.1-or-later"));
     let clips = [
-        ("hevc.mp4", vec!["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-c:v", "libkvazaar", "-tag:v", "hvc1", "-c:a", "aac", "-shortest"], "hevc"),
+        ("hevc.mp4", vec![], "hevc"),
         ("prores.mov", vec!["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-f", "lavfi", "-i", "sine=f=440:sample_rate=48000", "-t", "2", "-c:v", "prores_ks", "-profile:v", "3", "-c:a", "pcm_s16le", "-shortest"], "prores"),
     ];
     for (name, extra, codec) in clips {
         let src = w.join(name);
-        gen(&loc.ffmpeg, &w, &src, &extra);
+        if codec == "hevc" {
+            if !gen_hevc(&loc.ffmpeg, &w, &src, "640x360") {
+                continue;
+            }
+        } else {
+            gen(&loc.ffmpeg, &w, &src, &extra);
+        }
         let canon = validate_source(&src).unwrap();
         let info = probe_ok(&loc.ffprobe, &w, &canon).unwrap();
         assert_eq!(info.video.as_ref().unwrap().codec, codec);

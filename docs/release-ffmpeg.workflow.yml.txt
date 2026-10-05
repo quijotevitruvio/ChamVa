@@ -1,8 +1,9 @@
 # REFERENCIA, NO ES UN WORKFLOW (no está en .github/workflows y no se ejecuta).
+# YA APLICADA a release.yml el 2026-10-05 (manifiesto en "ok" con el build -chamva1).
 # Pasos de CI con FFmpeg para el BUILD PROPIO (ffmpeg-build.yml, LGPL-2.1-or-later). Se copian a
 # release.yml SOLO cuando src-tauri/ffmpeg-manifest.json esté en "status": "ok" con los hashes
 # reales y el Release de fuentes publicado (docs/release-ffmpeg.md, pasos 3–5). Sustituye
-# <TAG> por la etiqueta real del Release de fuentes.
+# ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1 por la etiqueta real del Release de fuentes.
 
 # Compila los instaladores de Windows, Linux y macOS y publica un GitHub Release
 # (borrador) cada vez que se pushea un tag v* — o manualmente desde la pestaña Actions.
@@ -88,7 +89,7 @@ jobs:
 
             > El instalador de Windows incluye FFmpeg (LGPL-2.1-or-later, programa aparte; licencias de
             > sus bibliotecas en la carpeta ffmpeg-licenses). Su código fuente completo y el binario
-            > exacto: https://github.com/quijotevitruvio/ChamVa/releases/tag/<TAG>
+            > exacto: https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1
 
             > Windows puede mostrar SmartScreen ("editor desconocido"): Más información → Ejecutar de todas formas.
             > macOS: la app no está firmada; tras copiarla a Aplicaciones ejecuta

@@ -1,22 +1,31 @@
 {
-  "$comment": "FFmpeg fijado para ChamVa. Lo leen scripts/fetch-ffmpeg.mjs y src-tauri/src/native_media/{locate,install}.rs. PLANTILLA del build propio (.github/workflows/ffmpeg-build.yml): con \"status\" distinto de \"ok\" está BLOQUEADO (el script no descarga nada; la app no lo instala, no lo acepta a mano y no ejecuta ningún binario con estos SHA-256). Para activarlo: docs/release-ffmpeg.md, «Build propio». Los SHA-256 de \"revoked\" (build BtbN descartado por licencias) no se ejecutan NUNCA, esté el manifiesto bloqueado o no.",
-  "status": "pending-build",
-  "blockedReason": "Plantilla: falta compilar el FFmpeg propio (ffmpeg-build.yml), auditarlo, publicar su Release de fuentes y rellenar sha256/files con los hashes reales del artefacto. Hasta entonces, como en v0.9.0, no hay FFmpeg nativo.",
+  "$comment": "FFmpeg fijado para ChamVa: build propio LGPL-2.1-or-later (.github/workflows/ffmpeg-build.yml), auditado y publicado en el Release de «sourceRelease» (binario exacto + fuente completa). Lo leen scripts/fetch-ffmpeg.mjs y src-tauri/src/native_media/{locate,install}.rs: solo se empaqueta, instala y ejecuta el zip y los archivos con estos SHA-256. Con \"status\" distinto de \"ok\" queda BLOQUEADO. Los SHA-256 de \"revoked\" (build BtbN descartado por licencias) no se ejecutan NUNCA. Actualizar: docs/release-ffmpeg.md.",
+  "status": "ok",
   "version": "n9.0.2-22-g46d8f462ee",
-  "license": "LGPL-2.1-or-later (objetivo; se afirma solo tras la auditoría del artefacto)",
+  "license": "LGPL-2.1-or-later",
   "release": "https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1",
   "sourceRelease": "https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1",
   "ffmpegSource": "https://github.com/FFmpeg/FFmpeg/tree/46d8f462eeb87ee1f704d8c44a0ee24fca471ad1",
-  "buildScripts": "https://github.com/quijotevitruvio/ChamVa/blob/main/.github/workflows/ffmpeg-build.yml (BtbN/FFmpeg-Builds 9acad4a9ef1583096af7836cc1e9c8cbcb4d3950 + overlay de ChamVa)",
+  "buildScripts": "https://github.com/quijotevitruvio/ChamVa/blob/d9d787dd3875aa55f1c819dd05d7da1e7c9b6e7d/.github/workflows/ffmpeg-build.yml (BtbN/FFmpeg-Builds 9acad4a9ef1583096af7836cc1e9c8cbcb4d3950 + overlay de ChamVa)",
   "targets": {
     "x86_64-pc-windows-msvc": {
       "url": "https://github.com/quijotevitruvio/ChamVa/releases/download/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1/ffmpeg-n9.0.2-22-g46d8f462ee-win64-chamva-lgpl-shared.zip",
       "mirrors": [],
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "sha256": "8df875058a37afa611deebbcb7ba6b31fe1f4afcc3a6d115fae35bd4462fbfa0",
       "archive": "zip",
       "binDir": "bin",
-      "verified": false,
-      "files": null
+      "verified": true,
+      "files": {
+        "avcodec-63.dll": "5443291dc83ccd3d5b051c4c6bec6128a561573aa5d7fdd0dcca73c8f29ad719",
+        "avdevice-63.dll": "b223a91034bbd365cbb18ae96509fa72b178963f6c7a05b50603c5ada0255802",
+        "avfilter-12.dll": "f2db179a94f23fdf33cfea5f40b3c8c654c7dc6612a4faf3476ec8118885209f",
+        "avformat-63.dll": "8f5a4cc29f6cbfd0b5b072355164e3de72d39beaef577240f67737e6a16091ca",
+        "avutil-61.dll": "12d7d23e3478552695566e0595492312640edc9e64ef883dddbd0ebb3ddb1d76",
+        "ffmpeg.exe": "96d5634d22d0c2b5dd0d0ab0552780b7b37e8188d5d2bebd2c2b625de154c113",
+        "ffprobe.exe": "16cb0abdd33e0e5df1564d3caaa1c54a779c967e550ea6495e1f8be85edc07dd",
+        "swresample-7.dll": "208a67870b8a55eb4e0b9769b132dc9f144ce3f5fa276ab6c5d47c35cf983331",
+        "swscale-10.dll": "8d3dc293a5f591b778bb08509f81a99f194c8a3748372edce3804fc965bd8bad"
+      }
     }
   },
   "revoked": [

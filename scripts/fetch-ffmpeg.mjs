@@ -195,7 +195,8 @@ let licenseText = '';
 let version = '';
 if (triple === hostTriple()) {
   const run = (a) => spawnSync(exe, ['-hide_banner', ...a], { encoding: 'utf8', timeout: 20000 });
-  licenseText = run(['-L']).stdout;
+  // -L parte las frases en varias líneas («GNU Lesser General Public\nLicense»): se normalizan los espacios
+  licenseText = (run(['-L']).stdout ?? '').replace(/\s+/g, ' ');
   buildconf = run(['-buildconf']).stdout;
   version = run(['-version']).stdout.split('\n')[0];
   const flags = buildconf.split(/\s+/);
@@ -235,10 +236,13 @@ Scripts del build:                 ${manifest.buildScripts}
 Binario original:                  ${target.url}
 SHA-256 del binario original:      ${target.sha256}
 
-FFmpeg es un programa aparte: puedes modificarlo, recompilarlo y sustituir
-estas bibliotecas (DLL/.so separadas) para usarlo por tu cuenta. ChamVa, por
-seguridad, solo ejecuta la compilación cuyo SHA-256 lleva fijado: trabaja con
-una copia propia en su carpeta de datos y la restaura desde aquí si cambia.
+FFmpeg es un programa aparte: ChamVa no lo enlaza, lo ejecuta como proceso.
+Sus bibliotecas son DLL compartidas (avcodec, avformat, avfilter, avdevice,
+avutil, swresample, swscale): puedes modificarlas, recompilarlas y
+sustituirlas para usar este FFmpeg por tu cuenta (el zip del Release trae
+también lib/ e include/). ChamVa, por seguridad, solo ejecuta la compilación
+cuyo SHA-256 lleva fijado: trabaja con una copia propia en su carpeta de datos
+y la restaura desde aquí si cambia.
 `,
 );
 // página de licencia del instalador: MIT de ChamVa + aviso de FFmpeg. UTF-8 SIN BOM: el bundler de

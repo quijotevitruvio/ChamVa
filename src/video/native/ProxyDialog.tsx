@@ -14,7 +14,7 @@ import {
   transcodeToProxy,
 } from './bridge';
 import { defaultProxyOptions, describeProbe, etaSeconds, formatBytes, formatEta, isProxyHeight, proxyFileName, qualityNotice } from './pure';
-import { FFMPEG_NOT_INCLUDED } from './FfmpegLicenseSection';
+import { unavailableText } from './FfmpegLicenseSection';
 import type { NativeStatus, ProbeInfo, ProgressInfo, ProxyOptions, SourceRef } from './types';
 
 type Step = 'intro' | 'probing' | 'ready' | 'run' | 'reading' | 'error' | 'missing';
@@ -36,6 +36,7 @@ const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), select:not(:disa
 export function ProxyDialog(p: Props) {
   const [step, setStep] = useState<Step>(p.missing ? 'missing' : 'intro');
   const [status, setStatus] = useState<NativeStatus | null>(null);
+  const [statusLoaded, setStatusLoaded] = useState(false);
   const [src, setSrc] = useState<SourceRef | null>(null);
   const [probe, setProbe] = useState<ProbeInfo | null>(null);
   const [opts, setOpts] = useState<ProxyOptions>({ height: '720', video: 'auto', tonemap: true });
@@ -50,7 +51,10 @@ export function ProxyDialog(p: Props) {
   const opener = useRef<Element | null>(typeof document !== 'undefined' ? document.activeElement : null);
 
   useEffect(() => {
-    void nativeStatus().then(setStatus);
+    void nativeStatus().then((v) => {
+      setStatus(v);
+      setStatusLoaded(true);
+    });
   }, []);
   useEffect(() => {
     root.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
@@ -237,7 +241,7 @@ export function ProxyDialog(p: Props) {
         {step === 'missing' && (
           <div className="vx-as-body">
             <p>Este formato no se puede abrir todavía en ChamVa; conviértelo a MP4 (H.264) con otro programa y vuelve a importarlo.</p>
-            <p>{FFMPEG_NOT_INCLUDED}</p>
+            {statusLoaded && <p data-testid="ffmpeg-unavailable">{unavailableText(status)}</p>}
             <div className="vx-as-actions">
               <button type="button" data-autofocus onClick={close}>Cerrar</button>
             </div>

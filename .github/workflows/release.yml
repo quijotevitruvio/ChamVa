@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest # NSIS .exe + .msi
-            args: ''
+          - platform: windows-latest # NSIS .exe + .msi, con el FFmpeg propio LGPL (docs/release-ffmpeg.md)
+            args: '--config src-tauri/tauri.ffmpeg.conf.json'
           - platform: ubuntu-22.04 # .deb + .rpm + .AppImage (22.04 = glibc compatible con más distros)
             args: ''
           - platform: macos-latest # .dmg universal (Intel + Apple Silicon)
@@ -50,6 +50,22 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # FFmpeg LGPL-2.1-or-later solo en Windows, del Release propio
+      # ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1 (público: se descarga sin token). La caché
+      # guarda el zip; el script lo verifica SIEMPRE (estado "ok" del manifiesto, SHA-256 del zip
+      # y de cada archivo, auditoría de licencias, -L y -buildconf) y sale con error si algo no
+      # cuadra: entonces falla el job de Windows y no se publica (Linux/macOS siguen).
+      - name: Caché del zip de FFmpeg (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg-cache
+          key: ffmpeg-lgpl-${{ runner.os }}-${{ hashFiles('src-tauri/ffmpeg-manifest.json') }}
+
+      - name: FFmpeg LGPL verificado (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: node scripts/fetch-ffmpeg.mjs --target x86_64-pc-windows-msvc --cache-dir "${{ runner.temp }}/ffmpeg-cache"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,6 +80,11 @@ jobs:
             - **Windows:** `.exe` (NSIS) o `.msi`
             - **Linux:** `.AppImage` (universal), `.deb` (Debian/Ubuntu) o `.rpm` (Fedora)
             - **macOS:** `.dmg` (Intel y Apple Silicon)
+
+            > El instalador de Windows incluye FFmpeg n9.0.2 (LGPL-2.1-or-later, programa aparte con DLL
+            > compartidas; avisos de cada biblioteca en la carpeta ffmpeg-licenses). Código fuente completo
+            > y binario exacto: https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1
+            > Linux y macOS no incluyen FFmpeg.
 
             > Windows puede mostrar SmartScreen ("editor desconocido"): Más información → Ejecutar de todas formas.
             > macOS: la app no está firmada; tras copiarla a Aplicaciones ejecuta

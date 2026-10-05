@@ -23,7 +23,7 @@ export interface NativeStatus {
   userInstallSupported: boolean;
   /** Release propio con el zip exacto y la fuente correspondiente (vacío si no hay build incluido) */
   sourceReleaseUrl: string;
-  /** false si esta versión de ChamVa no incluye un FFmpeg utilizable (v0.9.0) */
+  /** false si esta versión de ChamVa no incluye un FFmpeg utilizable en esta plataforma (solo lo trae Windows x64) */
   included: boolean;
   /** «verificar y omitir / reparar» de la copia propia de FFmpeg */
   install: InstallReport | null;

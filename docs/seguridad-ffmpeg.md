@@ -1,17 +1,17 @@
 # FFmpeg nativo en escritorio (V10): seguridad y licencia
 
-> **v0.9.0 se publica SIN FFmpeg.** El build BtbN fijado se descartó por licencias mixtas (ver
-> «Auditoría de licencias del binario»): `src-tauri/ffmpeg-manifest.json` lo marca
-> `"status": "blocked-license"`, `scripts/fetch-ffmpeg.mjs` se niega a descargarlo (código 8) y la
-> app no lo instala, no lo acepta a mano y no ejecuta ningún binario con sus SHA-256 (ni siquiera
-> en desarrollo). Sin FFmpeg válido el escritorio se comporta como web/Android: «nativo no
-> disponible» y la importación de v0.8.1. **v0.9.1** traerá un build propio
-> (`.github/workflows/ffmpeg-build.yml`, LGPL-2.1-or-later, lista blanca de bibliotecas en
-> `scripts/ffmpeg-allowed-libs.json` y auditoría automática `scripts/audit-ffmpeg-licenses.mjs`);
-> mientras no se compile, audite y publique, el manifiesto es una plantilla `"pending-build"`
-> (bloqueada) y los SHA-256 del build BtbN quedan en `revoked` (no se ejecutan nunca, con
-> cualquier estado). Procedimiento: `docs/release-ffmpeg.md`. Lo que sigue describe el mecanismo
-> (que se conserva) para ese build.
+> **Estado (2026-10-05, para v0.9.1): el instalador de Windows x64 incluye el FFmpeg PROPIO**,
+> LGPL-2.1-or-later, DLL compartidas, compilado desde la fuente por
+> `.github/workflows/ffmpeg-build.yml` (lista blanca `scripts/ffmpeg-allowed-libs.json`, auditoría
+> automática `scripts/audit-ffmpeg-licenses.mjs`) y publicado con su fuente completa en el Release
+> `ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1`
+> (https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1).
+> `src-tauri/ffmpeg-manifest.json` está en `"status": "ok"` con el SHA-256 del zip y de cada
+> archivo. macOS, Linux, Android y web **no** traen FFmpeg: la app dice «no disponible en esta
+> plataforma» y la importación funciona como en v0.8.1. v0.9.0 salió sin FFmpeg: el build BtbN
+> que se pensó usar tiene licencias mixtas (ver «Auditoría de licencias del build BtbN») y sus
+> SHA-256 siguen en `revoked`: no se ejecutan nunca, con cualquier estado del manifiesto.
+> Procedimiento: `docs/release-ffmpeg.md`.
 
 Solo escritorio (Windows/macOS/Linux con Tauri). En web y Android no existe nada de esto: la
 importación funciona como siempre. Código: `src-tauri/src/native_media/` (Rust) y
@@ -124,23 +124,55 @@ elegir rutas, binarios, argumentos, filtros, protocolos ni destinos.
 
 ## Licencia
 
-> **Estado (2026-10-05): la licencia efectiva del binario fijado NO es «LGPL» ni «GPL-2.0-or-later»
-> limpio** (ver «Auditoría de licencias del binario» abajo). **Decisión:** no se redistribuye. v0.9.0
-> sale sin FFmpeg y sin apuntar a ese binario; la app ya no afirma ninguna licencia de FFmpeg (dice
-> «La conversión con FFmpeg nativo no está incluida en esta versión; llegará en una próxima
-> actualización»). v0.9.1: build propio sin chromaprint ni zvbi.
+- **Build incluido (Windows x64):** FFmpeg `n9.0.2-22-g46d8f462ee` (commit
+  `46d8f462eeb87ee1f704d8c44a0ee24fca471ad1`), variante propia `win64-chamva-lgpl-shared`, zip
+  `ffmpeg-n9.0.2-22-g46d8f462ee-win64-chamva-lgpl-shared.zip`, SHA-256
+  `8df875058a37afa611deebbcb7ba6b31fe1f4afcc3a6d115fae35bd4462fbfa0` (coincide con el digest del
+  asset del Release, comprobado al descargarlo). Licencia **LGPL-2.1-or-later**: `-buildconf` con
+  `--disable-gpl --disable-nonfree --disable-version3 --disable-network`, sin chromaprint, zvbi,
+  aribb24, opencore-amr, gmp, mbedtls, x264, x265, xvid, vid.stab, fdk-aac, frei0r, avisynth,
+  rubberband ni openh264; `-L` declara «GNU Lesser General Public License … version 2.1 … or (at
+  your option) any later version».
+- **Bibliotecas enlazadas** (tabla con commit y SHA-256 de cada fuente en `SOURCES.md` del Release):
+  mingw-w64 runtime (ZPL-2.1/MIT/BSD), mingw-std-threads (BSD-2), libiconv (LGPL-2.1+), zlib
+  (Zlib), xz/liblzma (0BSD), dav1d (BSD-2), libvpx (BSD-3 + PATENTS), libopus (BSD-3), zimg (WTFPL),
+  y las cabeceras ffnvcodec (MIT), AMF (MIT) y libvpl (MIT). Todas LGPL-2.1+ o permisivas; runtime
+  de GCC con la GCC Runtime Library Exception. La auditoría automática (también dentro de
+  `fetch-ffmpeg.mjs`) pasa: «✓ Sin bibliotecas GPL ni incompatibles».
+- **DLL compartidas y reemplazables:** `avcodec-63`, `avdevice-63`, `avfilter-12`, `avformat-63`,
+  `avutil-61`, `swresample-7`, `swscale-10`, junto a `ffmpeg.exe`/`ffprobe.exe` en
+  `<programa>/ffmpeg/`. ffmpeg es un programa aparte (ChamVa no enlaza con él: lo lanza como
+  proceso). El usuario puede sustituir esas DLL y usar ese ffmpeg por su cuenta; ChamVa, por
+  seguridad, solo ejecuta los SHA-256 fijados (trabaja con su copia en la carpeta de datos y la
+  restaura desde el programa si cambia). El zip del Release trae además `lib/` e `include/` para
+  recompilar o enlazar.
+- **Avisos:** `<programa>/ffmpeg/LICENSE.txt` (LGPL v2.1) y `AVISO-FFMPEG.txt` (oferta de la fuente
+  con la URL exacta del Release, SHA-256 del zip original); `<programa>/ffmpeg-licenses/<biblioteca>/`
+  con la licencia de cada biblioteca (BSD/MIT exigen acompañar el binario con su aviso); y la
+  página de licencia de los instaladores NSIS y MSI (`binaries/LICENCIAS-INSTALADOR.txt`: MIT de
+  ChamVa + el mismo aviso). Los genera `scripts/fetch-ffmpeg.mjs`.
+- **Fuente completa y correspondiente:** Release `ffmpeg-lgpl-n9.0.2-22-g46d8f462ee-chamva1`
+  (prerelease, no «latest»): el zip exacto, FFmpeg en el commit exacto (`.tar.xz`), los scripts de
+  BtbN sin tocar y con el overlay de ChamVa (+ diff), los scripts de ChamVa, el Dockerfile
+  generado, la fuente de cada biblioteca (`ffmpeg-libs-sources.tar`), `SOURCES.md`, `SHA256SUMS`,
+  `audit.txt`, `BUILD-INFO.json` y `linked-dlls.txt`.
+- **En la app:** Ajustes → «FFmpeg (componente de terceros)» muestra la versión, la licencia que
+  declara el binario en uso, el estado de la copia propia, el texto de la licencia y el enlace a la
+  fuente; el pie del diálogo «Convertir para editar» enlaza también a la fuente. Si en Windows el
+  FFmpeg no se puede usar (copia dañada sin reparar, instalador sin FFmpeg…), se dice el motivo
+  real; en macOS/Linux, «no disponible en esta plataforma».
+- **Patentes:** H.264/AAC se codifican con el sistema (`h264_mf`, VideoToolbox) o con el AAC
+  nativo de FFmpeg; la alternativa libre es VP8 + Opus. El build propio no lleva openh264.
 
-- Build fijado: BtbN FFmpeg-Builds `autobuild-2026-10-04-20-51`, `n9.0.2-22-g46d8f462ee`,
-  variante BtbN «lgpl-shared» (DLL separadas). El nombre de la variante solo refleja que FFmpeg se
-  configuró sin `--enable-gpl`; no describe la licencia de las bibliotecas enlazadas.
-  Windows x64: `ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-shared-9.0.zip`, SHA-256
-  `feb93d768fe01ebb696d990c4f0c65add416c12e5e16fa73ad5643237e0e9e22` (coincide con el
-  `checksums.sha256` y con el digest de la API de GitHub). `-L`: LGPL v3 o posterior (lo que
-  imprime `-L` depende solo de `--enable-gpl/--enable-version3`, no de las bibliotecas).
-  `-buildconf`: `--enable-version3`, sin `--enable-gpl`/`--enable-nonfree`,
-  `--disable-libx264 --disable-libx265 --disable-libvidstab --disable-libfdk-aac --disable-libxvid`.
+### Auditoría de licencias del build BtbN descartado (v0.9.0)
 
-### Auditoría de licencias del binario (2026-10-05, verificada a mano)
+Contexto: el build BtbN `autobuild-2026-10-04-20-51` «lgpl-shared»
+(`ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-shared-9.0.zip`, SHA-256
+`feb93d768fe01ebb696d990c4f0c65add416c12e5e16fa73ad5643237e0e9e22`; `-L` LGPL v3,
+`--enable-version3`) se iba a incluir en v0.9.0. No se redistribuyó: lo que sigue explica por qué.
+Sus SHA-256 están en `revoked`.
+
+
 
 Método: zip descomprimido y comprobado por SHA-256 contra el manifiesto (los 9 archivos
 coinciden); `grep -a` sobre cada DLL/EXE; lectura de la fuente de cada biblioteca sospechosa en el
@@ -186,38 +218,34 @@ tar de fuentes (`ffmpeg-lgpl-libs-sources.tar`) y de los scripts de BtbN en el c
 5. Lo que **no** hay (comprobado en `-buildconf`): `--enable-gpl`, `--enable-nonfree`, x264, x265,
    xvid, vid.stab, fdk-aac, frei0r, avisynth, rubberband, davs2/xavs2, dvdread/dvdnav.
 
-Salida recomendada: build propio desde la misma fuente con **`--disable-chromaprint
---disable-libzvbi`** (ChamVa no usa ni huella acústica ni teletexto); con eso el conjunto vuelve a
-ser LGPL-3.0-or-later de verdad (comprobar de nuevo con `grep fftw` y la cadena `zvbi`).
-- gyan.dev «essentials/full» y los builds `gpl` de BtbN **no sirven** (llevan x264/x265 → GPL).
-- Aviso en la app (solo si hay un FFmpeg en uso): pie del diálogo «Convertir para editar» y
-  **Ajustes → «FFmpeg (componente de terceros)»** (versión, licencia que declara, estado de la copia
-  propia, texto de la licencia y enlace a la fuente). En v0.9.0 Ajustes → FFmpeg solo dice que no
-  está incluida. Aviso en el instalador (solo con `tauri.ffmpeg.conf.json`, que v0.9.0 no usa):
-  `scripts/fetch-ffmpeg.mjs` genera
-  `binaries/LICENCIAS-INSTALADOR.txt` (MIT de ChamVa + aviso FFmpeg con la oferta de fuente) que
-  `tauri.ffmpeg.conf.json` usa como `licenseFile`, y copia `LICENSE.txt` (LGPL v3) y
-  `AVISO-FFMPEG.txt` junto a los binarios.
-- Fuente completa: para el build de v0.9.1, un Release propio (manifiesto: `sourceRelease`) con el
-  binario exacto, FFmpeg en el commit exacto, los scripts del build y las fuentes de las bibliotecas
-  incluidas. El Release `ffmpeg-lgpl-n9.0.2-22-g46d8f462ee` previsto para el build BtbN **no se
-  publicó** (comprobado: no existe) y ya no se publicará; `sourceRelease` y `mirrors` se quitaron
-  del manifiesto. Procedimiento: `docs/release-ffmpeg.md`.
-- Patentes: H.264/AAC se codifican con el sistema (`h264_mf`, VideoToolbox) o con el AAC nativo de
-  FFmpeg; la alternativa libre es VP8 + Opus. El build incluye `libopenh264` compilado desde la
-  fuente (sin la cobertura de patentes de Cisco): ChamVa **no** lo usa.
+Salida adoptada: el build propio de arriba (misma fuente de FFmpeg, solo las bibliotecas de la
+lista blanca, sin chromaprint ni zvbi y sin `--enable-version3`). gyan.dev «essentials/full» y los
+builds `gpl` de BtbN **no sirven** (llevan x264/x265 → GPL). El Release
+`ffmpeg-lgpl-n9.0.2-22-g46d8f462ee` (sin `-chamva1`) previsto para el build BtbN nunca se publicó.
 
 ## Empaquetado
 
 Procedimiento completo (CI, local, actualizar versión, regenerar hashes, Release de fuentes):
-`docs/release-ffmpeg.md`. En v0.9.0 el CI (`.github/workflows/release.yml`) NO lo aplica: está
-como en v0.8.1; la versión con FFmpeg queda como referencia en `docs/release-ffmpeg.workflow.yml.txt`
-(no es un workflow). Sin ese paso el instalador sale sin FFmpeg y la app lo dice.
-`src-tauri/binaries/` está en `.gitignore`.
+`docs/release-ffmpeg.md`. `.github/workflows/release.yml` lo aplica **solo en `windows-latest`**:
+caché del zip por hash del manifiesto, `node scripts/fetch-ffmpeg.mjs --target
+x86_64-pc-windows-msvc` (descarga del Release propio, SHA-256 del zip y de cada archivo, auditoría,
+`-L`/`-buildconf`) y `--config src-tauri/tauri.ffmpeg.conf.json` en `tauri-action`. Si algo no
+cuadra, falla el job de Windows y no se publica su instalador (Linux y macOS siguen:
+`fail-fast: false`). `src-tauri/binaries/` está en `.gitignore`.
 
-## Sin probar
+## Probado y sin probar
 
-macOS (VideoToolbox, build universal), Linux (build estático lgpl, VA-API no se usa), Windows ARM,
-QSV/AMF (solo NVENC y MF funcionan en la máquina de prueba), la exportación por hardware de punta a
-punta y el flujo completo dentro de la app con el diálogo nativo (se probó la IPC real en la app
-y la conversión/cancelación con el ffmpeg real por separado).
+Probado (2026-10-05, Windows 11 x64, RTX 3060 Ti) con el build propio: instalador local con
+`tauri.ffmpeg.conf.json` (NSIS 35,1 MB y MSI 41,7 MB, antes 13,4 / 14,9 MB) con ffmpeg.exe,
+ffprobe.exe, las 7 DLL (SHA-256 del manifiesto), `LICENSE.txt`, `AVISO-FFMPEG.txt`,
+`ffmpeg-licenses/` y la página de licencia con la URL de la fuente; el `chamva.exe` de release
+(WebView2 aislado, por CDP): «installed» la primera vez, «skipped» la segunda sin reescribir
+nada, «repaired» con una DLL alterada, ausente o plantada, un build BtbN plantado en la carpeta de
+datos NO se ejecuta (con y sin sello copiado: «retirado por licencias»; con recursos, se repara),
+y sin recursos la app arranca normal. Probe y proxy (h264_mf y VP8) de clips HEVC (hevc_nvenc) y
+ProRes con la copia que preparó la app; progreso y cancelación con el mismo binario.
+
+Sin probar: instalar de verdad el NSIS/MSI (por usuario y por máquina) y actualizar desde v0.9.0,
+macOS (VideoToolbox, build universal), Linux, Windows ARM, Android, QSV/AMF (solo NVENC y MF
+funcionan en la máquina de prueba), la exportación por hardware de punta a punta y el flujo
+completo dentro de la app con el diálogo nativo.

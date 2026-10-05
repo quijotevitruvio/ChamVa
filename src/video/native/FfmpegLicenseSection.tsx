@@ -1,14 +1,27 @@
-// Sección «FFmpeg» de Ajustes (solo escritorio). v0.9.0 no incluye FFmpeg (el
-// build BtbN se descartó por licencias mixtas): se dice tal cual, sin URL, hash
-// ni carpeta para instalarlo a mano. Si algún día hay un build incluido, se
-// muestra la versión, la licencia que declara y el estado de la copia propia.
+// Sección «FFmpeg» de Ajustes (solo escritorio). Desde v0.9.1 el instalador de
+// Windows x64 incluye el build propio de FFmpeg (LGPL-2.1-or-later, DLL compartidas,
+// fuente en el Release propio): se muestra la versión, la licencia que declara el
+// binario, el enlace a la fuente y el estado de la copia propia. En macOS/Linux no
+// hay FFmpeg: se dice «no disponible en esta plataforma», sin URL, hash ni carpeta.
 import { useEffect, useState } from 'react';
 import { externalClick } from '../../io/openExternal';
 import { isNativeDesktop, nativeStatus } from './bridge';
 import type { NativeStatus } from './types';
 
-/** Texto para el usuario cuando esta versión no trae FFmpeg nativo. */
-export const FFMPEG_NOT_INCLUDED = 'La conversión con FFmpeg nativo no está incluida en esta versión; llegará en una próxima actualización.';
+/** Texto para el usuario cuando esta plataforma no trae FFmpeg nativo (web, Android, macOS, Linux). */
+export const FFMPEG_NOT_AVAILABLE = 'La conversión con FFmpeg nativo no está disponible en esta plataforma.';
+
+/**
+ * Por qué no hay FFmpeg nativo, dicho con honestidad: sin estado (web/Android) o sin
+ * build incluido → «no disponible en esta plataforma»; con build incluido pero sin poder
+ * usarlo (copia dañada, instalador sin FFmpeg…) → el motivo real. `null` si está disponible.
+ */
+export function unavailableText(s: NativeStatus | null): string | null {
+  if (!s || !s.included) return FFMPEG_NOT_AVAILABLE;
+  if (s.available) return null;
+  const why = (s.reason ?? '').trim().replace(/\.$/, '');
+  return why ? `FFmpeg no se puede usar ahora: ${why}.` : 'FFmpeg no se puede usar ahora.';
+}
 
 export function installLine(s: NativeStatus): string | null {
   const i = s.install;
@@ -39,12 +52,14 @@ export function FfmpegLicenseSection() {
   }, []);
   if (!isNativeDesktop() || !s) return null;
   if (!s.included || !s.available) {
+    const line = s.included ? installLine(s) : null;
     return (
       <div className="settings-section" data-testid="ffmpeg-license">
         <span className="settings-label">FFmpeg</span>
         <p className="support-desc" data-testid="ffmpeg-not-included">
-          {FFMPEG_NOT_INCLUDED} Mientras tanto, los videos que ChamVa no abre se pueden convertir a MP4 (H.264) con otro programa. El resto de ChamVa funciona igual.
+          {unavailableText(s)} Los videos que ChamVa no abre se pueden convertir a MP4 (H.264) con otro programa. El resto de ChamVa funciona igual.
         </p>
+        {line && <p className="support-desc" data-testid="ffmpeg-install">{line}</p>}
       </div>
     );
   }
@@ -54,7 +69,7 @@ export function FfmpegLicenseSection() {
     <div className="settings-section" data-testid="ffmpeg-license">
       <span className="settings-label">FFmpeg (componente de terceros)</span>
       <p className="support-desc">
-        ChamVa usa FFmpeg {ver} para convertir video: un programa aparte, con su propia licencia{s.license ? ` (declara ${s.license})` : ''}.
+        ChamVa usa FFmpeg {ver} para convertir video: un programa aparte (no enlazado con ChamVa), con su propia licencia{s.license ? ` (declara ${s.license})` : ''}. Sus bibliotecas son DLL compartidas que se pueden sustituir; las licencias de cada una van en la carpeta ffmpeg-licenses del programa.
       </p>
       {line && <p className="support-desc" data-testid="ffmpeg-install">{line}</p>}
       {s.sourceReleaseUrl && (
