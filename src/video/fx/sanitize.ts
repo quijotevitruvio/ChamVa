@@ -6,7 +6,8 @@ import { clampTransDur } from './transitions';
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isFin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-export const BLEND_MODES: BlendMode[] = ['normal', 'multiply', 'screen', 'overlay', 'add', 'difference', 'darken', 'lighten', 'softlight', 'hardlight', 'dodge', 'burn', 'exclusion'];
+export { BLEND_MODES } from '../../editor/core/blend';
+import { BLEND_MODES } from '../../editor/core/blend';
 export const sanitizeBlend = (v: unknown): BlendMode | undefined => (BLEND_MODES.includes(v as BlendMode) && v !== 'normal' ? (v as BlendMode) : undefined);
 
 const EASES = ['linear', 'smooth', 'in', 'out', 'bounce', 'bezier'];

@@ -31,16 +31,8 @@ import './props-extra.css';
 import { StrokeGradient } from './StrokeGradient';
 import { SharedStyles } from './SharedStyles';
 import { Constraints } from './Constraints';
+import { LayerBlendButton } from './BlendPicker';
 
-const BLEND_MODES = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten'] as const;
-const BLEND_LABEL: Record<(typeof BLEND_MODES)[number], string> = {
-  normal: 'Normal',
-  multiply: 'Multiplicar',
-  screen: 'Trama',
-  overlay: 'Superponer',
-  darken: 'Oscurecer',
-  lighten: 'Aclarar',
-};
 
 // Sección plegable; recuerda si el usuario la dejó abierta o cerrada.
 function Section({
@@ -302,24 +294,13 @@ export function PropertiesPanel(p: Props) {
             0,
             1,
             0.01,
-            (v) => updateLayerLive(selected.id, { opacity: v }),
+            (v) => useEditor.getState().setOpacityLive(v),
             `${Math.round(selected.opacity * 100)}%`,
           )}
-          <label className="prop">
-            Mezcla
-            <select
-              value={selected.blendMode}
-              onChange={(e) =>
-                updateLayer(selected.id, { blendMode: e.target.value as (typeof BLEND_MODES)[number] })
-              }
-            >
-              {BLEND_MODES.map((m) => (
-                <option key={m} value={m}>
-                  {BLEND_LABEL[m]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="prop-blend">
+            <span id="prop-blend-label">{t('Fusión')}</span>
+            <LayerBlendButton />
+          </div>
           {!multi && (
             <>
               <span className="rail-sub">Alinear en la página</span>

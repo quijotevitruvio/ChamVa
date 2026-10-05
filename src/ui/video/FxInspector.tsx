@@ -5,11 +5,11 @@ import { applyEase, cubicBezier, DEFAULT_BEZIER, EASE_IDS, EASE_LABELS } from '.
 import { FX_CATEGORIES, FX_DEFS, fxDef, type FxDef, type ParamDef } from '../../video/fx/effects';
 import { addFxOfType, addKeyAtPlayhead, applyPreset, baseValue, clearClipKeys, copyKeys, fxProp, junctionSpec, moveFx, pasteClipKeys, removeFx, removeKeyAt, setBlend, setJunctionTransition, setPropValue, setTransition, updateFx, updateKeyAt, updateTransition, valueNow } from '../../video/fx/clipOps';
 import { ANIM_PRESETS, INTERPS, INTERP_LABEL, PROP_LABEL } from '../../video/fx/keyframes';
-import { BLEND_MODES } from '../../video/fx/sanitize';
+import { BlendButton } from '../BlendPicker';
 import { areJoined, junctionOf, makeTransition, TRANSITIONS, type TransGroup } from '../../video/fx/transitions';
 import { CurveEditor } from './CurveEditor';
 import { Field } from './Field';
-import { BLEND_LABEL, keyIndexAt, neighborKey, propLabel } from './fxUi';
+import { keyIndexAt, neighborKey, propLabel } from './fxUi';
 import type { PreviewEngine } from './previewEngine';
 
 export type KeyClipboard = { prop: string; keys: VM.Keyframe[] }[];
@@ -274,14 +274,8 @@ export function EffectsSection({ ctx }: { ctx: FxCtx }) {
       </div>
       {clip.kind !== 'adjust' && (
         <div className="vx-field wide">
-          <label htmlFor="vx-blend">Fusión</label>
-          <select id="vx-blend" value={clip.blend ?? 'normal'} disabled={locked} onChange={(e) => commit((p) => setBlend(p, clip.id, e.target.value as VM.BlendMode))}>
-            {BLEND_MODES.map((m) => (
-              <option key={m} value={m}>
-                {BLEND_LABEL[m]}
-              </option>
-            ))}
-          </select>
+          <span id="vx-blend">Fusión</span>
+          <BlendButton value={clip.blend ?? 'normal'} onCommit={(m) => commit((p) => setBlend(p, clip.id, m))} className="vx-blend-btn" disabled={locked} />
         </div>
       )}
     </details>

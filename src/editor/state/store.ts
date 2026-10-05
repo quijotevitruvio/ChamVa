@@ -150,6 +150,22 @@ function patchLayer(l: Layer, patch: Partial<Layer>): Layer {
   return { ...l, ...patch } as Layer;
 }
 
+// Fusión: capas afectadas (ids dados o la selección, extendida a su grupo) y vista previa temporal.
+let blendPreviewOrig: Record<string, BlendMode> | null = null;
+function blendTargets(s: { doc: Doc; selectedIds: string[]; selectedId: string | null }, ids?: string[]): Set<string> {
+  const base = ids ?? (s.selectedIds.length ? s.selectedIds : s.selectedId ? [s.selectedId] : []);
+  const out = new Set(base);
+  const groups = new Set(s.doc.layers.filter((l) => out.has(l.id) && l.groupId).map((l) => l.groupId));
+  for (const l of s.doc.layers) if (l.groupId && groups.has(l.groupId)) out.add(l.id);
+  return out;
+}
+function restoreBlends(doc: Doc, orig: Record<string, BlendMode>): Doc {
+  return {
+    ...doc,
+    layers: doc.layers.map((l) => (l.id in orig && l.blendMode !== orig[l.id] ? ({ ...l, blendMode: orig[l.id] } as Layer) : l)),
+  };
+}
+
 // Lote de cambios con UN solo paso de deshacer (arrastrar o transformar un
 // grupo actualiza varias capas). Se cierra solo tras 15 s por seguridad.
 let batching = false;
@@ -416,6 +432,14 @@ export interface EditorState {
   reorderLayers: (orderBottomFirst: string[]) => void;
   updateLayer: (id: string, patch: Partial<Layer>) => void;
   updateLayerLive: (id: string, patch: Partial<Layer>) => void; // sin historial
+  // Fusión sobre la selección (o los ids dados): un gesto = un paso de deshacer.
+  setBlendMode: (mode: BlendMode, ids?: string[]) => void;
+  /** Vista previa temporal (sin historial): se revierte con cancelBlendPreview. */
+  previewBlendMode: (mode: BlendMode, ids?: string[]) => void;
+  cancelBlendPreview: () => void;
+  /** Opacidad en vivo (sin historial) de la selección y sus grupos; usa checkpoint() antes. */
+  setOpacityLive: (v: number, ids?: string[]) => void;
+  selectAll: () => void;
   // Rota la capa a `deg` grados girando alrededor de su centro (no de la
   // esquina). live=true no guarda historial (para el arrastre del slider).
   setLayerRotation: (id: string, deg: number, live?: boolean) => void;
@@ -1581,6 +1605,55 @@ export const useEditor = create<EditorState>((set, get) => ({
         layers: s.doc.layers.map((l) => (l.id === id ? patchLayer(l, patch) : l)),
       }),
     ),
+
+  setBlendMode: (mode, ids) =>
+    set((s) => {
+      const targets = blendTargets(s, ids);
+      const restore = blendPreviewOrig; // si hay vista previa, el punto de deshacer parte del original
+      blendPreviewOrig = null;
+      const base = restore ? restoreBlends(s.doc, restore) : s.doc;
+      const layers = base.layers.map((l) => (targets.has(l.id) ? ({ ...l, blendMode: mode } as Layer) : l));
+      const changed = layers.some((l, i) => l !== base.layers[i] && base.layers[i].blendMode !== mode);
+      if (!changed) return base === s.doc ? {} : { doc: base };
+      const doc = { ...base, layers };
+      if (batching) return { doc };
+      return { doc, past: [...s.past, base].slice(-HISTORY_LIMIT), future: [] };
+    }),
+
+  previewBlendMode: (mode, ids) =>
+    set((s) => {
+      const targets = blendTargets(s, ids);
+      if (!blendPreviewOrig) {
+        blendPreviewOrig = {};
+        for (const l of s.doc.layers) if (targets.has(l.id)) blendPreviewOrig[l.id] = l.blendMode;
+      }
+      const layers = s.doc.layers.map((l) =>
+        targets.has(l.id) && l.blendMode !== mode ? ({ ...l, blendMode: mode } as Layer) : l,
+      );
+      return { doc: { ...s.doc, layers } };
+    }),
+
+  cancelBlendPreview: () =>
+    set((s) => {
+      if (!blendPreviewOrig) return {};
+      const orig = blendPreviewOrig;
+      blendPreviewOrig = null;
+      return { doc: restoreBlends(s.doc, orig) };
+    }),
+
+  setOpacityLive: (v, ids) =>
+    set((s) => {
+      const targets = blendTargets(s, ids);
+      const o = Math.min(1, Math.max(0, v));
+      return { doc: { ...s.doc, layers: s.doc.layers.map((l) => (targets.has(l.id) ? ({ ...l, opacity: o } as Layer) : l)) } };
+    }),
+
+  selectAll: () =>
+    set((s) => {
+      const ids = s.doc.layers.filter((l) => l.visible && !l.locked).map((l) => l.id);
+      if (!ids.length) return {};
+      return { selectedIds: ids, selectedId: ids[ids.length - 1], textSel: null };
+    }),
 
   setLayerRotation: (id, deg, live) =>
     set((s) => {

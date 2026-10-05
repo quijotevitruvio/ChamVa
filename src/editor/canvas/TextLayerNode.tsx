@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { blendOpOrUndefined } from '../core/blend';
 import { Text as KonvaText, Shape as KonvaShape } from 'react-konva';
 import type Konva from 'konva';
 import { konvaFontStyle, displayText, type TextLayer } from '../core/types';
@@ -68,7 +69,7 @@ export function TextLayerNode({ layer, registerRef }: Props) {
     opacity: editing ? 0 : layer.opacity,
     draggable: selecting && !locked && !editing,
     globalCompositeOperation:
-      layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
+      blendOpOrUndefined(layer.blendMode),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>
       clickSelect(layer.id, e.evt.shiftKey),
     onTap: () => clickSelect(layer.id, false),

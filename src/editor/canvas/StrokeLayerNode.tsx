@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { blendOpOrUndefined } from '../core/blend';
 import { Shape as KonvaShape } from 'react-konva';
 import type Konva from 'konva';
 import type { StrokeLayer } from '../core/types';
@@ -42,7 +43,7 @@ export function StrokeLayerNode({ layer, registerRef }: Props) {
       fill="#000" // solo para que Konva dibuje la zona de clic; el trazo se pinta en sceneFunc
       listening={!drawing}
       draggable={!drawing && !isLayerLocked({ locked: pageLocked }, layer)}
-      globalCompositeOperation={layer.blendMode === 'normal' ? undefined : (layer.blendMode as any)}
+      globalCompositeOperation={blendOpOrUndefined(layer.blendMode)}
       sceneFunc={(ctx) => {
         const c = (ctx as any)._context as CanvasRenderingContext2D;
         drawStroke(c, layer, prims);

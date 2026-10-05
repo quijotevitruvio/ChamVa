@@ -4,7 +4,8 @@
 // proyecto migrado salga idéntico píxel a píxel.
 import { clipAudioFx } from '../model/effects';
 import { clipDuration, clipEnd, clipFadeAlpha, clipsAt, effectiveEnd, isIdentityTransform, videoTracksBottomUp } from '../model/query';
-import type { BlendMode, Clip, Track, VideoProject } from '../model/types';
+import { blendOp } from '../../editor/core/blend';
+import type { Clip, Track, VideoProject } from '../model/types';
 import { activeFx } from '../fx/effects';
 import { applyFxStack, type Box } from '../fx/fxDraw';
 import { fxAt, transformAt, volumeAt } from '../fx/keyframes';
@@ -157,21 +158,6 @@ export interface ComposeSources {
   image(clip: Clip): StillImage | null;
 }
 
-const BLEND_OP: Record<BlendMode, GlobalCompositeOperation> = {
-  normal: 'source-over',
-  multiply: 'multiply',
-  screen: 'screen',
-  overlay: 'overlay',
-  add: 'lighter',
-  difference: 'difference',
-  darken: 'darken',
-  lighten: 'lighten',
-  softlight: 'soft-light',
-  hardlight: 'hard-light',
-  dodge: 'color-dodge',
-  burn: 'color-burn',
-  exclusion: 'exclusion',
-};
 
 /** Semilla de ruido animado: cambia 24 veces por segundo (misma para vista previa y exportación). */
 export const fxSeed = (t: number) => Math.floor(t * 24 + 1e-6);
@@ -300,7 +286,7 @@ function drawSingle(g: FrameCtx, clip: Clip, track: Track | undefined) {
   }
   const layer = renderLayer(g, 'layer', clip, track, false);
   g.main.save();
-  if (blend) g.main.globalCompositeOperation = BLEND_OP[blend];
+  if (blend) g.main.globalCompositeOperation = blendOp(blend);
   g.main.drawImage(layer.canvas as CanvasImageSource, 0, 0);
   g.main.restore();
 }

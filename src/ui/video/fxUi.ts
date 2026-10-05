@@ -42,21 +42,8 @@ export function decodePayload(raw: string): FxPayload | null {
   return null;
 }
 
-export const BLEND_LABEL: Record<VM.BlendMode, string> = {
-  normal: 'Normal',
-  multiply: 'Multiplicar',
-  screen: 'Trama',
-  overlay: 'Superponer',
-  add: 'Sumar',
-  difference: 'Diferencia',
-  darken: 'Oscurecer',
-  lighten: 'Aclarar',
-  softlight: 'Luz suave',
-  hardlight: 'Luz fuerte',
-  dodge: 'Sobreexponer color',
-  burn: 'Subexponer color',
-  exclusion: 'Exclusión',
-};
+export { BLEND_LABEL } from '../../editor/core/blend';
+import { BLEND_LABEL } from '../../editor/core/blend';
 
 export const payloadLabel = (p: FxPayload): string => {
   switch (p.kind) {

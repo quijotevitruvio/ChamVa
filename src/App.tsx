@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useEditor } from './editor/state/store';
 import { isLayerLocked, exportablePages, exportableCount, ALL_HIDDEN_MSG } from './editor/core/pageOps';
 import { EditorCanvas, isTypingTarget } from './editor/canvas/EditorCanvas';
@@ -69,6 +69,11 @@ import { SizeMenu } from './ui/SizeMenu';
 import { sizeLabel } from './ui/sizeFieldsLogic';
 import { DownloadMenu, type Fmt } from './ui/DownloadMenu';
 import { ContextMenu, FloatToolbar } from './ui/SelectionMenus';
+import { LayerBlendMenu } from './ui/BlendPicker';
+import { StatusBar } from './ui/StatusBar';
+import { useCtxMenu, useLongPress } from './ui/ctxMenuStore';
+import { applyBlendKey, flushBlendKey } from './editor/state/blendKeys';
+import { BLEND_MODES, BLEND_LABEL, blendActionId, blendFromActionId, blendInfo } from './editor/core/blend';
 import { PageBar } from './ui/PageBar';
 import { getStyleSource, setStyleSource } from './editor/core/styleClipboard';
 import { UpdateBanner } from './ui/UpdateBanner';
@@ -161,8 +166,11 @@ export default function App() {
   const pageIndex = useEditor((s) => s.pageIndex);
   const newDesign = useEditor((s) => s.newDesign);
   const loadPages = useEditor((s) => s.loadPages);
-  const undo = useEditor((s) => s.undo);
-  const redo = useEditor((s) => s.redo);
+  const undoRaw = useEditor((s) => s.undo);
+  const redoRaw = useEditor((s) => s.redo);
+  // Una pausa de fusión por teclado pendiente se confirma antes de deshacer/rehacer.
+  const undo = useCallback(() => { flushBlendKey(); undoRaw(); }, [undoRaw]);
+  const redo = useCallback(() => { flushBlendKey(); redoRaw(); }, [redoRaw]);
   const editingTextId = useEditor((s) => s.editingTextId);
   useLang(); // re-renderiza al cambiar el idioma
   useShortcuts(); // y al cambiar los atajos (paleta y tooltips)
@@ -235,7 +243,17 @@ export default function App() {
     layerId?: string;
     initial: { chart?: ChartSpec; table?: TableSpec };
   } | null>(null);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [blendMenu, setBlendMenu] = useState(false);
+  // Pulsación larga en táctil sobre el lienzo (con el puntero): abre el menú contextual.
+  const longPress = useLongPress((x, y) => {
+    if (useTool.getState().tool === 'select') useCtxMenu.getState().show({ x, y });
+  });
+  const canvasLongPress = {
+    ...longPress,
+    onPointerDown: (e: React.PointerEvent) => {
+      if ((e.target as HTMLElement).closest?.('.canvas-area')) longPress.onPointerDown(e);
+    },
+  };
   const [maskSession, setMaskSession] = useState<{
     layer: ImageLayer;
     onApply: (dataUrl: string) => void;
@@ -333,7 +351,7 @@ export default function App() {
     setMaskSession(null);
     setBgPreview(null);
     setChartDialog(null);
-    setCtxMenu(null);
+    useCtxMenu.getState().hide();
     const d = useEditor.getState().doc;
     setCustomW(String(d.width));
     setCustomH(String(d.height));
@@ -432,6 +450,22 @@ export default function App() {
     return () => clearTimeout(id);
   }, [showHome]);
 
+  // Copiar/pegar internos (atajos y menú contextual comparten la misma lógica).
+  const copySelected = () => {
+    const st = useEditor.getState();
+    const l = st.doc.layers.find((x) => x.id === st.selectedId);
+    if (!l) return;
+    clipLayer.current = l;
+    setStyleSource(l);
+    leftAppSinceCopy.current = false;
+  };
+  const pasteFromMenu = () => {
+    if (clipLayer.current) useEditor.getState().pasteLayer(clipLayer.current);
+    else toast('Copia una capa primero, o usa Ctrl+V para pegar una imagen o texto del portapapeles.', 'info');
+  };
+  const copySelectedRef = useRef(copySelected);
+  copySelectedRef.current = copySelected;
+
   // ---- atajos globales ----
   const newTabHomeRef = useRef(() => {});
   const requestCloseTabRef = useRef(async (_id: string) => {});
@@ -457,7 +491,17 @@ export default function App() {
       }
       // Atajos personalizables: el registro (editor/core/shortcuts.ts) dice qué acción es.
       const act = actionForEvent(e);
-      if (act === 'palette') {
+      const blendMode = act ? blendFromActionId(act) : null;
+      if (act === 'selectAll') {
+        if (document.querySelector('.vx-root')) return;
+        e.preventDefault();
+        st.selectAll();
+      } else if (act === 'blendNext' || act === 'blendPrev' || blendMode) {
+        // Fusión de la capa o capas seleccionadas (el editor de video usa su propio panel).
+        if (document.querySelector('.vx-root')) return;
+        e.preventDefault();
+        if (!applyBlendKey(blendMode ?? (act === 'blendNext' ? 'next' : 'prev'))) toast('Selecciona una capa para cambiar su fusión.', 'info');
+      } else if (act === 'palette') {
         e.preventDefault();
         setShowPalette((v) => !v);
       } else if (act === 'newTab') {
@@ -501,12 +545,7 @@ export default function App() {
         e.preventDefault();
         if (selectedId) st.duplicateLayer(selectedId);
       } else if (act === 'copy') {
-        const l = st.doc.layers.find((x) => x.id === st.selectedId);
-        if (l) {
-          clipLayer.current = l;
-          setStyleSource(l);
-          leftAppSinceCopy.current = false;
-        }
+        copySelectedRef.current();
       } else if (act === 'paste') {
         // El pegado (capa interna, imagen o texto del portapapeles) lo decide el
         // evento 'paste' (más abajo): aquí NO se cancela para que el navegador lo emita.
@@ -535,17 +574,20 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo, pasteLayer, selectedId]);
 
-  // Cerrar el menú contextual al hacer clic fuera o desplazarse.
+  // El menú contextual se cierra al hacer clic fuera, desplazarse o con Esc/✕ (useDismiss).
+  const ctxOpen = useCtxMenu((s) => s.open);
   useEffect(() => {
-    if (!ctxMenu) return;
-    const close = () => setCtxMenu(null);
+    if (!ctxOpen) return;
+    const close = () => {
+      if (Date.now() - useCtxMenu.getState().openedAt > 350) useCtxMenu.getState().hide();
+    };
     window.addEventListener('click', close);
     window.addEventListener('scroll', close, true);
     return () => {
       window.removeEventListener('click', close);
       window.removeEventListener('scroll', close, true);
     };
-  }, [ctxMenu]);
+  }, [ctxOpen]);
 
   // ---- arranque: hidratar, almacenamiento persistente, GC de imágenes ----
   useEffect(() => {
@@ -1310,6 +1352,18 @@ export default function App() {
           keywords: 'cursor puntero seleccionar mano mover zoom lupa texto forma rectangulo elipse linea pincel borrador',
         }),
       ),
+      c('Editar', 'select-all', 'Seleccionar todo', () => st.selectAll(), { shortcut: getShortcut('selectAll'), keywords: 'todas las capas' }),
+      c('Fusión', 'blend-open', 'Fusión: elegir modo…', () => (selectedId ? setBlendMenu(true) : toast('Selecciona una capa para cambiar su fusión.', 'info')), {
+        keywords: 'mezcla blend modo multiplicar pantalla superponer opacidad',
+      }),
+      c('Fusión', 'blend-next', 'Fusión: modo siguiente', () => applyBlendKey('next'), { shortcut: getShortcut('blendNext'), keywords: 'mezcla blend' }),
+      c('Fusión', 'blend-prev', 'Fusión: modo anterior', () => applyBlendKey('prev'), { shortcut: getShortcut('blendPrev'), keywords: 'mezcla blend' }),
+      ...BLEND_MODES.map((m) =>
+        c('Fusión', `blend-${m}`, m === 'normal' ? 'Fusión: volver a Normal' : `Fusión: ${BLEND_LABEL[m].toLowerCase()}`, () => {
+          if (!selectedId) return toast('Selecciona una capa para cambiar su fusión.', 'info');
+          st.setBlendMode(m);
+        }, { shortcut: getShortcut(blendActionId(m)), keywords: `mezcla blend modo ${blendInfo(m).keywords}` }),
+      ),
       c('Ayuda', 'shortcuts', 'Atajos de teclado', () => setShowShortcuts(true), { shortcut: getShortcut('shortcuts') }),
       c('Ayuda', 'settings', 'Ajustes y licencia', () => setShowSettings(true), { keywords: 'idioma tema actualizaciones donantes' }),
       c('Ayuda', 'tour', 'Ver el recorrido de bienvenida', () => setShowTour(true), { keywords: 'tutorial guia ayuda' }),
@@ -1416,18 +1470,18 @@ export default function App() {
           )}
         </div>
 
-        <div className="group">
-          <button disabled={past.length === 0 && !canStructUndo} onClick={undo} title="Ctrl+Z">
-            ↩ {t('Deshacer')}
+        <div className="group undo-group">
+          <button disabled={past.length === 0 && !canStructUndo} onClick={undo} title={`${t('Deshacer')} (${getShortcut('undo')})`} aria-label={`${t('Deshacer')} (${getShortcut('undo')})`} data-testid="undo-btn">
+            ↩ <span className="undo-label">{t('Deshacer')}</span>
           </button>
-          <button disabled={future.length === 0} onClick={redo} title="Ctrl+Y">
-            ↪ {t('Rehacer')}
+          <button disabled={future.length === 0} onClick={redo} title={`${t('Rehacer')} (${getShortcut('redo')})`} aria-label={`${t('Rehacer')} (${getShortcut('redo')})`} data-testid="redo-btn">
+            ↪ <span className="undo-label">{t('Rehacer')}</span>
           </button>
           <span className="menu-wrap">
             <button
               className={showHistory ? 'active' : ''}
               onClick={() => setShowHistory((v) => !v)}
-              title="Historial de cambios: vuelve a cualquier paso"
+              title={`${t('Historial de cambios: vuelve a cualquier paso')} (${getShortcut('undo')} / ${getShortcut('redo')})`}
               aria-label="Historial de cambios"
             >
               ⏱
@@ -1440,7 +1494,7 @@ export default function App() {
           </span>
         </div>
 
-        <button onClick={() => setShowPalette(true)} title="Buscar cualquier acción (Ctrl+K)" className="palette-btn">
+        <button onClick={() => setShowPalette(true)} title={`${t('Buscar cualquier acción')} (${getShortcut('palette')})`} className="palette-btn">
           ⌕ {t('Buscar')}
         </button>
 
@@ -1456,7 +1510,7 @@ export default function App() {
               <button onClick={() => setShowVideo(true)}>🎬 {t('Editor de video')}</button>
               <button onClick={playAnimations}>▶ {t('Previsualizar animaciones')}</button>
               <button onClick={startPresent}>🖥 {t('Modo presentación')}</button>
-              <button onClick={() => setShowShortcuts(true)}>⌨ {t('Atajos de teclado')}</button>
+              <button onClick={() => setShowShortcuts(true)} title={`${t('Atajos de teclado')} (${getShortcut('shortcuts')})`}>⌨ {t('Atajos de teclado')}</button>
               <button onClick={() => setShowSettings(true)} disabled={offlineBusy}>
                 ⬇ {t('Usar sin internet')}…
               </button>
@@ -1572,10 +1626,12 @@ export default function App() {
           }
         }}
         onContextMenu={(e) => {
-          if (!selected || showHome || showVideo) return;
+          // Solo sobre el lienzo (los paneles conservan su menú nativo).
+          if (showHome || showVideo || !(e.target as HTMLElement).closest?.('.canvas-area')) return;
           e.preventDefault();
-          setCtxMenu({ x: e.clientX, y: e.clientY });
+          useCtxMenu.getState().show({ x: e.clientX, y: e.clientY });
         }}
+        {...canvasLongPress}
       >
         <RailPanels
           fileRef={fileRef}
@@ -1645,7 +1701,8 @@ export default function App() {
         </button>
       )}
 
-      {ctxMenu && selected && <ContextMenu selected={selected} pos={ctxMenu} onClose={() => setCtxMenu(null)} />}
+      <ContextMenu onCopy={copySelected} onPaste={pasteFromMenu} canPaste={() => !!clipLayer.current} />
+      {blendMenu && <LayerBlendMenu anchor={null} onClose={() => setBlendMenu(false)} />}
 
       {selRect && selected && !cropMode && !maskSession && !editingTextId && !sheetOpen && (
         <FloatToolbar
@@ -1658,6 +1715,7 @@ export default function App() {
       )}
 
       <PageBar onShowShortcuts={() => setShowShortcuts(true)} />
+      {!showHome && <StatusBar />}
       <TouchRuntime />
 
       <Suspense fallback={lazyFallback}>

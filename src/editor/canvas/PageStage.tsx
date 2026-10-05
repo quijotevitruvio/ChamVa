@@ -3,6 +3,7 @@ import {
   Stage,
   Layer,
   Rect,
+  Group,
   Transformer,
   Line,
   Label,
@@ -752,6 +753,10 @@ export function PageStage({
             fillPatternImage={checker as unknown as HTMLImageElement}
             fillPatternRepeat="repeat"
           />
+        </Layer>
+        <Layer>
+          {/* El fondo va en la MISMA capa de Konva que los elementos: así los modos de fusión se mezclan con él (igual que la exportación). */}
+          <Group listening={false}>
           {doc.background.type === 'solid' && (
             <Rect
               width={doc.width}
@@ -777,8 +782,7 @@ export function PageStage({
             <GrainBg grain={doc.background.grain} w={doc.width} h={doc.height} />
           )}
           <MasterBackdrop />
-        </Layer>
-        <Layer>
+          </Group>
           {doc.layers.map((layer) => {
             if (layer.type === 'image')
               return (

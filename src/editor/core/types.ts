@@ -5,13 +5,9 @@ import type { ChartSpec, TableSpec } from './charts';
 // El diseño NO se guarda como imagen, sino como este JSON de capas.
 // Render y exportación son funciones que reciben este Doc y producen píxeles/vectores.
 
-export type BlendMode =
-  | 'normal'
-  | 'multiply'
-  | 'screen'
-  | 'overlay'
-  | 'darken'
-  | 'lighten';
+// Los modos de fusión viven en blend.ts (lienzo, exportación y video los comparten).
+import type { BlendMode } from './blend';
+export type { BlendMode };
 
 export interface LayerBase {
   id: string;

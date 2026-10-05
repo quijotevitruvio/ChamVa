@@ -139,7 +139,8 @@ export interface SubtitleStyle {
 // ---- V6: transiciones, efectos y keyframes (campos aditivos: el formato sigue siendo `v: 2`) ----
 
 /** Modos de fusión de un clip con lo que hay debajo (`globalCompositeOperation` del lienzo). */
-export type BlendMode = 'normal' | 'multiply' | 'screen' | 'overlay' | 'add' | 'difference' | 'darken' | 'lighten' | 'softlight' | 'hardlight' | 'dodge' | 'burn' | 'exclusion';
+export type { BlendMode } from '../../editor/core/blend';
+import type { BlendMode } from '../../editor/core/blend';
 
 /** Curva de aceleración: lineal, suave, entrada, salida, rebote o bézier cúbica (`bz` = x1,y1,x2,y2 como en CSS). */
 export type EaseId = 'linear' | 'smooth' | 'in' | 'out' | 'bounce' | 'bezier';

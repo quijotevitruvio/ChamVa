@@ -1852,6 +1852,15 @@ ul.layers .name {
   display: flex;
   flex-direction: column;
 }
+.ctx-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 4px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.ctx-head .modal-x { position: static; width: 28px; height: 28px; min-width: 28px; }
+.ctx-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+.ctx-menu { max-height: calc(100vh - 16px); overflow-y: auto; min-width: 220px; }
+.ctx-menu button { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ctx-menu button:disabled { opacity: 0.45; cursor: default; }
+.ctx-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ctx-menu kbd { font-family: inherit; font-size: 10px; color: var(--muted); }
+@media (max-width: 768px) { .ctx-menu button { min-height: 40px; } }
 .ctx-menu button {
   background: none;
   border: none;

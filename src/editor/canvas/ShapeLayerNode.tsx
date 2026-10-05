@@ -1,4 +1,5 @@
 import { Shape as KonvaShape } from 'react-konva';
+import { blendOpOrUndefined } from '../core/blend';
 import { canvasGradient, konvaGradientProps } from '../core/gradients';
 import { fillCurrentPathConic, isConic } from '../core/conic';
 import { fillDither } from '../core/grain';
@@ -54,7 +55,7 @@ export function ShapeLayerNode({ layer, registerRef }: Props) {
       shadowOffsetY={layer.shadowY}
       draggable={selecting && !isLayerLocked({ locked: pageLocked }, layer)}
       globalCompositeOperation={
-        layer.blendMode === 'normal' ? undefined : (layer.blendMode as any)
+        blendOpOrUndefined(layer.blendMode)
       }
       sceneFunc={(ctx, node) => {
         shapePath(ctx, layer.shape, layer.width, layer.height, layer.cornerRadius);

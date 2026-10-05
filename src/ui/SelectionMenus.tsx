@@ -1,86 +1,202 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEditor } from '../editor/state/store';
 import type { Layer } from '../editor/core/types';
 import { t } from '../i18n';
 import { getStyleSource, setStyleSource } from '../editor/core/styleClipboard';
 import { copyLayerCss } from '../io/layerCssCopy';
+import { getShortcut } from '../editor/core/shortcuts';
+import { CloseButton } from './Modal';
+import { useDismiss } from './useDismiss';
+import { LayerBlendButton, LayerBlendMenu } from './BlendPicker';
+import { clampMenu, ctxItems, type CtxItemId } from './contextMenuLogic';
+import { useCtxMenu } from './ctxMenuStore';
 
-// Menú contextual (clic derecho) sobre una capa.
+// Menú contextual (clic derecho en el lienzo o en una capa del panel; pulsación larga en táctil).
+// Sobre una capa: copiar, pegar, duplicar, orden, bloqueo, fusión, agrupar, borrar…
+// Sobre vacío: pegar, seleccionar todo, agregar página. Cierra con Esc, ✕ o clic fuera.
 export function ContextMenu({
-  selected,
-  pos,
-  onClose,
+  onCopy,
+  onPaste,
+  canPaste,
 }: {
-  selected: Layer;
-  pos: { x: number; y: number };
-  onClose: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  canPaste: () => boolean;
 }) {
-  const doc = useEditor((s) => s.doc);
-  const requestTextEdit = useEditor((s) => s.requestTextEdit);
-  const duplicateLayer = useEditor((s) => s.duplicateLayer);
-  const setLayerRotation = useEditor((s) => s.setLayerRotation);
-  const reorderLayers = useEditor((s) => s.reorderLayers);
-  const updateLayer = useEditor((s) => s.updateLayer);
-  const removeLayer = useEditor((s) => s.removeLayer);
-  const selectedIds = useEditor((s) => s.selectedIds);
-  const groupSelected = useEditor((s) => s.groupSelected);
-  const ungroupSelected = useEditor((s) => s.ungroupSelected);
-  const removeSelected = useEditor((s) => s.removeSelected);
-  const selectSimilar = useEditor((s) => s.selectSimilar);
-  const pasteStyle = useEditor((s) => s.pasteStyle);
-  const run = (fn: () => void) => () => {
-    fn();
-    onClose();
-  };
-  const multi = selectedIds.length > 1;
+  const open = useCtxMenu((s) => s.open);
+  if (!open) return null;
   return (
-    <div className="ctx-menu" style={{ left: pos.x, top: pos.y }} onClick={(e) => e.stopPropagation()}>
-      {multi && <button onClick={run(groupSelected)}>🔗 {t('Agrupar')} (Ctrl+G)</button>}
-      {selected.groupId && <button onClick={run(ungroupSelected)}>⛓ {t('Desagrupar')}</button>}
-      {multi && (
-        <button className="danger" onClick={run(removeSelected)}>
-          🗑 {t('Borrar selección')}
-        </button>
-      )}
-      {selected.type === 'text' && (
-        <button onClick={run(() => requestTextEdit(selected.id))}>✎ {t('Editar texto')}</button>
-      )}
-      <button onClick={run(() => duplicateLayer(selected.id))}>⧉ {t('Duplicar')}</button>
-      <button onClick={run(() => selectSimilar(selected.id))}>▦ {t('Seleccionar similares')}</button>
-      <button onClick={run(() => setStyleSource(selected))}>⎘ {t('Copiar formato')}</button>
-      <button onClick={run(() => copyLayerCss(selected))}>{'</>'} {t('Copiar CSS')}</button>
-      <button disabled={!getStyleSource()} onClick={run(() => getStyleSource() && pasteStyle(getStyleSource()!))}>
-        ⎗ {t('Pegar solo el formato')} (Ctrl+Alt+V)
-      </button>
-      <button onClick={run(() => setLayerRotation(selected.id, selected.rotation + 90))}>
-        ⟳ {t('Girar 90°')}
-      </button>
-      <button
-        onClick={run(() => {
-          const topFirst = doc.layers.map((l) => l.id).reverse();
-          reorderLayers([selected.id, ...topFirst.filter((x) => x !== selected.id)].reverse());
-        })}
+    <ContextMenuInner
+      key={`${open.x},${open.y},${open.layerId ?? ''}`}
+      open={open}
+      onCopy={onCopy}
+      onPaste={onPaste}
+      canPaste={canPaste}
+    />
+  );
+}
+
+function ContextMenuInner({
+  open,
+  onCopy,
+  onPaste,
+  canPaste,
+}: {
+  open: { x: number; y: number; layerId?: string };
+  onCopy: () => void;
+  onPaste: () => void;
+  canPaste: () => boolean;
+}) {
+  const hide = useCtxMenu((s) => s.hide);
+  const doc = useEditor((s) => s.doc);
+  const selectedIds = useEditor((s) => s.selectedIds);
+  const selectedId = useEditor((s) => s.selectedId);
+  const st = useEditor.getState;
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [blendAnchor, setBlendAnchor] = useState<DOMRect | null>(null);
+  const [blendOpen, setBlendOpen] = useState(false);
+  useDismiss(ref, { onClose: hide, modal: false });
+
+  // Desde el panel de capas el menú actúa sobre esa capa: se selecciona antes de actuar.
+  useEffect(() => {
+    if (open.layerId && !st().selectedIds.includes(open.layerId)) st().selectLayer(open.layerId);
+    // Foco en la primera entrada para poder navegar con el teclado.
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus({ preventScroll: true });
+  }, [open.layerId]);
+
+  const selected = doc.layers.find((l) => l.id === (open.layerId ?? selectedId)) ?? null;
+  const multi = selectedIds.length > 1;
+  const items = ctxItems({
+    layer: !!selected,
+    multi,
+    grouped: !!selected?.groupId,
+    isText: selected?.type === 'text',
+  });
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setPos(clampMenu({ x: open.x, y: open.y }, { w: el.offsetWidth, h: el.offsetHeight }, window.innerWidth, window.innerHeight));
+  }, [open.x, open.y, items.length]);
+
+  const run = (fn: () => void) => () => {
+    hide();
+    fn();
+  };
+  const L = selected;
+  const reorder = (toFront: boolean) => () => {
+    if (!L) return;
+    const rest = st().doc.layers.map((l) => l.id).filter((x) => x !== L.id);
+    st().reorderLayers(toFront ? [...rest, L.id] : [L.id, ...rest]);
+  };
+  const entries: Record<CtxItemId, { label: string; keys?: string; danger?: boolean; disabled?: boolean; act: () => void }> = {
+    copy: { label: `⎘ ${t('Copiar')}`, keys: getShortcut('copy'), act: run(onCopy) },
+    paste: { label: `⎗ ${t('Pegar')}`, keys: getShortcut('paste'), disabled: !canPaste(), act: run(onPaste) },
+    duplicate: { label: `⧉ ${t('Duplicar')}`, keys: getShortcut('duplicate'), act: run(() => L && st().duplicateLayer(L.id)) },
+    editText: { label: `✎ ${t('Editar texto')}`, act: run(() => L && st().requestTextEdit(L.id)) },
+    front: { label: `⬆ ${t('Traer al frente')}`, act: run(reorder(true)) },
+    back: { label: `⬇ ${t('Enviar atrás')}`, act: run(reorder(false)) },
+    lock: {
+      label: L?.locked ? `🔓 ${t('Desbloquear')}` : `🔒 ${t('Bloquear')}`,
+      act: run(() => L && st().updateLayer(L.id, { locked: !L.locked })),
+    },
+    hide: {
+      label: L?.visible === false ? `👁 ${t('Mostrar')}` : `🚫 ${t('Ocultar')}`,
+      act: run(() => L && st().updateLayer(L.id, { visible: L.visible === false })),
+    },
+    group: { label: `🔗 ${t('Agrupar')}`, keys: getShortcut('group'), act: run(() => st().groupSelected()) },
+    ungroup: { label: `⛓ ${t('Desagrupar')}`, keys: getShortcut('ungroup'), act: run(() => st().ungroupSelected()) },
+    blend: {
+      label: `◐ ${t('Fusión')}…`,
+      keys: '⌥⇧↑↓',
+      act: () => {
+        setBlendAnchor(ref.current?.getBoundingClientRect() ?? null);
+        setBlendOpen(true);
+      },
+    },
+    similar: { label: `▦ ${t('Seleccionar similares')}`, act: run(() => L && st().selectSimilar(L.id)) },
+    copyStyle: { label: `⎘ ${t('Copiar formato')}`, act: run(() => L && setStyleSource(L)) },
+    pasteStyle: {
+      label: `⎗ ${t('Pegar solo el formato')}`,
+      keys: 'Ctrl+Alt+V',
+      disabled: !getStyleSource(),
+      act: run(() => getStyleSource() && st().pasteStyle(getStyleSource()!)),
+    },
+    css: { label: `</> ${t('Copiar CSS')}`, act: run(() => L && copyLayerCss(L)) },
+    rotate: { label: `⟳ ${t('Girar 90°')}`, act: run(() => L && st().setLayerRotation(L.id, L.rotation + 90)) },
+    delete: {
+      label: `🗑 ${multi ? t('Borrar selección') : t('Borrar')}`,
+      keys: 'Supr',
+      danger: true,
+      act: run(() => (multi ? st().removeSelected() : L && st().removeLayer(L.id))),
+    },
+    selectAll: { label: `▣ ${t('Seleccionar todo')}`, keys: getShortcut('selectAll'), act: run(() => st().selectAll()) },
+    addPage: { label: `＋ ${t('Agregar página')}`, act: run(() => st().addPage()) },
+  };
+
+  // ↑ ↓ recorren las entradas; Inicio/Fin saltan.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const btns = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])') ?? []);
+    const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+    let go = -1;
+    if (e.key === 'ArrowDown') go = (i + 1) % btns.length;
+    else if (e.key === 'ArrowUp') go = (i - 1 + btns.length) % btns.length;
+    else if (e.key === 'Home') go = 0;
+    else if (e.key === 'End') go = btns.length - 1;
+    if (go >= 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      btns[go]?.focus();
+    }
+  };
+
+  return (
+    <>
+      <div
+        ref={ref}
+        className="ctx-menu"
+        role="menu"
+        aria-label={t('Menú contextual')}
+        data-testid="ctx-menu"
+        style={{ left: pos?.left ?? open.x, top: pos?.top ?? open.y, visibility: pos && !blendOpen ? 'visible' : 'hidden' }}
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={(e) => e.preventDefault()}
+        onKeyDown={onKeyDown}
       >
-        ⬆ {t('Traer al frente')}
-      </button>
-      <button
-        onClick={run(() => {
-          const bottomFirst = doc.layers.map((l) => l.id);
-          reorderLayers([selected.id, ...bottomFirst.filter((x) => x !== selected.id)]);
+        <div className="ctx-head">
+          <span>{selected ? (multi ? `${selectedIds.length} ${t('capas')}` : t('Capa')) : t('Lienzo')}</span>
+          <CloseButton onClick={hide} className="ctx-x" />
+        </div>
+        {items.map((id, i) => {
+          if (id === null) return <div key={`sep${i}`} className="ctx-sep" role="separator" />;
+          const e = entries[id];
+          return (
+            <button
+              key={id}
+              type="button"
+              role="menuitem"
+              data-item={id}
+              className={e.danger ? 'danger' : ''}
+              disabled={e.disabled}
+              onClick={e.act}
+            >
+              <span>{e.label}</span>
+              {e.keys ? <kbd>{e.keys}</kbd> : null}
+            </button>
+          );
         })}
-      >
-        ⬇ {t('Enviar atrás')}
-      </button>
-      <button onClick={run(() => updateLayer(selected.id, { locked: !selected.locked }))}>
-        {selected.locked ? `🔓 ${t('Desbloquear')}` : `🔒 ${t('Bloquear')}`}
-      </button>
-      <button onClick={run(() => updateLayer(selected.id, { visible: !selected.visible }))}>
-        {selected.visible ? `🚫 ${t('Ocultar')}` : `👁 ${t('Mostrar')}`}
-      </button>
-      <button className="danger" onClick={run(() => removeLayer(selected.id))}>
-        🗑 {t('Borrar')}
-      </button>
-    </div>
+      </div>
+      {blendOpen && (
+        <LayerBlendMenu
+          anchor={blendAnchor}
+          onClose={() => {
+            setBlendOpen(false);
+            hide();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -220,6 +336,7 @@ export function FloatToolbar({
           </button>
         </>
       )}
+      <LayerBlendButton compact />
       <button
         onClick={() => setLayerRotation(selected.id, selected.rotation + 90)}
         title="Girar 90° (o arrastra la manija sobre la selección)"

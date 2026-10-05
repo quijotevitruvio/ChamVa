@@ -13,6 +13,7 @@ import { addJpegMeta, addPngMeta, hasMeta } from './pngMeta';
 import { applyWatermark, watermarkActive, watermarkSvg } from './watermark';
 import { blobToBytes, zipToBlob, type ZipEntry } from './zip';
 import { toast } from '../ui/toast';
+import { BLEND_LABEL, svgInexactBlends } from '../editor/core/blend';
 
 export type ExportScope = 'page' | 'all' | 'selection';
 
@@ -137,6 +138,9 @@ export async function renderRasterBlob(
 
 async function renderSvgBlob(doc: Doc, extra: ExtraSettings): Promise<Blob> {
   let svg = await exportDocToSvg(doc);
+  // Modos de fusión que el SVG no reproduce igual en todos los visores: se avisa.
+  const inexact = svgInexactBlends(doc.layers);
+  if (inexact.length) toast(`En SVG, la fusión «${inexact.map((m) => BLEND_LABEL[m]).join(', ')}» puede verse distinta según el visor. Para un resultado idéntico exporta PNG.`, 'info');
   if (watermarkActive(extra.watermark)) {
     const i = svg.lastIndexOf('</svg>');
     if (i >= 0) svg = svg.slice(0, i) + watermarkSvg(doc.width, doc.height, extra.watermark) + svg.slice(i);

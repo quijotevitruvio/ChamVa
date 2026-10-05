@@ -1,3 +1,4 @@
+import { blendCss } from '../editor/core/blend';
 import { strokeToSvg } from '../editor/core/brush';
 import { svgGrainDef, grainActive } from '../editor/core/grain';
 import { withRegisteredMaster } from '../editor/core/master';
@@ -194,6 +195,8 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
 
   for (const layer of doc.layers) {
     if (!layer.visible) continue;
+    const bm = blendCss(layer.blendMode);
+    const firstPart = parts.length;
     const op = layer.opacity !== 1 ? ` opacity="${layer.opacity}"` : '';
     if (layer.type === 'image') {
       const img = await loadImg(layer.src);
@@ -230,8 +233,7 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
         `<g transform="${transform(layer)}"${op}>${fxSvg}<g${shadowStyle(layer)}><image href="${baked}" width="${layer.naturalWidth}" height="${layer.naturalHeight}"/></g></g>`,
       );
     } else if (layer.type === 'stroke') {
-      const blend = layer.blendMode !== 'normal' ? ` style="mix-blend-mode:${layer.blendMode}"` : '';
-      parts.push(`<g transform="${transform(layer)}"${op}${blend}>${strokeToSvg(layer)}</g>`);
+      parts.push(`<g transform="${transform(layer)}"${op}>${strokeToSvg(layer)}</g>`);
     } else if (layer.type === 'shape') {
       parts.push(
         `<g transform="${transform(layer)}"${op}${shadowStyle(layer)}>${shapeSvg(layer)}</g>`,
@@ -239,6 +241,11 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
     } else if (layer.type === 'text') {
       const fxText = await textFxSvg(layer, textFields); // efectos de texto (textFx.ts)
       parts.push(`<g transform="${transform(layer)}"${op}>${fxText ?? textSvg(layer, measure, textFields)}</g>`);
+    }
+    // Modo de fusión: grupo envolvente que se mezcla con lo de debajo (mix-blend-mode).
+    if (bm !== 'normal' && parts.length > firstPart) {
+      const wrapped = parts.splice(firstPart).join('');
+      parts.push(`<g style="mix-blend-mode:${bm}">${wrapped}</g>`);
     }
   }
 

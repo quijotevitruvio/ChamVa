@@ -13,6 +13,7 @@ import { drawStyledText } from '../editor/core/styledText';
 import { hasPathText, preloadTextFxImages } from '../editor/core/textFx';
 import { fieldsForDoc } from '../editor/core/textMacros';
 import { pagesForFields } from './docFields';
+import { blendOp } from '../editor/core/blend';
 import { isTauri, saveNative } from './nativeSave';
 import { toast } from '../ui/toast';
 import { withRegisteredMaster } from '../editor/core/master';
@@ -91,10 +92,7 @@ export async function renderDocToCanvas(
       const source = needsProcessing(layer) ? processImage(img, layer) : img;
       ctx.save();
       ctx.globalAlpha = layer.opacity * a.opacity;
-      if (layer.blendMode !== 'normal') {
-        ctx.globalCompositeOperation =
-          layer.blendMode as GlobalCompositeOperation;
-      }
+      ctx.globalCompositeOperation = blendOp(layer.blendMode);
       ctx.translate(layer.x + a.dx * doc.width, layer.y + a.dy * doc.height);
       ctx.rotate((layer.rotation * Math.PI) / 180);
       ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
@@ -121,10 +119,7 @@ export async function renderDocToCanvas(
     } else if (layer.type === 'text') {
       ctx.save();
       ctx.globalAlpha = layer.opacity * a.opacity;
-      if (layer.blendMode !== 'normal') {
-        ctx.globalCompositeOperation =
-          layer.blendMode as GlobalCompositeOperation;
-      }
+      ctx.globalCompositeOperation = blendOp(layer.blendMode);
       ctx.translate(layer.x + a.dx * doc.width, layer.y + a.dy * doc.height);
       ctx.rotate((layer.rotation * Math.PI) / 180);
       ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
@@ -140,10 +135,7 @@ export async function renderDocToCanvas(
     } else if (layer.type === 'stroke') {
       ctx.save();
       ctx.globalAlpha = layer.opacity * a.opacity;
-      if (layer.blendMode !== 'normal') {
-        ctx.globalCompositeOperation =
-          layer.blendMode as GlobalCompositeOperation;
-      }
+      ctx.globalCompositeOperation = blendOp(layer.blendMode);
       ctx.translate(layer.x + a.dx * doc.width, layer.y + a.dy * doc.height);
       ctx.rotate((layer.rotation * Math.PI) / 180);
       ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
@@ -152,10 +144,7 @@ export async function renderDocToCanvas(
     } else if (layer.type === 'shape') {
       ctx.save();
       ctx.globalAlpha = layer.opacity * a.opacity;
-      if (layer.blendMode !== 'normal') {
-        ctx.globalCompositeOperation =
-          layer.blendMode as GlobalCompositeOperation;
-      }
+      ctx.globalCompositeOperation = blendOp(layer.blendMode);
       ctx.translate(layer.x + a.dx * doc.width, layer.y + a.dy * doc.height);
       ctx.rotate((layer.rotation * Math.PI) / 180);
       ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);

@@ -3,6 +3,7 @@
 // cambiarlo (se guarda en localStorage `chamva.shortcuts`). Las teclas «fijas»
 // (Esc, Supr, flechas, Espacio…) no se personalizan, pero se listan.
 import { useSyncExternalStore } from 'react';
+import { BLEND_HOTKEYS, BLEND_LABEL, blendActionId } from './blend';
 
 export interface ShortcutAction {
   id: string;
@@ -33,6 +34,18 @@ export const ACTIONS: ShortcutAction[] = [
   { id: 'toolLine', label: 'Herramienta: línea', desc: 'Arrastra para dibujarla (Mayús = ángulos de 15°)', group: 'Herramientas', def: 'L' },
   { id: 'toolBrush', label: 'Herramienta: pincel', desc: 'Pulsa otra vez para volver al puntero', group: 'Herramientas', def: 'B' },
   { id: 'toolEraser', label: 'Herramienta: borrador', desc: 'Pulsa otra vez para volver al puntero', group: 'Herramientas', def: 'E' },
+  // Fusión (Alt+Shift+tecla, como Photoshop): actúa sobre la capa o capas seleccionadas.
+  { id: 'blendNext', label: 'Fusión: modo siguiente', desc: 'Recorre los modos de fusión de la selección con vista previa inmediata', group: 'Fusión', def: 'Alt+Shift+↓' },
+  { id: 'blendPrev', label: 'Fusión: modo anterior', desc: 'Recorre los modos de fusión hacia atrás', group: 'Fusión', def: 'Alt+Shift+↑' },
+  ...BLEND_HOTKEYS.map(
+    (h): ShortcutAction => ({
+      id: blendActionId(h.mode),
+      label: h.mode === 'normal' ? 'Fusión: volver a Normal' : `Fusión: ${BLEND_LABEL[h.mode]}`,
+      group: 'Fusión',
+      def: `Alt+Shift+${h.key}`,
+    }),
+  ),
+  { id: 'selectAll', label: 'Seleccionar todo', desc: 'Selecciona todas las capas visibles y sin bloquear', group: 'Edición', def: 'Ctrl+A' },
   { id: 'undo', label: 'Deshacer', group: 'Edición', def: 'Ctrl+Z' },
   { id: 'redo', label: 'Rehacer', group: 'Edición', def: 'Ctrl+Y', extra: ['Ctrl+Shift+Z'] },
   { id: 'copy', label: 'Copiar capa', group: 'Edición', def: 'Ctrl+C' },
@@ -82,7 +95,7 @@ export function normalizeKey(key: string): string {
 
 /** ¿La tecla distingue Mayús? Las letras y dígitos sí; símbolos como «?» no. */
 function shiftSensitive(key: string): boolean {
-  return key.length > 1 || /^[A-Z0-9]$/.test(key);
+  return key.length > 1 || /^[A-Z0-9]$/.test(key) || '←→↑↓'.includes(key);
 }
 
 export function parseCombo(s: string): Combo | null {
@@ -119,6 +132,8 @@ export function canonical(s: string): string {
 
 export interface KeyLike {
   key: string;
+  /** `event.code`: con Alt (Option en Mac) la letra real sale de aquí. */
+  code?: string;
   ctrlKey: boolean;
   metaKey?: boolean;
   altKey: boolean;
@@ -128,7 +143,10 @@ export interface KeyLike {
 /** Combinación que representa un evento de teclado (null si es solo un modificador). */
 export function eventToCombo(e: KeyLike): string | null {
   if (MOD_KEYS.has(e.key)) return null;
-  const key = normalizeKey(e.key);
+  let key = normalizeKey(e.key);
+  // Alt cambia la letra en algunos teclados (Option en Mac: Alt+M = «µ»): se usa la tecla física.
+  const m = e.altKey && e.code ? /^Key([A-Z])$/.exec(e.code) : null;
+  if (m && key.length === 1 && key !== m[1]) key = m[1];
   return canonical(
     formatCombo({ ctrl: e.ctrlKey || !!e.metaKey, alt: e.altKey, shift: e.shiftKey, key }),
   );

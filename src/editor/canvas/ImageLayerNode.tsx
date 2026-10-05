@@ -1,4 +1,5 @@
 import { useMemo, useRef, type ReactElement } from 'react';
+import { blendOpOrUndefined } from '../core/blend';
 import { useFxImagesVersion } from './useFxImages';
 import { Image as KonvaImage, Shape as KonvaShape } from 'react-konva';
 import type Konva from 'konva';
@@ -65,7 +66,7 @@ export function ImageLayerNode({ layer, registerRef }: Props) {
     shadowOffsetY: layer.shadowY,
     draggable: selecting && !isLayerLocked({ locked: pageLocked }, layer),
     globalCompositeOperation:
-      layer.blendMode === 'normal' ? undefined : (layer.blendMode as any),
+      blendOpOrUndefined(layer.blendMode),
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) =>
       clickSelect(layer.id, e.evt.shiftKey),
     onTap: () => clickSelect(layer.id, false),

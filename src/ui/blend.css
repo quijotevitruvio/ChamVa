@@ -1,0 +1,41 @@
+/* Selector de fusión: plano, solo tokens de la paleta. */
+.blend-scrim { position: fixed; inset: 0; z-index: 210; background: transparent; }
+.blend-menu {
+  position: fixed;
+  z-index: 211;
+  width: 264px;
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.blend-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 4px 12px; border-bottom: 1px solid var(--border); }
+.blend-head .modal-x { position: static; }
+.blend-opacity { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; font-size: 12px; border-bottom: 1px solid var(--border); }
+.blend-opacity input { width: 100%; accent-color: var(--accent); }
+.blend-list { list-style: none; margin: 0; padding: 4px; overflow-y: auto; flex: 1 1 auto; min-height: 0; outline: none; }
+.blend-list:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.blend-list ul { list-style: none; margin: 0; padding: 0; }
+.blend-group + .blend-group { border-top: 1px solid var(--border); margin-top: 3px; padding-top: 3px; }
+.blend-group-title { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 3px 8px 2px; }
+.blend-opt { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; min-height: 30px; }
+.blend-opt.active { background: var(--panel-2); }
+.blend-opt.current .blend-name { font-weight: 600; }
+.blend-check { width: 14px; color: var(--accent-text); }
+.blend-name { flex: 1; }
+.blend-svg { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 3px; }
+.blend-opt kbd { font-size: 10px; color: var(--muted); font-family: inherit; }
+.blend-hint { margin: 0; padding: 6px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+.blend-btn { display: inline-flex; align-items: center; gap: 6px; }
+.blend-btn-label { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prop-blend { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.prop-blend .blend-btn { justify-content: flex-start; width: 100%; }
+@media (max-width: 768px) {
+  .blend-menu { left: 8px !important; right: 8px; width: auto; max-width: none; top: auto !important; bottom: 8px; max-height: 75vh !important; }
+  .blend-opt { min-height: 40px; }
+}
