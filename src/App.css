@@ -1992,6 +1992,24 @@ button.mini {
 .bgp-head h3 {
   margin: 0;
   font-size: 16px;
+  flex: 1;
+  min-width: 0;
+}
+.bgp-tools {
+  display: flex;
+  gap: 8px;
+}
+.bgp-tools button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.bgp-tools button.active {
+  border-color: var(--accent);
 }
 .bgp-head button,
 .bgp-foot button {

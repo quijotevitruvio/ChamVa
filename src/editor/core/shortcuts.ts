@@ -20,6 +20,7 @@ export const ACTIONS: ShortcutAction[] = [
   { id: 'palette', label: 'Buscar cualquier acción', desc: 'Abre la paleta de comandos', group: 'General', def: 'Ctrl+K' },
   { id: 'shortcuts', label: 'Atajos de teclado', desc: 'Muestra la lista de atajos', group: 'General', def: '?', extra: ['F1'] },
   { id: 'focus', label: 'Modo concentración', desc: 'Oculta barras y paneles; Esc para salir', group: 'General', def: 'F' },
+  { id: 'togglePanel', label: 'Ocultar o mostrar el panel izquierdo', desc: 'Pestañas de Subir, Texto, Capas, Marca… (se recuerda)', group: 'General', def: 'Ctrl+\\' },
   { id: 'pageView', label: 'Páginas apiladas', desc: 'Alterna entre una página y todas una bajo otra', group: 'General', def: 'Ctrl+Alt+P' },
   { id: 'newTab', label: 'Nueva pestaña', desc: 'Abre Inicio para crear un diseño en otra pestaña. En el navegador Ctrl+T lo reserva el navegador: usa Alt+T', group: 'Pestañas', def: 'Ctrl+T', extra: ['Alt+T'] },
   { id: 'closeTab', label: 'Cerrar pestaña', desc: 'Cierra la pestaña actual. En el navegador Ctrl+W lo reserva el navegador: usa Alt+W', group: 'Pestañas', def: 'Ctrl+W', extra: ['Alt+W'] },

@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { UploadThumb } from './UploadThumb';
 import QRCode from 'qrcode';
 import { useEditor } from '../editor/state/store';
@@ -16,6 +16,18 @@ import { BrandKitPanel } from './BrandKitPanel';
 import { ProjectsPanel } from './ProjectsPanel';
 import { BrushPanel, BrushShortcuts } from './BrushPanel';
 import type { SavedDesign } from '../io/designs';
+import { actionForEvent, getShortcut } from '../editor/core/shortcuts';
+import {
+  clampRail,
+  loadRailHidden,
+  loadRailWidth,
+  railKeyStep,
+  railMax,
+  RAIL_DEFAULT,
+  RAIL_MIN,
+  saveRailHidden,
+  saveRailWidth,
+} from './railWidth';
 
 const TABS = [
   { id: 'proyectos', icon: 'templates', label: 'Proyectos' },
@@ -71,6 +83,96 @@ export function RailPanels({
   const [qrText, setQrText] = useState('https://');
   const templatesFileRef = useRef<HTMLInputElement>(null);
 
+  // Ancho del panel (uno solo para todos) y ocultarlo sin perder la pestaña abierta.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [winW, setWinW] = useState(() => window.innerWidth);
+  const [railW, setRailW] = useState(() => loadRailWidth(window.innerWidth));
+  const [hidden, setHidden] = useState(() => loadRailHidden());
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ x: number; w: number; k: number } | null>(null);
+  const width = clampRail(railW, winW);
+  const maxW = railMax(winW);
+
+  useEffect(() => {
+    const on = () => setWinW(window.innerWidth);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+
+  // El lienzo, las reglas y el minimapa se reajustan solos (ResizeObserver); el aviso
+  // de «resize» cubre lo que solo escucha a la ventana (p. ej. el marco de selección).
+  const settle = useCallback(() => {
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }, []);
+  const applyWidth = useCallback(
+    (w: number, persist: boolean) => {
+      const v = clampRail(w, window.innerWidth);
+      setRailW(v);
+      if (persist) saveRailWidth(v);
+      settle();
+    },
+    [settle],
+  );
+  const toggleHidden = useCallback(() => {
+    setHidden((h) => {
+      saveRailHidden(!h);
+      return !h;
+    });
+    settle();
+  }, [settle]);
+
+  const activeRef = useRef(activeTab);
+  activeRef.current = activeTab;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (actionForEvent(e) !== 'togglePanel') return;
+      if (document.querySelector('.vx-root')) return; // el editor de video tiene su propio diseño
+      if (!activeRef.current) return;
+      e.preventDefault();
+      toggleHidden();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleHidden]);
+
+  const onGripDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const el = panelRef.current;
+    if (!el) return;
+    e.preventDefault();
+    // Con «Tamaño de la interfaz» el panel va con zoom: se convierte píxeles de pantalla a CSS.
+    const k = el.offsetWidth ? el.getBoundingClientRect().width / el.offsetWidth : 1;
+    drag.current = { x: e.clientX, w: width, k: k || 1 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.documentElement.classList.add('rail-resizing');
+    setDragging(true);
+  };
+  const onGripMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    applyWidth(d.w + (e.clientX - d.x) / d.k, false);
+  };
+  const onGripUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ya soltado */
+    }
+    document.documentElement.classList.remove('rail-resizing');
+    setDragging(false);
+    applyWidth(d.w + (e.clientX - d.x) / d.k, true);
+  };
+  useEffect(() => () => document.documentElement.classList.remove('rail-resizing'), []);
+  const onGripKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const w = railKeyStep(e.key, width, window.innerWidth);
+    if (w == null) return;
+    e.preventDefault();
+    applyWidth(w, true);
+  };
+
   const uploads = useEditor((s) => s.uploads);
   const addImageLayer = useEditor((s) => s.addImageLayer);
   const removeUpload = useEditor((s) => s.removeUpload);
@@ -122,7 +224,16 @@ export function RailPanels({
           <button
             key={tab.id}
             className={activeTab === tab.id ? 'active' : ''}
-            onClick={() => setActiveTab(activeTab === tab.id ? null : tab.id)}
+            aria-pressed={activeTab === tab.id && !hidden}
+            title={t(tab.label)}
+            onClick={() => {
+              if (hidden && activeTab === tab.id) {
+                toggleHidden();
+                return;
+              }
+              if (hidden) toggleHidden();
+              setActiveTab(activeTab === tab.id ? null : tab.id);
+            }}
           >
             <span className="rail-ico">
               <Icon name={tab.icon} size={22} />
@@ -130,10 +241,32 @@ export function RailPanels({
             <span className="rail-lbl">{t(tab.label)}</span>
           </button>
         ))}
+        {activeTab && (
+          <button
+            className="rail-toggle"
+            onClick={toggleHidden}
+            aria-pressed={hidden}
+            aria-label={hidden ? 'Mostrar el panel' : 'Ocultar el panel'}
+            title={`${hidden ? 'Mostrar' : 'Ocultar'} el panel (${getShortcut('togglePanel')})`}
+          >
+            <span className="rail-ico">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M9 4v16" />
+                <path d={hidden ? 'M14 9l3 3-3 3' : 'M17 9l-3 3 3 3'} />
+              </svg>
+            </span>
+            <span className="rail-lbl">{t(hidden ? 'Mostrar' : 'Ocultar')}</span>
+          </button>
+        )}
       </nav>
 
       {activeTab && (
-        <div className="rail-panel">
+        <div
+          ref={panelRef}
+          className={'rail-panel' + (hidden ? ' rail-hidden' : '')}
+          style={{ ['--rail-w' as string]: width + 'px' }}
+        >
           {activeTab === 'proyectos' && (
             <>
               {head('Proyectos')}
@@ -322,6 +455,28 @@ export function RailPanels({
               <BrandKitPanel />
             </>
           )}
+        </div>
+      )}
+
+      {activeTab && (
+        <div className="rail-resize-slot">
+          <div
+            className={'rail-resize' + (dragging ? ' dragging' : '')}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('Ancho del panel')}
+            aria-valuenow={width}
+            aria-valuemin={RAIL_MIN}
+            aria-valuemax={maxW}
+            tabIndex={0}
+            title={t('Arrastra para ensanchar · doble clic para restablecer')}
+            onPointerDown={onGripDown}
+            onPointerMove={onGripMove}
+            onPointerUp={onGripUp}
+            onPointerCancel={onGripUp}
+            onDoubleClick={() => applyWidth(RAIL_DEFAULT, true)}
+            onKeyDown={onGripKey}
+          />
         </div>
       )}
     </>

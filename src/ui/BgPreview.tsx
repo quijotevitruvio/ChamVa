@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { EdgeMode } from '../ai/bgcore';
 import { t } from '../i18n';
-import { CloseButton } from './Modal';
+import { BackButton, CloseButton } from './Modal';
 import { useDismiss } from './useDismiss';
 
 // Vista previa del recorte: antes/después sobre tablero, cambiar el modo de
@@ -35,22 +35,23 @@ export function BgPreview({
     <div className="donate-overlay" onClick={() => !busy && onCancel()}>
       <div className="bgp-card" ref={cardRef} aria-label={t('Resultado del recorte')} onClick={(e) => e.stopPropagation()}>
         <div className="bgp-head">
+          <BackButton onClick={onCancel} />
           <h3>✂ {t('Resultado del recorte')}</h3>
           <CloseButton onClick={onCancel} />
-          <div className="row">
-            <button
-              className={!showOriginal ? 'active' : ''}
-              onPointerDown={() => setShowOriginal(true)}
-              onPointerUp={() => setShowOriginal(false)}
-              onPointerLeave={() => setShowOriginal(false)}
-              title="Mantén pulsado para ver el original"
-            >
-              👁 {t('Ver original')}
-            </button>
-            <button onClick={() => setDark((d) => !d)} title="Fondo de prueba">
-              {dark ? '⬜' : '⬛'}
-            </button>
-          </div>
+        </div>
+        <div className="bgp-tools">
+          <button
+            className={!showOriginal ? 'active' : ''}
+            onPointerDown={() => setShowOriginal(true)}
+            onPointerUp={() => setShowOriginal(false)}
+            onPointerLeave={() => setShowOriginal(false)}
+            title="Mantén pulsado para ver el original"
+          >
+            👁 {t('Ver original')}
+          </button>
+          <button onClick={() => setDark((d) => !d)} title="Fondo de prueba" aria-label="Fondo de prueba">
+            {dark ? '⬜' : '⬛'}
+          </button>
         </div>
         <div className={`bgp-stage ${dark ? 'dark' : ''}`}>
           <img src={showOriginal ? original : result} alt="" />

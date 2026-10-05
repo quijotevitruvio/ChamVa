@@ -1,0 +1,322 @@
+/* Editor de recorte (Borrar / Restaurar / Mágico): cabecera, herramientas, historial y cursor.
+   Solo variables del tema; la barra de herramientas heredada (.mask-toolbar) la usan otros editores. */
+
+.mask-overlay.mask-v2 {
+  z-index: 100;
+}
+.mask-v2 .mask-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  position: relative;
+}
+.mask-v2 .mask-head .mask-title {
+  margin: 0 4px 0 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+.mask-v2 .mask-head .spacer {
+  flex: 1;
+}
+.mask-v2 .mask-head .modal-x {
+  margin-left: 0;
+}
+.mask-act {
+  min-height: 36px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mask-act:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.mask-act.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.mask-act.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.mask-act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.mask-act:focus-visible,
+.mask-v2 .mask-toolbar button:focus-visible,
+.mask-hist button:focus-visible,
+.mask-sw:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Barra de herramientas: dos o más líneas, sin salirse de la pantalla. */
+.mask-v2 .mask-toolbar {
+  gap: 8px 12px;
+  padding: 8px 12px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.mask-v2 .mask-toolbar button {
+  min-height: 34px;
+}
+.mask-seg {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mask-v2 .mask-size input[type='range'] {
+  width: 110px;
+}
+.mask-bglabel {
+  font-size: 13px;
+  margin-right: 2px;
+}
+.mask-sw,
+.mask-v2 .mask-toolbar .mask-sw {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  overflow: hidden;
+}
+.mask-sw.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+}
+.mask-sw[data-checker] {
+  background-image: linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(45deg, var(--checker-b) 25%, var(--checker-a) 25%, var(--checker-a) 75%, var(--checker-b) 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 5px 5px;
+}
+.mask-sw.custom input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Lienzo */
+.mask-v2 .mask-stage {
+  min-height: 0;
+  position: relative;
+}
+.mask-v2 .mask-canvas {
+  max-width: var(--mw, 88vw);
+  max-height: var(--mh, 70vh);
+}
+.mask-canvas-wrap.solid {
+  background-image: none;
+}
+.mask-v2 .mask-canvas-wrap {
+  max-width: none;
+  max-height: none;
+}
+.mask-v2 .mask-overlay-canvas.cur-erase,
+.mask-v2 .mask-overlay-canvas.cur-restore {
+  cursor: none;
+}
+.mask-v2 .mask-overlay-canvas.cur-magic {
+  cursor: crosshair;
+}
+.mask-loading {
+  position: absolute;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Cursor propio del pincel: anillo con el tamaño real y un signo (− borrar, + restaurar). */
+.mask-ring {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px var(--bg), inset 0 0 0 1px var(--bg);
+  z-index: 3;
+}
+.mask-ring.ring-erase {
+  border-color: var(--danger);
+  border-style: dashed;
+}
+.mask-ring.ring-restore {
+  border-color: var(--accent);
+  border-style: solid;
+}
+.mask-ring.ring-magic {
+  display: none !important;
+}
+.mask-ring::before,
+.mask-ring::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+.mask-ring.ring-erase::before {
+  width: 10px;
+  height: 2px;
+  background: var(--danger);
+}
+.mask-ring.ring-erase::after {
+  display: none;
+}
+.mask-ring.ring-restore::before {
+  width: 10px;
+  height: 2px;
+  background: var(--accent);
+}
+.mask-ring.ring-restore::after {
+  width: 2px;
+  height: 10px;
+  background: var(--accent);
+}
+
+/* Historial desplegable */
+.mask-hist-wrap {
+  position: relative;
+}
+.mask-hist {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(60vh, 420px);
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+}
+.mask-hist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 4px 8px;
+}
+.mask-hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mask-hist-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mask-hist-list button:hover {
+  background: var(--panel-2);
+}
+.mask-hist-list button.current {
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.mask-hist-list button.future {
+  opacity: 0.55;
+  font-style: italic;
+}
+.mask-hist-n {
+  flex: none;
+  min-width: 18px;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.mask-hist-note {
+  margin: 6px 8px 2px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.mask-confirm-text {
+  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.mask-confirm-btns {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Teléfono: cabecera compacta (Deshacer/Rehacer solo con icono) y herramientas con scroll. */
+@media (max-width: 640px) {
+  .mask-v2 .mask-head {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .mask-v2 .mask-head .mask-title {
+    order: 5;
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 14px;
+  }
+  .mask-act-txt {
+    display: none;
+  }
+  .mask-v2 .mask-head .spacer {
+    flex: 0 0 0;
+  }
+  .mask-v2 .mask-toolbar {
+    max-height: 30vh;
+    padding: 6px 8px;
+  }
+  .mask-v2 .mask-size input[type='range'] {
+    width: 90px;
+  }
+  .mask-v2 .mask-stage {
+    padding: 8px;
+  }
+  .mask-hist {
+    position: fixed;
+    top: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: 8px;
+    max-height: 60vh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mask-act {
+    transition: none;
+  }
+}

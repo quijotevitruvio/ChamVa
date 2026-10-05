@@ -88,6 +88,7 @@ import type { ChartSpec, TableSpec } from './editor/core/charts';
 import { DEFAULT_ADJUST } from './editor/core/types';
 import './App.css';
 import './dropzone.css';
+import './ui/railPanel.css';
 import './ui/perf.css';
 import { TouchRuntime, TouchMenuItems } from './ui/TouchRuntime';
 import { classifyPaste, classifyDrop, choosePasteSource, dataUrlToBlob } from './io/paste';

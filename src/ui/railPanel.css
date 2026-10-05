@@ -1,0 +1,216 @@
+/* Panel izquierdo: ancho ajustable (--rail-w), manija de redimensión y contenido que se acomoda.
+   Las rejillas usan auto-fill/minmax y las filas flex-wrap: se adaptan al ancho del PANEL
+   (no al de la ventana) sin contención de contenedor, que rompería los menús flotantes. */
+
+.rail-panel {
+  width: var(--rail-w, 260px);
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+.rail-panel * {
+  min-width: 0;
+}
+.rail-panel input[type='range'],
+.rail-panel input[type='text'],
+.rail-panel input[type='search'],
+.rail-panel input[type='number'],
+.rail-panel select,
+.rail-panel textarea {
+  max-width: 100%;
+}
+.rail-panel img,
+.rail-panel canvas,
+.rail-panel svg {
+  max-width: 100%;
+}
+.rail-panel button {
+  max-width: 100%;
+}
+.rail-panel .rail-head h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Filas de botones: pasan a la línea siguiente en vez de pisarse. */
+.rail-panel .row,
+.rail-panel .font-row,
+.rail-panel .bk-kit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.rail-panel .row > button,
+.rail-panel .bk-kit-row > button,
+.rail-panel .bk-kit-row > .bk-btn {
+  flex: 1 1 auto;
+  white-space: normal;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.rail-panel .font-row > input:not([type='color']):not([type='checkbox']) {
+  flex: 1 1 120px;
+}
+.rail-panel .font-row > input[type='color'] {
+  flex: none;
+}
+.rail-panel .font-row > button {
+  flex: 0 0 auto;
+}
+.rail-panel .rail-item,
+.rail-panel .rail-big,
+.rail-panel .bk-btn {
+  overflow-wrap: anywhere;
+}
+
+/* Rejillas que ganan columnas con el ancho. */
+.rail-panel .rail-shapes {
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+}
+.rail-panel .icon-grid {
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+}
+.rail-panel .uploads-grid {
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+}
+.rail-panel .rail-swatches {
+  gap: 8px;
+}
+
+/* Muestras de color, estilos de texto y controles segmentados. */
+.rail-panel .cp-grid {
+  grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+  justify-items: start;
+}
+.rail-panel .tp-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.rail-panel .tp-pairs {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.rail-panel .tp-sample {
+  text-overflow: ellipsis;
+}
+.rail-panel .seg {
+  flex-wrap: wrap;
+}
+.rail-panel .seg button {
+  flex: 1 1 auto;
+  white-space: normal;
+  padding: 6px 8px;
+}
+
+/* Riel de pestañas: etiquetas completas; si faltara sitio, elipsis (y el tooltip da el nombre). */
+@media (min-width: 769px) {
+  .rail {
+    width: auto;
+    min-width: 76px;
+  }
+  .rail button {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
+.rail button {
+  padding-left: 2px;
+  padding-right: 2px;
+  min-width: 0;
+}
+.rail-lbl {
+  max-width: 100%;
+  padding: 0 4px;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail .rail-toggle {
+  margin-top: auto;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.rail .rail-toggle .rail-lbl {
+  display: none;
+}
+
+/* ---- Manija de redimensión (solo escritorio) ---- */
+.rail-resize-slot {
+  position: relative;
+  flex: none;
+  width: 0;
+  align-self: stretch;
+  z-index: 6;
+}
+.rail-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.rail-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 0.12s;
+}
+.rail-resize:hover::after,
+.rail-resize:focus-visible::after,
+.rail-resize.dragging::after {
+  background: var(--accent);
+}
+.rail-resize:focus-visible::after {
+  width: 3px;
+  left: 3.5px;
+}
+.rail-hidden + .rail-resize-slot {
+  display: none;
+}
+html.rail-resizing,
+html.rail-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (min-width: 769px) {
+  .rail-panel.rail-hidden {
+    display: none;
+  }
+}
+/* Móvil: hoja inferior, sin manija ni botón de ocultar. */
+@media (max-width: 768px) {
+  .rail-resize-slot,
+  .rail .rail-toggle {
+    display: none;
+  }
+  .rail-panel {
+    width: auto;
+  }
+}
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  .rail-resize-slot {
+    display: none;
+  }
+  html .rail {
+    min-width: 0;
+  }
+}
+html[data-focus] .rail-resize-slot,
+html.collapse-left .rail-resize-slot {
+  display: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-resize::after {
+    transition: none;
+  }
+}
