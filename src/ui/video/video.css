@@ -3,7 +3,7 @@
 
 .vx-root {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 90;
   background: var(--bg);
   color: var(--text);
@@ -303,7 +303,7 @@
   .vx-time { min-width: 0; font-size: 12px; }
   .vx-side { display: none; flex: 0 0 auto; max-height: 30vh; border-left: 0; border-top: 1px solid var(--border); }
   .vx-root.has-sel .vx-side { display: block; }
-  .vx-pop { position: fixed; left: 8px; right: 8px; top: 56px; min-width: 0; }
+  .vx-pop { position: fixed; left: 8px; right: 8px; top: calc(56px + var(--titlebar-h, 0px)); min-width: 0; }
   .vx-field { grid-template-columns: 84px minmax(0, 1fr) 62px 18px; }
 }
 
@@ -376,7 +376,7 @@
 .vx-ctxmenu { position: fixed; z-index: 120; margin: 0; padding: 4px; list-style: none; min-width: 230px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
 .vx-ctxmenu button { width: 100%; text-align: left; border: 0 !important; background: transparent !important; }
 .vx-ctxmenu button:hover, .vx-ctxmenu button:focus-visible { background: var(--panel-2) !important; }
-.vx-as-overlay { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 8px; background: var(--overlay, rgba(0, 0, 0, 0.55)); }
+.vx-as-overlay { position: fixed; inset: var(--titlebar-h, 0px) 0 0 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 8px; background: var(--overlay, rgba(0, 0, 0, 0.55)); }
 .vx-as { width: min(560px, 100%); max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); }
 .vx-as-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .vx-as-head h3 { margin: 0; font-size: 15px; }

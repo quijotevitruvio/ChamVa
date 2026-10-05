@@ -1,7 +1,7 @@
 /* Base común de diálogos: botón ✕ (≥ 36 px), «Volver al diseño», fondo y tarjeta. */
 .modal-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 140;
   background: var(--overlay);
   display: flex;

@@ -17,7 +17,7 @@
 }
 .bx-btn:hover { border-color: var(--muted); }
 
-.rc-overlay { position: fixed; inset: 0; background: var(--overlay); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.rc-overlay { position: fixed; inset: var(--titlebar-h, 0px) 0 0 0; background: var(--overlay); z-index: 1000; display: flex; align-items: center; justify-content: center; }
 .rc-card {
   background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
   width: min(520px, 94vw); max-height: 86vh; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;

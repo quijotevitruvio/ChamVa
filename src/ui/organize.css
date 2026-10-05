@@ -217,7 +217,7 @@
 /* ---- Clasificador de páginas ---- */
 .ps-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   background: var(--overlay, rgba(0, 0, 0, 0.5));
   z-index: 200;
   display: flex;

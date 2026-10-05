@@ -45,6 +45,7 @@ import { restoreAiCaches, setAiProjectGetter, setAiTick } from '../video/ai/jobs
 import { exportPending, type ExportPending } from '../video/ai/aiPlan';
 import type { Container } from '../video/engine/formats';
 import './video/video.css';
+import { registerCloseGuard } from './windowClose';
 
 function useMediaQuery(q: string): boolean {
   const mq = useMemo(() => window.matchMedia(q), [q]);
@@ -142,6 +143,9 @@ export function VideoEditor({ onClose }: { onClose: () => void }) {
 
   const duration = VM.projectDuration(project);
   const hasClips = project.tracks.some((t) => t.clips.length > 0);
+  const hasClipsRef = useRef(hasClips);
+  hasClipsRef.current = hasClips;
+  useEffect(() => registerCloseGuard(() => (hasClipsRef.current ? 'El proyecto del editor de video no se guarda: se pierde al cerrar ChamVa.' : null)), []);
 
   // ---------- acciones ----------
   const select = (ids: string[]) => setSelection(ids);

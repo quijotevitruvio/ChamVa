@@ -1,5 +1,5 @@
 /* Selector de fusión: plano, solo tokens de la paleta. */
-.blend-scrim { position: fixed; inset: 0; z-index: 210; background: transparent; }
+.blend-scrim { position: fixed; inset: var(--titlebar-h, 0px) 0 0 0; z-index: 210; background: transparent; }
 .blend-menu {
   position: fixed;
   z-index: 211;

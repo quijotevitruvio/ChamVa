@@ -18,6 +18,7 @@ import {
 } from '../../video/record/recordCore';
 import { RecordError, RecordSession, detectSupport, listDevices, type RecordSettings, type RecordedClip } from '../../video/record/session';
 import type { RecordedItem } from './recordPlace';
+import { registerCloseGuard } from '../windowClose';
 
 type Stage = 'config' | 'preparing' | 'ready' | 'countdown' | 'recording' | 'saving';
 
@@ -88,6 +89,15 @@ export function RecordDialog({ onClose, onFinish }: Props) {
   const alive = useRef(true);
   const stageRef = useRef<Stage>('config');
   stageRef.current = stage;
+  useEffect(
+    () =>
+      registerCloseGuard(() =>
+        stageRef.current === 'recording' || stageRef.current === 'countdown' || stageRef.current === 'saving'
+          ? 'Hay una grabación en curso: si cierras ChamVa se pierde.'
+          : null,
+      ),
+    [],
+  );
   const stoppingRef = useRef(false);
   const bubbleRef = useRef(bubble);
   const stopRef = useRef<(fromEvent?: boolean) => Promise<void>>(async () => undefined);

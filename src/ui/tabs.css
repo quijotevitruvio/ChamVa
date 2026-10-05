@@ -211,3 +211,33 @@ html[data-focus] .tabstrip {
   .tabstrip-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tabstrip-drag { flex-basis: 4px; min-width: 4px; }
 }
+
+/* ===== Franja fija (Windows sin decoraciones): por encima de TODO, nunca tapada por pantallas completas ===== */
+html.custom-titlebar .tabstrip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-titlebar, 99000);
+  height: var(--titlebar-h);
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: visible;
+}
+/* el modo concentración oculta la franja en web; con ventana sin decoraciones se queda (− ▢ ✕ y arrastre) */
+html.custom-titlebar[data-focus] .tabstrip {
+  display: flex;
+}
+.crash-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-titlebar, 99000);
+  height: var(--titlebar-h, 0px);
+  display: flex;
+  justify-content: flex-end;
+  -webkit-app-region: drag;
+}
+.crash-bar .wc { -webkit-app-region: no-drag; }
+html.custom-titlebar .focus-pill { top: calc(var(--titlebar-h) + 8px); }

@@ -3,7 +3,7 @@
 /* ---------- Paleta de comandos ---------- */
 .cmdk-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 1000;
   background: var(--overlay);
   display: flex;

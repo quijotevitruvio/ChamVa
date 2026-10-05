@@ -1,7 +1,7 @@
 /* «Más formatos»: impresión, paquetes, sprites y rebanadas. Plano, solo variables del tema. */
 .xm-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 140;
   background: var(--overlay);
   display: flex;

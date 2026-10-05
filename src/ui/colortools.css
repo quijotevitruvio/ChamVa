@@ -1,7 +1,7 @@
 /* Herramientas de color: cuentagotas alternativo, armonías y paleta de foto. Plano, sin sombras. */
 .sp-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 1000;
   background: var(--overlay);
   display: flex;

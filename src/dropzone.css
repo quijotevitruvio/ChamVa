@@ -1,7 +1,7 @@
 /* Aviso al arrastrar archivos sobre la ventana. Plano, sin sombras. */
 .drop-hint {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 250;
   display: grid;
   place-items: center;

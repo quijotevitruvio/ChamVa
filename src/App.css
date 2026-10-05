@@ -79,6 +79,32 @@
   box-sizing: border-box;
 }
 
+/* ===== Franja de la ventana y escala de z-index =====
+   --titlebar-h: alto de la franja propia (logo, pestañas, arrastre, − ▢ ✕). Vale 0 en web, Android y
+   macOS/Linux (decoraciones nativas); en Windows sin decoraciones lo fija `html.custom-titlebar` (WindowControls).
+   Regla única: toda pantalla completa o fondo a pantalla completa usa `inset: var(--titlebar-h, 0px) 0 0 0`
+   y la franja es `position: fixed` con z-index --z-titlebar, así que NUNCA queda tapada.
+   Escala (ver ui/titlebarLogic.ts y su prueba, que la vigila):
+     0-99      contenido del editor, paneles, barras flotantes
+     100-999   pantallas completas, diálogos y menús (video 90, inicio 120, Modal 140, avisos 300...)
+     1000-3000 paletas, buscadores y editores modales
+     9000      píldora de foco
+     99000     franja de la ventana (--z-titlebar)
+     100000    tooltip propio (única capa por encima de la franja) */
+:root {
+  --titlebar-h: 0px;
+  --z-titlebar: 99000;
+  --z-tooltip: 100000;
+}
+html.custom-titlebar {
+  --titlebar-h: 38px;
+}
+@media (max-width: 768px) {
+  html.custom-titlebar {
+    --titlebar-h: 36px;
+  }
+}
+
 html,
 body,
 #root {
@@ -97,6 +123,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* la franja propia es fija: se le reserva su sitio (0 si no hay) */
+  padding-top: var(--titlebar-h, 0px);
 }
 
 /* ---- Toolbar ---- */
@@ -975,7 +1003,7 @@ ul.layers .name {
 /* ---- Pantalla de inicio ---- */
 .home-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 120;
   background: var(--bg);
   display: flex;
@@ -1142,7 +1170,7 @@ ul.layers .name {
 /* Aviso de apoyo tras exportar */
 .donate-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 130;
   background: var(--overlay);
   display: flex;
@@ -1369,7 +1397,7 @@ ul.layers .name {
 /* ---- Modo presentación ---- */
 .present-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 100;
   background: #000;
   display: flex;
@@ -1417,7 +1445,7 @@ ul.layers .name {
 /* ---- Editor de pincel (Borrador / Restaurar) ---- */
 .mask-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 100;
   background: var(--bg);
   display: flex;
@@ -2172,7 +2200,7 @@ button.mini {
 /* ===== ErrorBoundary ===== */
 .crash-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -56,7 +56,7 @@ export function Toolbar(p: Props) {
   return (
     <>
       <div className="vx-toolbar" role="toolbar" aria-label="Editor de video">
-        <button type="button" onClick={p.onClose}>← <span className="vx-hide-sm">{t('Volver al diseño')}</span></button>
+        <button type="button" onClick={p.onClose} title={t('Volver al diseño')}>← <span className="vx-hide-sm">{t('Volver al diseño')}</span></button>
         <span className="vx-title vx-hide-sm">🎬 {t('Editor de video')}</span>
         <button type="button" className="vx-show-sm" onClick={p.onToggleBin} aria-pressed={p.binOpen} aria-label="Medios" title="Medios">🗂</button>
         <button type="button" onClick={p.onUndo} disabled={!p.canUndo} title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
@@ -145,6 +145,9 @@ export function Toolbar(p: Props) {
           title={support && support.webcodecs && !support.mp4 ? 'Este equipo no puede codificar H.264: usa WebM' : 'Exportar a MP4 (H.264 + AAC), sin descargas'}
         >
           {p.exporting ? '… Procesando' : '⬇ MP4'}
+        </button>
+        <button type="button" className="vx-hide-sm vx-close-editor" onClick={p.onClose} aria-label={t('Volver al diseño')} title={t('Volver al diseño')}>
+          ✕
         </button>
       </div>
       {p.exporting && (

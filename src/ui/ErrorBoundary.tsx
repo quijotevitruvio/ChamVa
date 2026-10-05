@@ -5,6 +5,7 @@ import { getTheme } from '../theme';
 import { useEditor } from '../editor/state/store';
 import './a11y.css';
 import { openExternal } from '../io/openExternal';
+import { WindowControls } from './WindowControls';
 import { buildReport, getConsoleLines, installErrorCapture, issueUrl, redact } from '../io/errorReport';
 
 // Guarda las últimas líneas de console.error para el informe.
@@ -65,6 +66,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     const report = () => makeReport(error, info);
     return (
       <div className="crash-overlay">
+        <div className="crash-bar" data-tauri-drag-region>
+          <WindowControls />
+        </div>
         <div className="crash-card">
           <h2>😵 {t('Algo salió mal')}</h2>
           <p>

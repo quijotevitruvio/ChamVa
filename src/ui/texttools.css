@@ -1,7 +1,7 @@
 /* Herramientas de texto: buscador de fuentes, buscar y reemplazar, símbolos, avisos. Plano, sin sombras. */
 .tt-overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h, 0px) 0 0 0;
   z-index: 1000;
   background: var(--overlay);
   display: flex;
