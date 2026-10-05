@@ -2,7 +2,7 @@
 // La clave PRIVADA correspondiente NO está aquí (es secreta del autor; se usa
 // con tools/sign-license.mjs para emitir claves de licencia).
 
-export const APP_VERSION = '0.10.0';
+export const APP_VERSION = '0.10.1';
 
 export const AUTHOR = {
   name: 'Andrés Valencia Tobón',
