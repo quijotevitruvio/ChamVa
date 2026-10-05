@@ -64,10 +64,18 @@ fn plan() -> ProxyPlan {
 fn real_detection_reads_declared_license() {
     let Some(dir) = dev_dir() else { return };
     let loc = dev_located(&dir);
+    let retired = locate::sha256_file(&loc.ffmpeg).is_ok_and(|h| locate::manifest().blocked_hashes().contains(&h.as_str()));
+    if retired {
+        // el build BtbN retirado: `-L` dice LGPL, pero su -buildconf lleva --enable-chromaprint
+        // (arrastra FFTW, GPL) y --enable-libzvbi → la comprobación de licencia lo rechaza
+        let e = locate::license_check(&loc.ffmpeg, &loc.ffprobe, &work("detect")).unwrap_err();
+        assert!(e.contains("--enable-chromaprint") || e.contains("--enable-libzvbi"), "{e}");
+        return;
+    }
     let st = locate::detect(&loc, &work("detect"), None);
     assert!(st.available, "{:?}", st.reason);
-    // lo que DECLARA `-L` (el build BtbN dice LGPL aunque sus bibliotecas no lo sean: ver auditoría)
-    assert_eq!(st.license.as_deref(), Some("LGPL-3.0-or-later"));
+    // el build propio (ffmpeg-build.yml) es LGPL-2.1-or-later; otro build local puede declarar v3
+    assert!(st.license.as_deref().is_some_and(|l| l.starts_with("LGPL-")), "{:?}", st.license);
     assert!(st.has_libvpx && st.has_zscale);
     #[cfg(windows)]
     assert!(st.listed_hw_encoders.contains(&args::HwEncoder::H264Mf));

@@ -352,8 +352,9 @@ el navegador (y en la app Tauri de Windows y Android antes de publicar).
 
 ### Después
 
-Grabar pantalla y cámara en burbuja, biblioteca de sonidos CC0 pequeña, plantillas de video locales
-hechas con el editor de diseño, bucle perfecto.
+Hecho: grabar pantalla, cámara, pantalla con la cámara en burbuja y micrófono (`src/video/record/`, diálogo «Grabar»), 12 plantillas
+de video locales (`src/video/templates/`, selector «Plantillas») y «Bucle perfecto» (`src/video/speed/perfectLoop.ts`). Pendiente:
+biblioteca de sonidos CC0 pequeña.
 
 ---
 

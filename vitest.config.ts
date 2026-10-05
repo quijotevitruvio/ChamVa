@@ -5,7 +5,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // scripts/*.test.mjs: auditoría de licencias del FFmpeg propio (la misma que corre el CI)
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     coverage: { provider: 'v8', include: ['src/license.ts', 'src/ai/bgcore.ts', 'src/io/project.ts', 'src/i18n.ts'] },
   },
 });

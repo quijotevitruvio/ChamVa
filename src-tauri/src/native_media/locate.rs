@@ -80,6 +80,23 @@ pub struct Manifest {
     #[allow(dead_code)]
     pub blocked_reason: Option<String>,
     pub targets: BTreeMap<String, ManifestTarget>,
+    /// builds retirados (p. ej. el BtbN con licencias mixtas): sus SHA-256 no se ejecutan
+    /// NUNCA, aunque el manifiesto esté en `"ok"` con otro build
+    #[serde(default)]
+    pub revoked: Vec<RevokedBuild>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevokedBuild {
+    /// qué build era y por qué se retiró (documentación; no se muestra)
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub build: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub reason: String,
+    pub sha256: Vec<String>,
 }
 
 fn status_blocks(s: &Option<String>) -> bool {
@@ -100,11 +117,12 @@ impl Manifest {
         self.targets.get(triple).filter(|t| !status_blocks(&t.status))
     }
 
-    /// SHA-256 de todo lo bloqueado (zip y cada archivo): un binario con uno de
-    /// estos hashes NUNCA se ejecuta, esté donde esté (incluida la ruta de desarrollo).
+    /// SHA-256 de todo lo bloqueado (zip y cada archivo) y de los builds retirados: un
+    /// binario con uno de estos hashes NUNCA se ejecuta, esté donde esté (incluida la ruta
+    /// de desarrollo).
     pub fn blocked_hashes(&self) -> Vec<&str> {
         let all = self.is_blocked();
-        let mut v = Vec::new();
+        let mut v: Vec<&str> = self.revoked.iter().flat_map(|r| r.sha256.iter().map(String::as_str)).collect();
         for t in self.targets.values().filter(|t| all || status_blocks(&t.status)) {
             v.push(t.sha256.as_str());
             if let Some(f) = &t.files {
@@ -414,7 +432,7 @@ pub fn license_ok(l_text: &str, buildconf: &str) -> Result<String, String> {
         return Err("el binario no se declara LGPL".into());
     }
     let bc = buildconf.to_ascii_lowercase();
-    for bad in ["--enable-gpl", "--enable-nonfree", "--enable-libx264", "--enable-libx265", "--enable-libvidstab", "--enable-libfdk-aac", "--enable-libxvid"] {
+    for bad in ["--enable-gpl", "--enable-nonfree", "--enable-libx264", "--enable-libx265", "--enable-libvidstab", "--enable-libfdk-aac", "--enable-libxvid", "--enable-chromaprint", "--enable-libzvbi"] {
         if bc.split_whitespace().any(|t| t == bad) {
             return Err(format!("el binario está compilado con {bad}"));
         }
@@ -495,6 +513,7 @@ mod tests {
         assert!(license_ok(LGPL, "  --enable-nonfree").is_err());
         assert!(license_ok(LGPL, "--enable-libx264").is_err());
         assert!(license_ok(LGPL, "--enable-libfdk-aac").is_err());
+        assert!(license_ok(LGPL, "--enable-chromaprint").is_err() && license_ok(LGPL, "--enable-libzvbi").is_err());
         // «--disable-libx264» o «--enable-gplv3-algo» inventado no confunden la comprobación
         assert!(license_ok(LGPL, "--disable-libx264 --disable-libx265 --disable-libfdk-aac").is_ok());
         assert!(license_ok("", "").is_err());
@@ -536,7 +555,8 @@ mod tests {
         assert!(m.version.starts_with('n'));
         assert!(m.source_release.is_empty() || m.source_release.starts_with("https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-"));
         for (triple, t) in &m.targets {
-            assert!(t.url.starts_with("https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-"), "{triple}");
+            // solo el build propio, alojado en un Release de este repositorio (ffmpeg-build.yml)
+            assert!(t.url.starts_with("https://github.com/quijotevitruvio/ChamVa/releases/download/ffmpeg-"), "{triple}");
             for m in &t.mirrors {
                 // solo el Release propio del repo y el mismo archivo (mismo SHA-256)
                 assert!(m.starts_with("https://github.com/quijotevitruvio/ChamVa/releases/download/ffmpeg-"), "{triple}: {m}");
@@ -550,15 +570,46 @@ mod tests {
                 assert!(f.values().all(|h| super::super::validate::is_cache_key(h)));
             }
         }
-        // v0.9.0: build BtbN bloqueado por licencias → nada utilizable ni instalable a mano
-        assert!(m.is_blocked());
-        assert!(this_target().is_none() && user_manifest().is_empty());
+        // el build BtbN retirado por licencias no se ejecuta NUNCA, con cualquier estado
+        for r in &m.revoked {
+            assert!(!r.sha256.is_empty() && r.sha256.iter().all(|h| super::super::validate::is_cache_key(h)));
+        }
         assert!(m.blocked_hashes().contains(&"703a6b66a78b87ca86ae924d39746ad404bc749fd8b6a5a85a27240b4755e762"), "ffmpeg.exe BtbN bloqueado");
-        let st = NativeStatus::unavailable("x", Some("C:/datos/ffmpeg".into()));
-        assert!(!st.available && !st.included && !st.user_install_supported);
-        assert!(st.user_dir.is_none() && st.pinned_source_url.is_none() && st.pinned_sha256.is_none());
-        assert!(st.release_url.is_empty() && st.source_release_url.is_empty());
-        assert_eq!(st.reason.as_deref(), Some(NOT_INCLUDED));
+        assert!(m.blocked_hashes().contains(&"feb93d768fe01ebb696d990c4f0c65add416c12e5e16fa73ad5643237e0e9e22"), "zip BtbN bloqueado");
+        if m.is_blocked() {
+            // plantilla «pending-build» (o candidato «pending-review»): nada utilizable ni instalable a mano
+            assert!(this_target().is_none() && user_manifest().is_empty());
+            let st = NativeStatus::unavailable("x", Some("C:/datos/ffmpeg".into()));
+            assert!(!st.available && !st.included && !st.user_install_supported);
+            assert!(st.user_dir.is_none() && st.pinned_source_url.is_none() && st.pinned_sha256.is_none());
+            assert!(st.release_url.is_empty() && st.source_release_url.is_empty());
+            assert_eq!(st.reason.as_deref(), Some(NOT_INCLUDED));
+        } else {
+            // «ok» solo con el build propio relleno: hashes reales, oferta de fuente y ningún hash retirado
+            assert!(m.source_release.starts_with("https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-"));
+            let retired: Vec<&str> = m.revoked.iter().flat_map(|r| r.sha256.iter().map(String::as_str)).collect();
+            for (triple, t) in &m.targets {
+                if t.status.as_deref().is_some_and(|s| s != "ok") {
+                    continue;
+                }
+                assert!(t.verified && t.files.is_some(), "{triple}: un build activo fija los hashes de cada archivo");
+                assert!(!t.sha256.bytes().all(|b| b == b'0'), "{triple}: SHA-256 de la plantilla sin rellenar");
+                assert!(!retired.contains(&t.sha256.as_str()), "{triple}: el zip es un build retirado");
+                assert!(t.files.as_ref().unwrap().values().all(|h| !retired.contains(&h.as_str())), "{triple}: archivo retirado");
+            }
+        }
+    }
+
+    /// Un hash de `revoked` bloquea aunque el manifiesto esté en «ok».
+    #[test]
+    fn revoked_hashes_block_even_when_ok() {
+        let json = format!(
+            r#"{{"status":"ok","version":"n9","release":"r","ffmpegSource":"s","buildScripts":"b","targets":{{}},"revoked":[{{"build":"x","reason":"y","sha256":["{}"]}}]}}"#,
+            "b".repeat(64)
+        );
+        let m: Manifest = serde_json::from_str(&json).unwrap();
+        assert!(!m.is_blocked());
+        assert_eq!(m.blocked_hashes(), vec!["b".repeat(64).as_str()]);
     }
 
     /// Binario con un hash bloqueado plantado en la carpeta de datos (con o sin sello

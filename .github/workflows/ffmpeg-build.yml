@@ -1,0 +1,209 @@
+# Compila el FFmpeg PROPIO de ChamVa para Windows x64 (LGPL-2.1-or-later, DLL compartidas) desde
+# la fuente, con el método de BtbN/FFmpeg-Builds y una lista blanca de bibliotecas
+# (scripts/ffmpeg-allowed-libs.json), lo AUDITA (scripts/audit-ffmpeg-licenses.mjs) y sube el
+# resultado como artefactos. NO publica nada: el Release de fuentes y el manifiesto los hace una
+# persona tras revisar (docs/release-ffmpeg.md).
+#
+# Solo se lanza a mano: gh workflow run ffmpeg-build.yml [-f ffmpeg_ref=<40 hex>] [-f release_tag=ffmpeg-lgpl-…]
+# No se ejecuta con tags ni con el release normal (release.yml no lo llama).
+name: FFmpeg propio (Windows x64, LGPL)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_ref:
+        description: 'Commit de FFmpeg (40 hex). Vacío = el fijado en scripts/ffmpeg-allowed-libs.json'
+        required: false
+        default: ''
+        type: string
+      release_tag:
+        description: 'Etiqueta prevista del Release de fuentes (solo se escribe en SOURCES.md y en el manifiesto candidato). Vacío = ffmpeg-lgpl-<versión>-chamva1'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ffmpeg-build
+  cancel-in-progress: false
+
+env:
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  build:
+    name: Compilar y auditar (win64-chamva-lgpl-shared)
+    runs-on: ubuntu-24.04
+    # primera vez (sin caché): toolchain crosstool-ng + bibliotecas + FFmpeg ≈ 2–3 h; con caché ≈ 30–45 min
+    timeout-minutes: 345
+    env:
+      # entradas SOLO por variables de entorno (nunca interpoladas en el código de los pasos)
+      FFMPEG_REF: ${{ inputs.ffmpeg_ref }}
+      RELEASE_TAG_IN: ${{ inputs.release_tag }}
+    steps:
+      - name: Código de ChamVa
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validar entradas
+        run: |
+          set -euo pipefail
+          if [[ -n "$FFMPEG_REF" && ! "$FFMPEG_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ffmpeg_ref debe ser un commit completo (40 hex), no una rama ni una etiqueta"; exit 1
+          fi
+          if [[ -n "$RELEASE_TAG_IN" && ! "$RELEASE_TAG_IN" =~ ^ffmpeg-lgpl-[A-Za-z0-9._-]{1,80}$ ]]; then
+            echo "::error::release_tag debe empezar por ffmpeg-lgpl- (solo letras, números, . _ -)"; exit 1
+          fi
+          echo "WORK=$RUNNER_TEMP/ffbuild" >>"$GITHUB_ENV"
+          echo "RELEASE_TAG=$RELEASE_TAG_IN" >>"$GITHUB_ENV"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends jq xz-utils zip unzip libarchive-tools binutils-mingw-w64-x86-64
+
+      # caché de capas Docker (buildx, modo max) y de las fuentes descargadas por BtbN
+      - name: Restaurar caché de BtbN
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffbuild/btbn/.cache
+          key: ffbuild-v1-${{ hashFiles('scripts/ffmpeg-allowed-libs.json', 'scripts/ffmpeg-build/**') }}
+          restore-keys: |
+            ffbuild-v1-
+
+      - name: Preparar fuentes fijadas y overlay de BtbN
+        timeout-minutes: 30
+        run: bash scripts/ffmpeg-build/build.sh prepare
+
+      # antes de instalar Node: el script de BtbN borra /opt/hostedtoolcache si falta disco
+      - name: Liberar disco del runner
+        run: '"$WORK/btbn/util/free_disk_space.sh"'
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Pruebas de la auditoría (Vitest)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest run scripts/
+
+      - name: Imagen Docker (toolchain + bibliotecas de la lista blanca)
+        id: image
+        timeout-minutes: 240
+        run: bash scripts/ffmpeg-build/build.sh image
+
+      - name: Guardar caché de BtbN
+        if: always() && steps.image.outcome == 'success' && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ffbuild/btbn/.cache
+          key: ffbuild-v1-${{ hashFiles('scripts/ffmpeg-allowed-libs.json', 'scripts/ffmpeg-build/**') }}
+
+      - name: Compilar FFmpeg
+        timeout-minutes: 60
+        run: bash scripts/ffmpeg-build/build.sh ffmpeg
+
+      - name: Empaquetar (zip, licencias, fuentes, SHA256SUMS, SOURCES.md)
+        timeout-minutes: 30
+        run: bash scripts/ffmpeg-build/build.sh package
+
+      - name: Auditoría de licencias del binario (falla el job si hay GPL o algo fuera de la lista blanca)
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          source "$WORK/state.env"
+          OUT="$WORK/out"
+          node scripts/audit-ffmpeg-licenses.mjs "$OUT/$BUILD_NAME.zip" --json "$OUT/audit.json" --manifest-snippet "$OUT/manifest-snippet.json" | tee "$OUT/audit.txt"
+          # comprobación cruzada con binutils: toda DLL que objdump ve importada la vio también
+          # el analizador PE propio (si no, el analizador tiene un fallo y no nos fiamos de él)
+          ex="$(mktemp -d)"; unzip -q "$OUT/$BUILD_NAME.zip" -d "$ex"
+          : >"$OUT/linked-dlls.txt"
+          for f in "$ex/$BUILD_NAME"/bin/*; do
+            names="$(x86_64-w64-mingw32-objdump -p "$f" | sed -nE 's/^\s*DLL Name: (.*)$/\1/p' | LC_ALL=C sort -u)"
+            ours="$(jq -r --arg f "$(basename "$f")" '.files[] | select(.file==$f) | .imports[] | sub(" \\(diferida\\)$"; "")' "$OUT/audit.json" | LC_ALL=C sort -u)"
+            { echo "== $(basename "$f")"; echo "$names"; } >>"$OUT/linked-dlls.txt"
+            missing="$(LC_ALL=C comm -23 <(echo "$names") <(echo "$ours"))"
+            if [[ -n "$missing" ]]; then
+              echo "::error::$(basename "$f"): objdump ve DLL que la auditoría no vio: $missing"; exit 1
+            fi
+          done
+          # y con strings: ninguna cadena de bibliotecas GPL/incompatibles fuera de la línea -buildconf
+          x86_64-w64-mingw32-strings -a "$ex/$BUILD_NAME"/bin/* \
+            | grep -iE 'fftw|zvbi|chromaprint|aribb24|opencore|xvidcore|vidstab|fdk[-_]?aac' \
+            | grep -vF -- '--prefix=/ffbuild/prefix' \
+            | grep -vxF 'Note: libopencore_amrnb supports dtx' >"$OUT/strings-hits.txt" || true
+          if [[ -s "$OUT/strings-hits.txt" ]]; then
+            echo "::error::strings encuentra cadenas sospechosas (ver strings-hits.txt)"; head -n 50 "$OUT/strings-hits.txt"; exit 1
+          fi
+          rm -rf "$ex"
+
+      - name: Manifiesto candidato (sigue BLOQUEADO hasta revisarlo)
+        run: |
+          set -euo pipefail
+          source "$WORK/state.env"
+          node scripts/ffmpeg-build/candidate-manifest.mjs \
+            --template src-tauri/ffmpeg-manifest.json \
+            --snippet "$WORK/out/manifest-snippet.json" \
+            --build-info "$WORK/out/BUILD-INFO.json" \
+            --release-tag "${RELEASE_TAG:-ffmpeg-lgpl-$FF_VERSION-chamva1}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --out "$WORK/out/ffmpeg-manifest.candidate.json"
+          {
+            echo "## FFmpeg $FF_VERSION (win64-chamva-lgpl-shared)"
+            echo
+            echo '```'
+            sed -n '1,400p' "$WORK/out/audit.txt"
+            echo '```'
+            echo
+            echo "SHA-256 del zip: \`$(jq -r .sha256 "$WORK/out/manifest-snippet.json")\`"
+            echo
+            echo "Nada se ha publicado. Siguiente paso: docs/release-ffmpeg.md («Build propio»)."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Artefacto — binario, auditoría y manifiesto candidato
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffmpeg-chamva-win64-binary
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/ffbuild/out/*.zip
+            ${{ runner.temp }}/ffbuild/out/SHA256SUMS
+            ${{ runner.temp }}/ffbuild/out/SOURCES.md
+            ${{ runner.temp }}/ffbuild/out/BUILD-INFO.json
+            ${{ runner.temp }}/ffbuild/out/audit.json
+            ${{ runner.temp }}/ffbuild/out/audit.txt
+            ${{ runner.temp }}/ffbuild/out/linked-dlls.txt
+            ${{ runner.temp }}/ffbuild/out/manifest-snippet.json
+            ${{ runner.temp }}/ffbuild/out/ffmpeg-manifest.candidate.json
+
+      - name: Artefacto — fuente completa correspondiente
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffmpeg-chamva-win64-source
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0 # ya va comprimida
+          path: ${{ runner.temp }}/ffbuild/out/source/
+
+      # si algo falla, los registros y el informe de auditoría (nunca el binario)
+      - name: Artefacto — registros (también si falla)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffmpeg-chamva-win64-logs
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/ffbuild/out/logs/
+            ${{ runner.temp }}/ffbuild/out/audit.json
+            ${{ runner.temp }}/ffbuild/out/audit.txt
+            ${{ runner.temp }}/ffbuild/out/strings-hits.txt
+            ${{ runner.temp }}/ffbuild/btbn/Dockerfile

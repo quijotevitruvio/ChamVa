@@ -472,11 +472,15 @@ mod tests {
         assert!(res.exists());
     }
 
-    /// v0.9.0: el build BtbN está bloqueado por licencias → no hay Spec en ninguna plataforma.
+    /// Manifiesto bloqueado (plantilla «pending-build» del build propio, candidato
+    /// «pending-review»…) → no hay Spec en ninguna plataforma.
     #[test]
     fn blocked_manifest_has_no_spec() {
-        assert!(super::super::locate::manifest().is_blocked(), "el manifiesto de v0.9.0 debe estar bloqueado");
-        assert!(Spec::from_manifest().is_none());
+        if super::super::locate::manifest().is_blocked() {
+            assert!(Spec::from_manifest().is_none());
+        }
+        let pending = r#"{"status":"pending-build","version":"n9","release":"r","ffmpegSource":"s","buildScripts":"b","targets":{}}"#;
+        assert!(serde_json::from_str::<super::super::locate::Manifest>(pending).unwrap().is_blocked());
     }
 
     /// Manifiesto con la entrada bloqueada: `resolve` no copia ni ejecuta nada,

@@ -1,7 +1,8 @@
 # REFERENCIA, NO ES UN WORKFLOW (no está en .github/workflows y no se ejecuta).
-# Pasos de CI con FFmpeg preparados para el build BtbN, DESCARTADO por licencias mixtas
-# (docs/seguridad-ffmpeg.md). Para v0.9.1: cambiar al build propio y rehacer los textos de
-# licencia («LGPL» abajo es del build descartado) tras repetir la auditoría.
+# Pasos de CI con FFmpeg para el BUILD PROPIO (ffmpeg-build.yml, LGPL-2.1-or-later). Se copian a
+# release.yml SOLO cuando src-tauri/ffmpeg-manifest.json esté en "status": "ok" con los hashes
+# reales y el Release de fuentes publicado (docs/release-ffmpeg.md, pasos 3–5). Sustituye
+# <TAG> por la etiqueta real del Release de fuentes.
 
 # Compila los instaladores de Windows, Linux y macOS y publica un GitHub Release
 # (borrador) cada vez que se pushea un tag v* — o manualmente desde la pestaña Actions.
@@ -20,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest # NSIS .exe + .msi, con FFmpeg LGPL (docs/release-ffmpeg.md)
+          - platform: windows-latest # NSIS .exe + .msi, con el FFmpeg propio LGPL (docs/release-ffmpeg.md)
             args: '--config src-tauri/tauri.ffmpeg.conf.json'
           - platform: ubuntu-22.04 # .deb + .rpm + .AppImage (22.04 = glibc compatible con más distros)
             args: ''
@@ -56,8 +57,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # FFmpeg LGPL solo en Windows. La caché guarda el zip; el script lo
-      # verifica SIEMPRE (SHA-256 del zip y de cada archivo, -L y -buildconf)
-      # y sale con error si no coincide: entonces el job falla y no se publica.
+      # verifica SIEMPRE (estado "ok" del manifiesto, SHA-256 del zip y de cada
+      # archivo, auditoría de licencias, -L y -buildconf) y sale con error si
+      # algo no cuadra: entonces el job falla y no se publica.
       - name: Caché del zip de FFmpeg (Windows)
         if: matrix.platform == 'windows-latest'
         uses: actions/cache@v4
@@ -84,8 +86,9 @@ jobs:
             - **Linux:** `.AppImage` (universal), `.deb` (Debian/Ubuntu) o `.rpm` (Fedora)
             - **macOS:** `.dmg` (Intel y Apple Silicon)
 
-            > El instalador de Windows incluye FFmpeg (LGPL-3.0-or-later, programa aparte). Su código
-            > fuente completo y el binario exacto: https://github.com/quijotevitruvio/ChamVa/releases/tag/ffmpeg-lgpl-n9.0.2-22-g46d8f462ee
+            > El instalador de Windows incluye FFmpeg (LGPL-2.1-or-later, programa aparte; licencias de
+            > sus bibliotecas en la carpeta ffmpeg-licenses). Su código fuente completo y el binario
+            > exacto: https://github.com/quijotevitruvio/ChamVa/releases/tag/<TAG>
 
             > Windows puede mostrar SmartScreen ("editor desconocido"): Más información → Ejecutar de todas formas.
             > macOS: la app no está firmada; tras copiarla a Aplicaciones ejecuta

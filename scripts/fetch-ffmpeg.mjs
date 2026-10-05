@@ -18,13 +18,16 @@
 // con el manifiesto; si ninguno coincide, sale con error (el CI se detiene).
 //
 // BLOQUEO: si el manifiesto (o la entrada de la plataforma) tiene `status`
-// distinto de "ok" (v0.9.0: "blocked-license", build BtbN con licencias
-// mixtas), el script se niega ANTES de descargar o tocar nada (código 8).
+// distinto de "ok" ("pending-build": plantilla del build propio sin rellenar;
+// "pending-review": candidato del CI sin revisar), el script se niega ANTES de
+// descargar o tocar nada (código 8).
 // `-L`/`-buildconf` es condición necesaria, no suficiente: no ve las licencias
-// de las bibliotecas externas (ver docs/seguridad-ffmpeg.md, «Auditoría»).
+// de las bibliotecas externas. Por eso, en Windows, antes de copiar nada se pasa
+// la misma auditoría que el CI (scripts/audit-ffmpeg-licenses.mjs): si falla,
+// código 9 y no se empaqueta (ver docs/seguridad-ffmpeg.md, «Auditoría»).
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync } from 'node:fs';
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -138,6 +141,16 @@ const top = (await readdir(ex))[0];
 const bin = path.join(ex, top, target.binDir ?? 'bin');
 
 const isWin = triple.includes('windows');
+if (triple === 'x86_64-pc-windows-msvc') {
+  // misma auditoría de licencias que .github/workflows/ffmpeg-build.yml (sin ejecutar nada)
+  const { auditDir, loadAllow, formatReport } = await import('./audit-ffmpeg-licenses.mjs');
+  const rep = await auditDir(path.join(ex, top), await loadAllow());
+  console.log(formatReport({ input: archive, ...rep }));
+  if (!rep.ok) {
+    console.error('La auditoría de licencias del binario ha FALLADO: no se empaqueta.');
+    process.exit(9);
+  }
+}
 const wanted = (await readdir(bin)).filter((f) =>
   isWin ? /^(ffmpeg|ffprobe)\.exe$|\.dll$/i.test(f) : /^(ffmpeg|ffprobe)$|\.so(\.\d+)*$/.test(f),
 );
@@ -164,6 +177,16 @@ await mkdir(outDir, { recursive: true });
 for (const f of wanted) await copyFile(path.join(bin, f), path.join(outDir, f));
 const lic = path.join(ex, top, 'LICENSE.txt');
 if (existsSync(lic)) await copyFile(lic, path.join(outDir, 'LICENSE.txt'));
+// licencias de cada biblioteca enlazada (BSD/MIT exigen acompañar el binario con su aviso).
+// Van en una carpeta HERMANA (ffmpeg-licenses/): dentro de ffmpeg/ la app rechaza archivos de más.
+const licDir = path.join(root, 'src-tauri', 'binaries', 'ffmpeg-licenses');
+await rm(licDir, { recursive: true, force: true });
+if (existsSync(path.join(ex, top, 'licenses'))) {
+  await cp(path.join(ex, top, 'licenses'), licDir, { recursive: true });
+} else if (isWin) {
+  console.error('El build no trae licenses/ (licencia de cada biblioteca): no se empaqueta.');
+  process.exit(9);
+}
 
 // licencia del binario concreto (solo si se puede ejecutar aquí)
 const exe = path.join(outDir, isWin ? 'ffmpeg.exe' : 'ffmpeg');
@@ -196,9 +219,10 @@ await writeFile(
   `ChamVa incluye FFmpeg ${manifest.version} como programa aparte (no enlazado con ChamVa).
 
 Licencia de este build: ${manifest.license}. El texto completo está en
-LICENSE.txt, en esta misma carpeta, junto con las licencias de las
-bibliotecas que incluyen las DLL (auditadas antes de publicar: ver
-docs/seguridad-ffmpeg.md en el repositorio de ChamVa).
+LICENSE.txt, en esta misma carpeta. Las licencias de cada biblioteca
+que incluyen las DLL están en la carpeta ffmpeg-licenses/, junto a esta
+(auditadas antes de publicar: ver docs/seguridad-ffmpeg.md en el
+repositorio de ChamVa).
 
 OFERTA DE CÓDIGO FUENTE: el código fuente completo y correspondiente de
 este build (FFmpeg en el commit exacto, los scripts con los que se compiló

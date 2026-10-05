@@ -3,7 +3,8 @@
   "bundle": {
     "licenseFile": "binaries/LICENCIAS-INSTALADOR.txt",
     "resources": {
-      "binaries/ffmpeg/": "ffmpeg/"
+      "binaries/ffmpeg/": "ffmpeg/",
+      "binaries/ffmpeg-licenses/": "ffmpeg-licenses/"
     }
   }
 }

@@ -1,0 +1,88 @@
+{
+  "$comment": "Lista blanca VERSIONADA del FFmpeg propio de ChamVa (Windows x64, LGPL-2.1-or-later). La usan .github/workflows/ffmpeg-build.yml, scripts/ffmpeg-build/build.sh (qué etapas de BtbN se compilan) y scripts/audit-ffmpeg-licenses.mjs (qué puede aparecer en el binario). Cambiarla es una decisión de licencia: hay que revisar la licencia de la biblioteca nueva (COPYING/LICENSE en su fuente, no el README) y anotarlo en docs/seguridad-ffmpeg.md. Ver docs/release-ffmpeg.md.",
+  "schema": 1,
+  "license": "LGPL-2.1-or-later",
+  "ffmpeg": {
+    "repo": "https://github.com/FFmpeg/FFmpeg.git",
+    "commit": "46d8f462eeb87ee1f704d8c44a0ee24fca471ad1",
+    "expectedVersion": "n9.0.2-22-g46d8f462ee",
+    "extraVersion": "chamva",
+    "licenseFile": "COPYING.LGPLv2.1"
+  },
+  "btbn": {
+    "repo": "https://github.com/BtbN/FFmpeg-Builds.git",
+    "commit": "9acad4a9ef1583096af7836cc1e9c8cbcb4d3950",
+    "target": "win64",
+    "variant": "lgpl-chamva-shared",
+    "addins": ["9.0"],
+    "crosstoolNgRepo": "https://github.com/crosstool-ng/crosstool-ng.git",
+    "crosstoolNgCommit": "f697d16bd70b3e4a3499b7f2a153860f41964f72",
+    "baseStages": ["10-mingw", "10-mingw-std-threads", "10-xorg-macros", "15-base"]
+  },
+  "package": {
+    "name": "win64-chamva-lgpl-shared",
+    "binDir": "bin",
+    "exactFiles": ["ffmpeg.exe", "ffprobe.exe"],
+    "dllPatterns": ["^avcodec-\\d+\\.dll$", "^avdevice-\\d+\\.dll$", "^avfilter-\\d+\\.dll$", "^avformat-\\d+\\.dll$", "^avutil-\\d+\\.dll$", "^swresample-\\d+\\.dll$", "^swscale-\\d+\\.dll$"]
+  },
+  "libraries": [
+    { "id": "mingw-w64", "stage": "10-mingw", "license": "ZPL-2.1 / MIT / BSD (runtime CRT y winpthreads; ver COPYING.MinGW-w64-runtime)", "why": "CRT y winpthreads enlazados estáticamente" },
+    { "id": "mingw-std-threads", "stage": "10-mingw-std-threads", "license": "BSD-2-Clause", "why": "cabeceras de hilos C++" },
+    { "id": "libiconv", "stage": "20-libiconv", "license": "LGPL-2.1-or-later (biblioteca; las herramientas GPL no se enlazan)", "why": "conversión de texto de metadatos/subtítulos", "configure": ["--enable-iconv"] },
+    { "id": "zlib", "stage": "20-zlib", "license": "Zlib", "why": "cabeceras MOV comprimidas, PNG", "configure": ["--enable-zlib"] },
+    { "id": "xz", "stage": "25-xz", "license": "0BSD (liblzma; COPYING.GPL* son de las herramientas, no se enlazan)", "why": "TIFF/MKV con lzma", "configure": ["--enable-lzma"] },
+    { "id": "dav1d", "stage": "50-dav1d", "license": "BSD-2-Clause", "why": "decodificar AV1", "configure": ["--enable-libdav1d"] },
+    { "id": "libvpx", "stage": "50-libvpx", "license": "BSD-3-Clause (+ PATENTS de Google)", "why": "proxy VP8/WebM", "configure": ["--enable-libvpx"] },
+    { "id": "libopus", "stage": "50-libopus", "license": "BSD-3-Clause", "why": "audio Opus del proxy WebM", "configure": ["--enable-libopus"] },
+    { "id": "zimg", "stage": "50-zimg", "license": "WTFPL", "why": "zscale (HDR a SDR)", "configure": ["--enable-libzimg"] },
+    { "id": "ffnvcodec", "stage": "50-ffnvcodec", "license": "MIT (cabeceras de NVIDIA)", "why": "h264_nvenc (carga el driver en tiempo de ejecución)", "configure": ["--enable-ffnvcodec", "--enable-cuda-llvm"], "licenseHeader": "include/ffnvcodec/nvEncodeAPI.h", "licenseHeaderLines": 26 },
+    { "id": "amf", "stage": "50-amf", "license": "MIT (cabeceras de AMD)", "why": "h264_amf", "configure": ["--enable-amf"] },
+    { "id": "libvpl", "stage": "50-onevpl", "license": "MIT", "why": "h264_qsv (dispatcher de Intel)", "configure": ["--enable-libvpl"] }
+  ],
+  "buildconf": {
+    "$comment": "Todo --enable-* del -buildconf debe estar en allowedEnable o venir de libraries[].configure. Los prohibidos fallan aunque estuvieran en la lista blanca.",
+    "allowedEnable": ["--enable-shared", "--enable-pthreads", "--enable-mediafoundation"],
+    "requiredEnable": ["--enable-shared", "--enable-mediafoundation", "--enable-libvpx", "--enable-libopus", "--enable-libzimg"],
+    "requiredDisable": ["--disable-network", "--disable-gpl", "--disable-nonfree", "--disable-version3"],
+    "forbiddenEnable": [
+      "--enable-gpl", "--enable-nonfree", "--enable-version3",
+      "--enable-chromaprint", "--enable-libzvbi", "--enable-libaribb24", "--enable-libopencore-amrnb", "--enable-libopencore-amrwb", "--enable-libvo-amrwbenc",
+      "--enable-gmp", "--enable-mbedtls", "--enable-liblensfun", "--enable-rkmpp", "--enable-libsmbclient",
+      "--enable-avisynth", "--enable-frei0r", "--enable-libcdio", "--enable-libdavs2", "--enable-libdvdnav", "--enable-libdvdread", "--enable-librubberband", "--enable-libvidstab", "--enable-libx264", "--enable-libx265", "--enable-libxavs", "--enable-libxavs2", "--enable-libxvid",
+      "--enable-decklink", "--enable-libfdk-aac", "--enable-libmpeghdec",
+      "--enable-libopenh264"
+    ]
+  },
+  "forbiddenPatterns": [
+    { "id": "fftw", "regex": "fftw", "reason": "FFTW es GPL-2.0-or-later (llegaba vía chromaprint)" },
+    { "id": "zvbi", "regex": "zvbi|vbi_decode|libzvbi", "reason": "zvbi contiene código GPL-2.0-only (packet-830.c)" },
+    { "id": "chromaprint", "regex": "chromaprint", "reason": "arrastra FFTW (GPL)" },
+    { "id": "aribb24", "regex": "aribb24|arib_decoder|arib_instance", "reason": "LGPL-3.0: obliga a v3, incompatible con LGPL-2.1-only/GPL-2.0-only" },
+    { "id": "opencore-amr", "regex": "opencore|Decoder_Interface_init|Encoder_Interface_init|D_IF_init|E_IF_init", "reason": "Apache-2.0: obliga a (L)GPL v3" },
+    { "id": "x264", "regex": "libx264|x264_encoder|x264 \\[|videolan\\.org/x264", "reason": "x264 es GPL" },
+    { "id": "x265", "regex": "libx265|x265_encoder|x265_api|x265 \\[", "reason": "x265 es GPL" },
+    { "id": "xvid", "regex": "libxvid|xvid_global|xvid_encore|xvidcore", "reason": "Xvid es GPL" },
+    { "id": "vidstab", "regex": "vidstab", "reason": "vid.stab es GPL" },
+    { "id": "fdk-aac", "regex": "fdk[-_]?aac|aacEncOpen|aacDecoder_Open", "reason": "fdk-aac no es libre (nonfree)" },
+    { "id": "frei0r", "regex": "frei0r", "reason": "frei0r se trata como GPL en FFmpeg" },
+    { "id": "rubberband", "regex": "rubberband", "reason": "Rubber Band es GPL" },
+    { "id": "postproc", "regex": "postproc-\\d+\\.dll|pp_postprocess", "reason": "libpostproc es GPL" },
+    { "id": "gpl-config", "regex": "--enable-gpl|--enable-nonfree", "reason": "configuración GPL/nonfree" },
+    { "id": "openh264", "regex": "openh264|WelsCreateSVCEncoder", "reason": "ChamVa no lo usa (patentes, ver docs/seguridad-ffmpeg.md)" }
+  ],
+  "benignExceptions": [
+    { "regex": "^(libx264|libx265|libx264-lossless|x265-stats|libvvenc)$", "files": "^ffmpeg\\.exe$", "reason": "fftools/ffmpeg_mux_init.c y ffmpeg_opt.c comparan el NOMBRE del encoder (pase 2, presets); no enlazan x264/x265" },
+    { "regex": "^Note: libopencore_amrnb supports dtx$", "files": "^avcodec-\\d+\\.dll$", "reason": "mensaje del decodificador AMR-NB NATIVO (libavcodec/amrnbdec.c); no enlaza opencore-amr" }
+  ],
+  "imports": {
+    "$comment": "DLL que ffmpeg.exe, ffprobe.exe y las DLL de FFmpeg pueden importar: las de Windows y las propias de FFmpeg (package.dllPatterns). Cualquier otra (libwinpthread-1.dll, libstdc++-6.dll, zlib1.dll, SDL2.dll, postproc-*.dll…) hace fallar la auditoría.",
+    "system": [
+      "kernel32.dll", "user32.dll", "gdi32.dll", "advapi32.dll", "shell32.dll", "ole32.dll", "oleaut32.dll", "shlwapi.dll", "psapi.dll",
+      "bcrypt.dll", "secur32.dll", "crypt32.dll", "ws2_32.dll", "iphlpapi.dll", "ntdll.dll",
+      "msvcrt.dll", "ucrtbase.dll", "api-ms-win-crt-*.dll", "api-ms-win-core-*.dll",
+      "mfplat.dll", "mf.dll", "mfuuid.dll", "mfreadwrite.dll", "strmiids.dll", "evr.dll",
+      "d3d11.dll", "dxgi.dll", "d3d12.dll", "dxva2.dll", "avicap32.dll", "vfw32.dll", "winmm.dll", "opengl32.dll", "setupapi.dll", "cfgmgr32.dll",
+      "avrt.dll", "bcryptprimitives.dll", "ncrypt.dll", "rpcrt4.dll", "userenv.dll", "version.dll", "imm32.dll", "usp10.dll", "msimg32.dll", "d2d1.dll", "dwrite.dll", "dnsapi.dll"
+    ]
+  }
+}

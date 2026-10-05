@@ -5,9 +5,13 @@
 > `"status": "blocked-license"`, `scripts/fetch-ffmpeg.mjs` se niega a descargarlo (código 8) y la
 > app no lo instala, no lo acepta a mano y no ejecuta ningún binario con sus SHA-256 (ni siquiera
 > en desarrollo). Sin FFmpeg válido el escritorio se comporta como web/Android: «nativo no
-> disponible» y la importación de v0.8.1. **v0.9.1** traerá un build propio con
-> `--disable-chromaprint --disable-libzvbi`. Lo que sigue describe el mecanismo (que se conserva)
-> para ese build.
+> disponible» y la importación de v0.8.1. **v0.9.1** traerá un build propio
+> (`.github/workflows/ffmpeg-build.yml`, LGPL-2.1-or-later, lista blanca de bibliotecas en
+> `scripts/ffmpeg-allowed-libs.json` y auditoría automática `scripts/audit-ffmpeg-licenses.mjs`);
+> mientras no se compile, audite y publique, el manifiesto es una plantilla `"pending-build"`
+> (bloqueada) y los SHA-256 del build BtbN quedan en `revoked` (no se ejecutan nunca, con
+> cualquier estado). Procedimiento: `docs/release-ffmpeg.md`. Lo que sigue describe el mecanismo
+> (que se conserva) para ese build.
 
 Solo escritorio (Windows/macOS/Linux con Tauri). En web y Android no existe nada de esto: la
 importación funciona como siempre. Código: `src-tauri/src/native_media/` (Rust) y
