@@ -20,6 +20,7 @@ import {
   drawStrokeBody,
   drawTextBody,
   layerLocalBox,
+  maskedGroundSource,
   onMaskReady,
 } from '../core/maskRender';
 
@@ -112,7 +113,11 @@ function MaskedImage({ layer, registerRef }: { layer: ImageLayer; registerRef: P
       height={h}
       sceneFunc={(ctx) => {
         const c = (ctx as any)._context as CanvasRenderingContext2D;
-        if (hasGroundFx(layer)) drawGroundFx(c, rendered, w, h, layer.maskShape, layer);
+        if (hasGroundFx(layer)) {
+          // Reflejo y sombra proyectada de lo VISIBLE (imagen ya enmascarada).
+          const gsrc = maskedGroundSource(rendered, w, h, layer.maskShape, mask, { layerId: layer.id, maxSide: PREVIEW_MAX });
+          if (gsrc) drawGroundFx(c, gsrc, w, h, undefined, layer);
+        }
         drawMaskedLayer(c, {
           mask,
           layerId: layer.id,

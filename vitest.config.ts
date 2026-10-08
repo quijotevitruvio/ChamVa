@@ -5,6 +5,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    testTimeout: 20000, // bajo carga (suite completa en paralelo) las pruebas con archivos temporales pasaban de 5 s
     // scripts/*.test.mjs: auditoría de licencias del FFmpeg propio (la misma que corre el CI)
     include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     coverage: { provider: 'v8', include: ['src/license.ts', 'src/ai/bgcore.ts', 'src/io/project.ts', 'src/i18n.ts'] },

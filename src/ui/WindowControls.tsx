@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isTauri } from '../io/nativeSave';
-import { getSaveStatus } from '../io/saveStatus';
 import { t } from '../i18n';
-import { CloseWindowDialog } from './CloseWindowDialog';
 import { shouldShowWindowControls } from './titlebarLogic';
-import { closeReasons, registerCloseGuard } from './windowClose';
-
-// Un guardado fallido pierde cambios al cerrar la ventana.
-registerCloseGuard(() => (getSaveStatus().state === 'error' ? 'Hay cambios que no se pudieron guardar en este equipo.' : null));
 
 /**
  * Botones − ▢ ✕ propios, solo cuando la ventana nativa no tiene decoraciones
@@ -16,7 +10,6 @@ registerCloseGuard(() => (getSaveStatus().state === 'error' ? 'Hay cambios que n
 export function WindowControls() {
   const [custom, setCustom] = useState(false);
   const [maxed, setMaxed] = useState(false);
-  const [ask, setAsk] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -51,10 +44,7 @@ export function WindowControls() {
   if (!custom) return null;
 
   const run = async (act: 'minimize' | 'toggleMaximize' | 'close') => {
-    if (act === 'close') {
-      const reasons = closeReasons();
-      if (reasons.length) return setAsk(reasons);
-    }
+    // 'close' emite «close-requested»: lo atiende CloseWindowHost (confirmación única para todo origen)
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const w = getCurrentWindow();
@@ -87,23 +77,6 @@ export function WindowControls() {
       <button type="button" className="wc-btn wc-close" onClick={() => void run('close')} aria-label={t('Cerrar ChamVa')} title={t('Cerrar ChamVa')}>
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" strokeWidth="1" /></svg>
       </button>
-      {ask && (
-        <CloseWindowDialog
-          reasons={ask}
-          onCancel={() => setAsk(null)}
-          onForce={() => {
-            setAsk(null);
-            void (async () => {
-              try {
-                const { getCurrentWindow } = await import('@tauri-apps/api/window');
-                await getCurrentWindow().close();
-              } catch {
-                /* ignorar */
-              }
-            })();
-          }}
-        />
-      )}
     </div>
   );
 }

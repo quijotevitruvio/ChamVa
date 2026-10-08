@@ -451,6 +451,53 @@ export function drawMaskedLayer(ctx: CanvasRenderingContext2D, o: MaskedDrawOpts
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Fuente para el reflejo y la sombra proyectada de una imagen CON máscara
+// ---------------------------------------------------------------------------
+
+/** Factor (≤ 1) que cabe una fuente w × h en `maxSide` por lado. */
+export function groundSourceScale(w: number, h: number, maxSide: number): number {
+  return Math.min(1, maxSide / Math.max(1, w, h));
+}
+
+const groundSrcCache = new WeakMap<object, { key: string; canvas: HTMLCanvasElement }>();
+
+/**
+ * Imagen YA enmascarada (recorte a forma + máscara de capa), en el marco local w × h de la capa, para
+ * alimentar groundFx: la sombra proyectada sigue la silueta visible y el reflejo refleja lo visible.
+ * Se cachea por fuente y máscara (groundFx cachea a su vez por la identidad de este lienzo). null =
+ * la máscara no está disponible (el llamador no dibuja el efecto: mejor oculto que de más).
+ */
+export function maskedGroundSource(
+  src: CanvasImageSource,
+  w: number,
+  h: number,
+  maskShape: ShapeKind | undefined,
+  mask: LayerMask,
+  opts: { layerId?: string; maxSide?: number; canvases?: MaskCanvases | null } = {},
+): HTMLCanvasElement | null {
+  const mc = opts.canvases ?? maskCanvasesNow(mask, opts.layerId);
+  if (!mc) return null;
+  const k = groundSourceScale(w, h, opts.maxSide ?? 4096);
+  const key = `${w}|${h}|${maskShape ?? ''}|${k}|${maskKey(mask)}`;
+  const hit = mc.plane ? groundSrcCache.get(src as object) : undefined; // en vivo: sin caché
+  if (hit && hit.key === key) return hit.canvas;
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(w * k));
+  c.height = Math.max(1, Math.ceil(h * k));
+  const cx = c.getContext('2d')!;
+  cx.scale(c.width / w, c.height / h);
+  cx.imageSmoothingEnabled = true;
+  cx.imageSmoothingQuality = 'high';
+  drawImageBody(cx, src, w, h, maskShape);
+  const r = mask.rect;
+  cx.globalCompositeOperation = mc.outside === 0 ? 'destination-in' : 'destination-out';
+  cx.drawImage(mc.outside === 0 ? mc.normal : mc.inverse, r.x, r.y, r.w, r.h);
+  cx.globalCompositeOperation = 'source-over';
+  if (mc.plane) groundSrcCache.set(src as object, { key, canvas: c });
+  return c;
+}
+
 /** ¿La capa tiene una máscara que aplicar? (atajo para los nodos y la exportación) */
 export function layerHasMask(l: Layer): boolean {
   return maskActive(l.mask);

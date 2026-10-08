@@ -20,7 +20,7 @@ import { isTauri, saveNative } from './nativeSave';
 import { toast } from '../ui/toast';
 import { withRegisteredMaster } from '../editor/core/master';
 import { embedDpiInBlob, fileDpi } from './imageDpi';
-import { contentBounds, drawImageBody, drawMaskedLayer, drawShapeBody, drawStrokeBody, drawTextBody, layerHasMask, prepareMask } from '../editor/core/maskRender';
+import { contentBounds, drawImageBody, drawMaskedLayer, drawShapeBody, drawStrokeBody, drawTextBody, layerHasMask, maskedGroundSource, prepareMask } from '../editor/core/maskRender';
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'avif';
 
@@ -108,7 +108,8 @@ export async function renderDocToCanvas(
       ctx.rotate((layer.rotation * Math.PI) / 180);
       ctx.scale(layer.scaleX * a.scale, layer.scaleY * a.scale);
       if (layer.type === 'image' && source && hasGroundFx(layer)) {
-        drawGroundFx(ctx, source, layer.naturalWidth, layer.naturalHeight, layer.maskShape, layer);
+        const gsrc = maskedGroundSource(source, layer.naturalWidth, layer.naturalHeight, layer.maskShape, layer.mask, { maxSide: 8192 });
+        if (gsrc) drawGroundFx(ctx, gsrc, layer.naturalWidth, layer.naturalHeight, undefined, layer);
       }
       const L = layer;
       drawMaskedLayer(ctx, {

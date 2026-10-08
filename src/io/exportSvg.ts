@@ -22,7 +22,7 @@ import { textSvgAdvanced } from './exportSvgTypography';
 import { pagesForFields } from './docFields';
 import { textFxSvg } from './exportSvgTextFx';
 import { maskActive } from '../editor/core/layerMask';
-import { maskPngDataUrl } from '../editor/core/maskRender';
+import { maskPngDataUrl, maskedGroundSource } from '../editor/core/maskRender';
 
 function loadImg(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -229,15 +229,24 @@ export async function exportDocToSvg(doc: Doc): Promise<string> {
       // Reflejo y sombra proyectada: se hornean a PNG y van como <image> bajo la capa.
       let fxSvg = '';
       if (layer.castShadow || layer.reflection) {
-        const fxSrc = await loadImg(baked);
+        let fxSrc: CanvasImageSource = await loadImg(baked);
         const nw = layer.naturalWidth;
         const nh = layer.naturalHeight;
+        let fxShape = layer.maskShape;
+        if (layer.mask && maskActive(layer.mask)) {
+          // Con máscara de capa: reflejo y sombra de lo visible (imagen ya enmascarada).
+          const ms = maskedGroundSource(fxSrc, nw, nh, layer.maskShape, layer.mask, { maxSide: 8192 });
+          if (ms) {
+            fxSrc = ms;
+            fxShape = undefined;
+          }
+        }
         if (layer.castShadow) {
-          const sh = renderCastShadow(fxSrc, nw, nh, layer.maskShape, layer.castShadow);
+          const sh = renderCastShadow(fxSrc, nw, nh, fxShape, layer.castShadow);
           fxSvg += `<image href="${sh.canvas.toDataURL('image/png')}" x="${sh.x}" y="${sh.y}" width="${sh.w}" height="${sh.h}" opacity="${layer.castShadow.opacity}"/>`;
         }
         if (layer.reflection) {
-          const rf = renderReflection(fxSrc, nw, nh, layer.maskShape, layer.reflection);
+          const rf = renderReflection(fxSrc, nw, nh, fxShape, layer.reflection);
           fxSvg += `<image href="${rf.canvas.toDataURL('image/png')}" x="0" y="${rf.y}" width="${nw}" height="${nh * Math.min(1, Math.max(0.05, layer.reflection.length))}"/>`;
         }
       }
