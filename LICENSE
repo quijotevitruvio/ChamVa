@@ -19,21 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-MODELOS DE IA / AI MODELS
-
-El código de ChamVa es MIT. Los modelos de IA que la app descarga bajo demanda
-tienen sus propias licencias, y el usuario elige cuál usar:
-
-- MODNet (Xenova/modnet) — Apache-2.0 — MOTOR POR DEFECTO.
-  Uso libre, incluido comercial.
-- BiRefNet-lite (onnx-community/BiRefNet_lite-ONNX) — MIT.
-  Uso libre, incluido comercial. Requiere WebGPU.
-- Swin2SR (Xenova/swin2SR-classical-sr-x2-64) — Apache-2.0 (Optimizar HD).
-- RMBG-1.4 (briaai/RMBG-1.4) — licencia BRIA, SOLO USO NO COMERCIAL.
-  Es opcional y está marcado como tal en la interfaz; no se usa por defecto.
-
-Bibliotecas destacadas: Tauri (MIT/Apache-2.0), React (MIT), Konva (MIT),
-Transformers.js (Apache-2.0), OpenCV.js (Apache-2.0).
